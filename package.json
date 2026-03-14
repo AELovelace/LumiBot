@@ -1,0 +1,21 @@
+{
+  "name": "sad-girl-player",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord voice bot that streams live HLS .m3u8 audio with FFmpeg",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check": "node --check src/index.js && node --check src/commands.js && node --check src/config.js && node --check src/logger.js && node --check src/stream.js && node --check src/voice.js"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@discordjs/voice": "latest",
+    "discord.js": "latest",
+    "dotenv": "^16.4.7",
+    "ffmpeg-static": "^5.2.0"
+  }
+}
