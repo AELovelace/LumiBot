@@ -1,3 +1,6 @@
+const { existsSync } = require('node:fs');
+const path = require('node:path');
+
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -32,6 +35,45 @@ function parseHttpUrl(value) {
   }
 }
 
+const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com']);
+const SOUNDCLOUD_HOSTS = new Set(['soundcloud.com', 'www.soundcloud.com', 'on.soundcloud.com']);
+
+/**
+ * Parse a raw user input string into a typed play input object.
+ *
+ * Returns one of:
+ *   { type: 'youtube',    url:   string }
+ *   { type: 'soundcloud', url:   string }
+ *   { type: 'http',       url:   string }
+ *   { type: 'search',     query: string }
+ *   null  — if the input is empty
+ */
+function parsePlayInput(value) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      if (YOUTUBE_HOSTS.has(parsed.hostname)) {
+        return { type: 'youtube', url: parsed.toString() };
+      }
+
+      if (SOUNDCLOUD_HOSTS.has(parsed.hostname)) {
+        return { type: 'soundcloud', url: parsed.toString() };
+      }
+
+      return { type: 'http', url: parsed.toString() };
+    }
+  } catch {
+    // Not a URL — fall through to search
+  }
+
+  return { type: 'search', query: trimmed };
+}
+
 function redactUrl(value) {
   if (!value) {
     return 'unknown-url';
@@ -45,12 +87,27 @@ function redactUrl(value) {
   }
 }
 
+function resolveYtDlpPath() {
+  const configuredPath = process.env.YTDLP_PATH?.trim();
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  const localCandidates = [
+    path.resolve(__dirname, '..', 'yt-dlp.exe'),
+    path.resolve(__dirname, '..', 'yt-dlp'),
+  ];
+
+  return localCandidates.find((candidate) => existsSync(candidate)) || 'yt-dlp';
+}
+
 const config = Object.freeze({
   discordToken: process.env.DISCORD_TOKEN?.trim() || '',
   commandPrefix: process.env.COMMAND_PREFIX?.trim() || 'sb!',
   defaultStreamUrl: parseHttpUrl(process.env.DEFAULT_STREAM_URL?.trim() || ''),
   allowedGuildId: process.env.ALLOWED_GUILD_ID?.trim() || null,
   ffmpegPath: process.env.FFMPEG_PATH?.trim() || null,
+  ytdlpPath: resolveYtDlpPath(),
   voiceReadyTimeoutMs: parsePositiveInt(process.env.VOICE_READY_TIMEOUT_MS, 30_000),
   streamReconnectLimit: parsePositiveInt(process.env.STREAM_RECONNECT_LIMIT, 5),
   voiceReconnectLimit: parsePositiveInt(process.env.VOICE_RECONNECT_LIMIT, 5),
@@ -77,5 +134,6 @@ module.exports = {
   config,
   getMissingConfigValues,
   parseHttpUrl,
+  parsePlayInput,
   redactUrl,
 };

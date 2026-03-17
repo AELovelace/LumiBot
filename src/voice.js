@@ -14,12 +14,17 @@ const {
 const { config, redactUrl } = require('./config');
 const { logger } = require('./logger');
 const { createSongWatcher } = require('./songwatcher');
-const { spawnHlsTranscoder } = require('./stream');
+const { spawnHlsTranscoder, spawnYtDlpStream } = require('./stream');
+const { clearQueue, dequeue } = require('./queue');
 
 const activeSessions = new Map();
 
 function isCurrentSession(session) {
   return activeSessions.get(session.guildId)?.sessionId === session.sessionId;
+}
+
+function isActiveStreamController(session, controller) {
+  return isCurrentSession(session) && session.streamController === controller;
 }
 
 function clearTimer(timer) {
@@ -82,7 +87,16 @@ function bindPlayerEvents(session) {
       return;
     }
 
-    scheduleStreamReconnect(session, 'The audio player went idle.');
+      // For on-demand tracks (YouTube/SoundCloud/search), idling means the track
+      // finished (or skip was requested) — advance the queue instead of reconnecting.
+      if ((session.track && session.track.type !== 'http') || session.skipRequested) {
+        session.skipRequested = false;
+        void advanceQueue(session, 'track ended or skipped');
+        return;
+      }
+
+      // HTTP radio stream dropped — use the existing reconnect path.
+      scheduleStreamReconnect(session, 'The audio player went idle.');
   });
 
   session.player.on('error', (error) => {
@@ -93,6 +107,83 @@ function bindPlayerEvents(session) {
     logger.error('Audio player error.', error.message);
     scheduleStreamReconnect(session, `Audio player error: ${error.message}`);
   });
+}
+
+/**
+ * Convert a typed track object to the string yt-dlp expects as input.
+ */
+function trackToYtDlpInput(track) {
+  if (track.type === 'search') {
+    return `ytsearch1:${track.query}`;
+  }
+
+  return track.url;
+}
+
+function isDefaultStreamTrack(track) {
+  return Boolean(
+    config.defaultStreamUrl
+      && track
+      && track.type === 'http'
+      && track.url === config.defaultStreamUrl,
+  );
+}
+
+function buildDefaultStreamTrack() {
+  if (!config.defaultStreamUrl) {
+    return null;
+  }
+
+  return {
+    type: 'http',
+    url: config.defaultStreamUrl,
+    query: null,
+    title: 'default stream',
+    requestedBy: 'system',
+  };
+}
+
+/**
+ * Dequeue the next track and start it in the existing session.
+ * If the queue is empty, destroys the session instead.
+ */
+async function advanceQueue(session, reason) {
+  if (!isCurrentSession(session)) {
+    return;
+  }
+
+  const previousTrack = session.track;
+  const nextTrack = dequeue(session.guildId);
+  if (!nextTrack) {
+    if (session.resumeDefaultStreamAfterQueue && !isDefaultStreamTrack(previousTrack)) {
+      const defaultTrack = buildDefaultStreamTrack();
+      if (defaultTrack) {
+        logger.info(`Queue empty after ${reason}. Resuming the default stream.`);
+
+        try {
+          await startStream(session, defaultTrack);
+          await notifyTextChannel(session, 'Queue finished. Resuming the default stream.');
+          return;
+        } catch (error) {
+          logger.error('Failed to resume the default stream.', error.message);
+        }
+      }
+    }
+
+    logger.info(`Queue empty after ${reason}. Stopping session.`);
+    await stopActiveSession(session.guildId, `queue empty after ${reason}`);
+    return;
+  }
+
+  logger.info(`Queue advance: starting "${nextTrack.title}" after ${reason}.`);
+  await notifyTextChannel(session, `Now playing: **${nextTrack.title}**`);
+
+  try {
+    await startStream(session, nextTrack);
+  } catch (error) {
+    logger.error('Failed to start next queued track.', error.message);
+    await advanceQueue(session, `failed to start "${nextTrack.title}": ${error.message}`);
+  }
 }
 
 function bindConnectionEvents(session, connection) {
@@ -148,10 +239,24 @@ async function connectSession(session) {
   connection.subscribe(session.player);
 }
 
-async function startStream(session) {
+async function startStream(session, track) {
+  const currentTrack = track ?? session.track;
   stopStreamController(session, 'refreshing stream pipeline');
 
-  const streamController = await spawnHlsTranscoder(session.streamUrl);
+  // Store the track being started so event handlers can inspect its type
+  if (currentTrack) {
+    session.track = currentTrack;
+    // Keep streamUrl in sync for logging / getActiveSessionSummary
+    session.streamUrl = currentTrack.url ?? currentTrack.query ?? session.streamUrl;
+  }
+
+  let streamController;
+  if (!currentTrack || currentTrack.type === 'http') {
+    streamController = await spawnHlsTranscoder(session.streamUrl);
+  } else {
+    streamController = await spawnYtDlpStream(trackToYtDlpInput(currentTrack));
+  }
+
   if (!isCurrentSession(session) || session.manualStop) {
     streamController.stop('session changed before playback started');
     return;
@@ -160,7 +265,7 @@ async function startStream(session) {
   session.streamController = streamController;
 
   streamController.child.once('error', (error) => {
-    if (!isCurrentSession(session) || session.manualStop) {
+    if (!isActiveStreamController(session, streamController) || session.manualStop) {
       return;
     }
 
@@ -169,9 +274,15 @@ async function startStream(session) {
   });
 
   streamController.child.once('close', (code, signal) => {
-    if (!isCurrentSession(session) || session.manualStop) {
+    if (!isActiveStreamController(session, streamController) || session.manualStop) {
       return;
     }
+
+      // For on-demand tracks, exit code 0 means the track finished normally.
+      // The player's Idle event will handle queue advancement — don't reconnect.
+      if (code === 0 && session.track && session.track.type !== 'http') {
+        return;
+      }
 
     const detail = code !== null ? `exit code ${code}` : `signal ${signal || 'unknown'}`;
     const diagnostics = streamController.getDiagnostics();
@@ -293,6 +404,7 @@ async function stopActiveSession(guildId, reason = 'manual stop') {
   }
 
   destroyConnection(session.connection);
+  clearQueue(guildId);
   logger.info(`Guild ${guildId}: playback session stopped (${reason}).`);
   return true;
 }
@@ -307,7 +419,31 @@ async function stopAllSessions(reason = 'shutdown') {
   await Promise.all(guildIds.map((guildId) => stopActiveSession(guildId, reason)));
 }
 
-async function playForMember({ member, textChannel, streamUrl }) {
+/**
+ * Stop the current track and advance to the next item in the queue.
+ * If the queue is empty, the session is torn down.
+ * Returns true if a session existed, false otherwise.
+ */
+async function skipCurrentTrack(guildId) {
+  const session = activeSessions.get(guildId);
+  if (!session) {
+    return false;
+  }
+
+  session.skipRequested = true;
+  stopStreamController(session, 'skip requested');
+
+  // Force the player to idle immediately; the idle handler will call advanceQueue.
+  try {
+    session.player.stop(true);
+  } catch {
+    // Ignore — advanceQueue will fire when the stream controller closes anyway.
+  }
+
+  return true;
+}
+
+async function playForMember({ member, textChannel, track }) {
   const voiceChannel = member.voice?.channel;
   if (!voiceChannel) {
     throw new Error('Join a voice channel first.');
@@ -321,6 +457,8 @@ async function playForMember({ member, textChannel, streamUrl }) {
 
   // Stop any existing session in this guild before starting a new one.
   await stopActiveSession(guildId, `new play request from ${member.user.tag}`);
+
+  const streamUrl = track.url ?? track.query ?? '';
 
   const session = {
     sessionId: randomUUID(),
@@ -341,6 +479,9 @@ async function playForMember({ member, textChannel, streamUrl }) {
     voiceReconnectTimer: null,
     songWatcher: null,
     streamUrl,
+    track,
+    resumeDefaultStreamAfterQueue: isDefaultStreamTrack(track),
+    skipRequested: false,
     manualStop: false,
   };
 
@@ -349,7 +490,7 @@ async function playForMember({ member, textChannel, streamUrl }) {
 
   try {
     await connectSession(session);
-    await startStream(session);
+    await startStream(session, track);
 
     session.songWatcher = createSongWatcher({
       url: config.songPollUrl,
@@ -383,6 +524,8 @@ function getActiveSessionSummary(guildId) {
     guildId: session.guildId,
     channelId: session.channelId,
     streamUrl: session.streamUrl,
+    track: session.track,
+    resumeDefaultStreamAfterQueue: session.resumeDefaultStreamAfterQueue,
   };
 }
 
@@ -396,4 +539,5 @@ module.exports = {
   playForMember,
   stopActiveSession,
   stopAllSessions,
+  skipCurrentTrack,
 };
