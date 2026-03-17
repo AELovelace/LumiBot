@@ -1,5 +1,26 @@
 {
-  "channels": {},
+  "channels": {
+    "901299978817925131": {
+      "history": [
+        {
+          "role": "user",
+          "author": ".doll",
+          "content": "Lumiii"
+        },
+        {
+          "role": "user",
+          "author": ".doll",
+          "content": "Hey Lumi are you there?"
+        },
+        {
+          "role": "assistant",
+          "author": "Lumi",
+          "content": "Yo hey there! 🌟 I’m here and ready to chat. What’s up? 😊"
+        }
+      ],
+      "lastReplyAt": 1773791071713
+    }
+  },
   "settings": {
     "enabled": true,
     "channelIds": [

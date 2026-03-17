@@ -1,6 +1,7 @@
 const { ChannelType } = require('discord.js');
 
 const { config, parseHttpUrl } = require('./config');
+const { handleAutonomousMessage } = require('./chatbot');
 const { logger } = require('./logger');
 const { getRandomQuote, addQuote, getRandomJackHandey } = require('./quotes');
 const { enqueue, getQueue, getQueueLength } = require('./queue');
