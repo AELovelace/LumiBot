@@ -1,6 +1,6 @@
 const { Client, Events, GatewayIntentBits } = require('discord.js');
 
-const { flushChatbotState, initializeChatbot } = require('./chatbot');
+const { flushChatbotState, initializeChatbot, shutdownChatbotPersistence } = require('./chatbot');
 const { handleMessageCreate } = require('./commands');
 const { config, getMissingConfigValues } = require('./config');
 const { handleControlPlaneInteraction, registerControlPlane } = require('./controlPlane');
@@ -44,6 +44,12 @@ async function shutdown(signal) {
     logger.warn('Failed to flush chatbot memory during shutdown.', error.message);
   }
 
+  try {
+    await shutdownChatbotPersistence();
+  } catch (error) {
+    logger.warn('Failed to stop chatbot memory SQL service during shutdown.', error.message);
+  }
+
   client.destroy();
   process.exit(0);
 }
@@ -58,7 +64,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
 
   logger.info(
-    `Chatbot mode: ${config.chatbotEnabled ? 'enabled' : 'disabled'}; channels=${config.chatbotChannelIds.length}; endpoints=${config.llmEndpoints.length}`,
+    `Chatbot mode: ${config.chatbotEnabled ? 'enabled' : 'disabled'}; channels=${config.chatbotChannelIds.length}; endpoints=${config.llmEndpoints.length}; model=${config.chatbotModel}; local-gpu=${config.llmUseLocalGpu ? 'on' : 'off'}`,
   );
 });
 

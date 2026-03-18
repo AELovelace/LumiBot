@@ -23,6 +23,34 @@ function nextEndpoint() {
   return selected;
 }
 
+function getLocalFirstEndpoints() {
+  const configured = config.llmEndpoints.filter(Boolean);
+  if (configured.length === 0) {
+    return [];
+  }
+
+  if (!config.llmUseLocalGpu || !config.llmLocalEndpoint) {
+    return configured;
+  }
+
+  return [
+    config.llmLocalEndpoint,
+    ...configured.filter((endpoint) => endpoint !== config.llmLocalEndpoint),
+  ];
+}
+
+function selectEndpointForAttempt(attempt, localFirstEndpoints) {
+  if (localFirstEndpoints) {
+    if (localFirstEndpoints.length === 0) {
+      return null;
+    }
+
+    return localFirstEndpoints[(attempt - 1) % localFirstEndpoints.length];
+  }
+
+  return nextEndpoint();
+}
+
 function buildPrompt({ persona, history, latestContent }) {
   const renderedHistory = history
     .map((entry) => `${entry.role === 'assistant' ? 'Lumi' : entry.author}: ${entry.content}`)
@@ -50,9 +78,10 @@ function normalizeResponse(text, maxChars) {
 async function requestLlmCompletion({ latestContent, history, maxResponseChars }) {
   const maxAttempts = Math.max(1, config.llmRetryLimit + 1);
   const failures = [];
+  const localFirstEndpoints = config.llmUseLocalGpu ? getLocalFirstEndpoints() : null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const endpoint = nextEndpoint();
+    const endpoint = selectEndpointForAttempt(attempt, localFirstEndpoints);
     if (!endpoint) {
       throw new Error('No LLM endpoints configured.');
     }

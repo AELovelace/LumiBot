@@ -5,6 +5,7 @@ A Discord bot that joins the same server voice channel as the user who requested
 ## Requirements
 
 - Windows with Node.js 22.12.0 or newer
+- Python 3.11 or newer for the Lumi memory SQL service
 - A Discord bot token
 - A server where the bot can read messages, connect to voice, and speak
 - FFmpeg is bundled through `ffmpeg-static` by default, but you can override it with `FFMPEG_PATH`
@@ -18,6 +19,7 @@ A Discord bot that joins the same server voice channel as the user who requested
 4. Optionally set `DEFAULT_STREAM_URL` to a public HTTP/HLS stream URL.
 5. Install dependencies with `npm install`.
 6. Start the bot with `npm start`.
+	- For local RTX 3080 mode with `HammerAI/llama-3-lexi-uncensored`, use `npm run start:3080`.
 
 ## Discord bot settings
 
@@ -68,7 +70,7 @@ Behavior defaults in this implementation:
 
 ### LLM Infrastructure
 
-Set these env values to use your two Qwen endpoints with round-robin + failover:
+Base env values (round-robin + failover):
 
 - `CHATBOT_MODEL=qwen2.5:7b`
 - `LLM_ENDPOINTS=http://172.27.23.252:11434,http://172.27.23.252:11435`
@@ -76,16 +78,40 @@ Set these env values to use your two Qwen endpoints with round-robin + failover:
 - `LLM_RETRY_LIMIT=2`
 - `LLM_RETRY_BASE_DELAY_MS=1000`
 
-If one endpoint fails, requests automatically retry and fail over to the other endpoint.
+Optional local RTX 3080 mode (Ollama-compatible endpoint):
+
+- `LLM_USE_LOCAL_GPU=true`
+- `LLM_LOCAL_ENDPOINT=http://127.0.0.1:11434`
+- `CHATBOT_MODEL=HammerAI/llama-3-lexi-uncensored`
+
+When local GPU mode is enabled, the local endpoint is tried first and the remaining `LLM_ENDPOINTS` are still available for retry/failover.
 
 ### Persistent Long-Term Memory
 
-Chat context and runtime Lumi settings now persist to disk:
+Chat context and runtime Lumi settings now persist in SQLite through a local Python service.
+The bot auto-starts the service, prefers the workspace `.venv` interpreter when present, and falls back to the system Python launcher.
+If the configured memory-service port is unavailable, the bot automatically picks a free localhost port for that session.
 
-- `CHATBOT_MEMORY_FILE=data/chatbot-memory.json`
+Settings:
+
+- `CHATBOT_MEMORY_DB_FILE=data/chatbot-memory.sqlite3`
+- `CHATBOT_MEMORY_PYTHON=` (optional explicit Python executable path)
+- `CHATBOT_MEMORY_SERVICE_HOST=127.0.0.1`
+- `CHATBOT_MEMORY_SERVICE_PORT=8765`
+- `CHATBOT_MEMORY_FILE=data/chatbot-memory.json` (legacy JSON import source)
 - `CHATBOT_MEMORY_FLUSH_MS=5000`
 
-This stores per-channel sliding history and control-plane runtime settings across restarts.
+If the SQLite database is empty and the legacy JSON file exists, Lumi imports the existing memory automatically on first startup.
+
+### Local Memory Admin Web Page
+
+The Python memory service now exposes a local admin page to inspect and edit memory JSON directly.
+
+- URL: `http://127.0.0.1:8765/admin` (or your configured `CHATBOT_MEMORY_SERVICE_HOST` + `CHATBOT_MEMORY_SERVICE_PORT`)
+- Main actions: **Load from DB**, edit JSON, then **Save to DB**
+- The page runs on the host PC through the same local service used by the bot
+
+If the configured service port is unavailable, the bot may choose a temporary fallback localhost port for that run (check logs for the exact admin URL).
 
 ### Slash Command Control Plane (Admin UI)
 

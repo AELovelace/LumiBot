@@ -1,7 +1,12 @@
 const { config } = require('./config');
 const { logger } = require('./logger');
 const { evaluateIncomingMessage, evaluateOutgoingMessage } = require('./moderation');
-const { loadChatbotState, scheduleStateSave, flushStateSave } = require('./chatbotStateStore');
+const {
+  closeChatbotStateStore,
+  loadChatbotState,
+  scheduleStateSave,
+  flushStateSave,
+} = require('./chatbotStateStore');
 const { requestLlmCompletion } = require('./llmClient');
 
 const channelState = new Map();
@@ -130,6 +135,10 @@ function persistState() {
 
 async function flushChatbotState() {
   await flushStateSave(snapshotState);
+}
+
+async function shutdownChatbotPersistence() {
+  await closeChatbotStateStore();
 }
 
 function getRuntimeSettings() {
@@ -508,5 +517,6 @@ module.exports = {
   getRuntimeSettings,
   handleAutonomousMessage,
   initializeChatbot,
+  shutdownChatbotPersistence,
   updateRuntimeSettings,
 };

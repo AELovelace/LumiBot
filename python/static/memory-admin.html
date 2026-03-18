@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lumi Memory Admin</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, Segoe UI, system-ui, -apple-system, sans-serif;
+      --bg: #0f1117;
+      --surface: #171a22;
+      --surface-2: #1f2430;
+      --text: #e6e9ef;
+      --muted: #98a2b3;
+      --ok: #2ecc71;
+      --error: #ff6b6b;
+      --accent: #7aa2f7;
+      --border: #30384a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 20px;
+      background: var(--surface);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    main {
+      padding: 16px 20px;
+      display: grid;
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    .primary {
+      background: #2f3b54;
+      border-color: #506089;
+    }
+
+    .status {
+      min-height: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.error {
+      color: var(--error);
+    }
+
+    textarea {
+      width: 100%;
+      height: 100%;
+      min-height: 52vh;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0c0f14;
+      color: var(--text);
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.35;
+      resize: vertical;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    a {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lumi Memory Admin</h1>
+    <p>Local admin page for chatbot memory on this host machine.</p>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <button id="loadBtn">Load from DB</button>
+      <button id="saveBtn" class="primary">Save to DB</button>
+      <button id="formatBtn">Format JSON</button>
+      <button id="blankBtn">New Blank Snapshot</button>
+      <span class="meta" id="summary"></span>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <textarea id="editor" spellcheck="false" aria-label="Chatbot memory JSON"></textarea>
+
+    <div class="meta">
+      Uses <a href="/state" target="_blank" rel="noreferrer">/state</a> API under the hood. Keep JSON shape as:
+      <code>{"channels": {...}, "settings": {...}}</code>
+    </div>
+  </main>
+
+  <script>
+    const statusElement = document.getElementById('status');
+    const summaryElement = document.getElementById('summary');
+    const editor = document.getElementById('editor');
+
+    function setStatus(message, kind = '') {
+      statusElement.className = `status ${kind}`.trim();
+      statusElement.textContent = message;
+    }
+
+    function updateSummary(state) {
+      const channelCount = Object.keys(state?.channels || {}).length;
+      const settingsCount = Object.keys(state?.settings || {}).length;
+      summaryElement.textContent = `Channels: ${channelCount} • Settings: ${settingsCount}`;
+    }
+
+    function parseEditorJson() {
+      const raw = editor.value.trim();
+      if (!raw) {
+        return { channels: {}, settings: {} };
+      }
+
+      return JSON.parse(raw);
+    }
+
+    async function loadState() {
+      setStatus('Loading memory…');
+
+      const response = await fetch('/state', {
+        method: 'GET',
+        headers: { 'accept': 'application/json' },
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Load failed (${response.status})`);
+      }
+
+      const rendered = JSON.stringify(payload, null, 2);
+      editor.value = rendered;
+      updateSummary(payload);
+      setStatus('Loaded memory from database.', 'ok');
+    }
+
+    async function saveState() {
+      let snapshot;
+      try {
+        snapshot = parseEditorJson();
+      } catch (error) {
+        setStatus(`Invalid JSON: ${error.message}`, 'error');
+        return;
+      }
+
+      setStatus('Saving memory…');
+
+      const response = await fetch('/state', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+        body: JSON.stringify(snapshot),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Save failed (${response.status})`);
+      }
+
+      editor.value = JSON.stringify(snapshot, null, 2);
+      updateSummary(snapshot);
+      setStatus('Saved memory to database.', 'ok');
+    }
+
+    function formatJson() {
+      try {
+        const parsed = parseEditorJson();
+        editor.value = JSON.stringify(parsed, null, 2);
+        updateSummary(parsed);
+        setStatus('Formatted JSON.', 'ok');
+      } catch (error) {
+        setStatus(`Invalid JSON: ${error.message}`, 'error');
+      }
+    }
+
+    function setBlankSnapshot() {
+      const blank = { channels: {}, settings: {} };
+      editor.value = JSON.stringify(blank, null, 2);
+      updateSummary(blank);
+      setStatus('Loaded blank snapshot in editor (not saved yet).');
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', () => {
+      loadState().catch((error) => {
+        setStatus(error.message, 'error');
+      });
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      saveState().catch((error) => {
+        setStatus(error.message, 'error');
+      });
+    });
+
+    document.getElementById('formatBtn').addEventListener('click', formatJson);
+    document.getElementById('blankBtn').addEventListener('click', setBlankSnapshot);
+
+    setBlankSnapshot();
+    loadState().catch((error) => {
+      setStatus(error.message, 'error');
+    });
+  </script>
+</body>
+</html>

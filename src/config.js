@@ -165,6 +165,30 @@ function resolveYtDlpPath() {
   return localCandidates.find((candidate) => existsSync(candidate)) || 'yt-dlp';
 }
 
+const chatbotMemoryLegacyFile = process.env.CHATBOT_MEMORY_LEGACY_FILE?.trim()
+  || process.env.CHATBOT_MEMORY_FILE?.trim()
+  || 'data/chatbot-memory.json';
+
+const llmUseLocalGpu = parseBoolean(process.env.LLM_USE_LOCAL_GPU, false);
+const llmLocalEndpoint = parseHttpBaseUrl(
+  process.env.LLM_LOCAL_ENDPOINT?.trim() || 'http://127.0.0.1:11434',
+);
+const defaultLlmEndpoints = [
+  parseHttpBaseUrl('http://172.27.23.252:11434'),
+  parseHttpBaseUrl('http://172.27.23.252:11435'),
+].filter(Boolean);
+
+function buildLlmEndpoints() {
+  const configured = parseEndpointList(process.env.LLM_ENDPOINTS);
+  const baseEndpoints = configured.length > 0 ? configured : defaultLlmEndpoints;
+
+  if (!llmUseLocalGpu || !llmLocalEndpoint) {
+    return baseEndpoints;
+  }
+
+  return Array.from(new Set([llmLocalEndpoint, ...baseEndpoints]));
+}
+
 const config = Object.freeze({
   discordToken: process.env.DISCORD_TOKEN?.trim() || '',
   commandPrefix: process.env.COMMAND_PREFIX?.trim() || 'sb!',
@@ -197,22 +221,20 @@ const config = Object.freeze({
   chatbotPersona:
     process.env.CHATBOT_PERSONA?.trim()
     || 'You are Lumi, a quirky upbeat egirl-style assistant. Use she/it pronouns for yourself.',
-  chatbotModel: process.env.CHATBOT_MODEL?.trim() || 'qwen2.5:7b',
-  llmEndpoints: (() => {
-    const configured = parseEndpointList(process.env.LLM_ENDPOINTS);
-    if (configured.length > 0) {
-      return configured;
-    }
-
-    return [
-      parseHttpBaseUrl('http://172.27.23.252:11434'),
-      parseHttpBaseUrl('http://172.27.23.252:11435'),
-    ];
-  })(),
+  chatbotModel: process.env.CHATBOT_MODEL?.trim()
+    || (llmUseLocalGpu ? 'HammerAI/llama-3-lexi-uncensored' : 'qwen2.5:7b'),
+  llmUseLocalGpu,
+  llmLocalEndpoint,
+  llmEndpoints: buildLlmEndpoints(),
   llmTimeoutMs: parsePositiveInt(process.env.LLM_TIMEOUT_MS, 25_000),
   llmRetryLimit: parsePositiveInt(process.env.LLM_RETRY_LIMIT, 2),
   llmRetryBaseDelayMs: parsePositiveInt(process.env.LLM_RETRY_BASE_DELAY_MS, 1_000),
-  chatbotMemoryFile: process.env.CHATBOT_MEMORY_FILE?.trim() || 'data/chatbot-memory.json',
+  chatbotMemoryFile: chatbotMemoryLegacyFile,
+  chatbotMemoryLegacyFile,
+  chatbotMemoryDbFile: process.env.CHATBOT_MEMORY_DB_FILE?.trim() || 'data/chatbot-memory.sqlite3',
+  chatbotMemoryPythonPath: process.env.CHATBOT_MEMORY_PYTHON?.trim() || null,
+  chatbotMemoryServiceHost: process.env.CHATBOT_MEMORY_SERVICE_HOST?.trim() || '127.0.0.1',
+  chatbotMemoryServicePort: parsePositiveInt(process.env.CHATBOT_MEMORY_SERVICE_PORT, 8765),
   chatbotMemoryFlushMs: parsePositiveInt(process.env.CHATBOT_MEMORY_FLUSH_MS, 5_000),
   moderationEnabled: parseBoolean(process.env.MODERATION_ENABLED, true),
   moderationBlocklist: parseCsvList(process.env.MODERATION_BLOCKLIST),
