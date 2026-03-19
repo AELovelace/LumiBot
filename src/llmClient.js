@@ -1,4 +1,4 @@
-const { config } = require('./config');
+const { config, getChatbotPersona } = require('./config');
 const { logger } = require('./logger');
 
 let endpointIndex = 0;
@@ -51,7 +51,30 @@ function selectEndpointForAttempt(attempt, localFirstEndpoints) {
   return nextEndpoint();
 }
 
-function buildPrompt({ persona, history, latestContent }) {
+function renderMemoryClues(memoryClues) {
+  if (!Array.isArray(memoryClues) || memoryClues.length === 0) {
+    return 'Long-term memory clues: none';
+  }
+
+  const rendered = memoryClues
+    .map((entry, index) => {
+      const role = entry.role === 'assistant' ? 'assistant' : 'user';
+      const author = typeof entry.author === 'string' && entry.author.trim()
+        ? entry.author.trim()
+        : role === 'assistant'
+          ? 'Lumi'
+          : 'unknown';
+      const userId = typeof entry.userId === 'string' ? entry.userId : 'unknown';
+      const channelId = typeof entry.channelId === 'string' ? entry.channelId : 'unknown';
+      const content = typeof entry.content === 'string' ? entry.content.trim() : '';
+      return `${index + 1}. [user=${userId}] [channel=${channelId}] [${role}] ${author}: ${content}`;
+    })
+    .join('\n');
+
+  return `Long-term memory clues:\n${rendered}`;
+}
+
+function buildPrompt({ persona, history, latestContent, memoryClues, deepRecall }) {
   const renderedHistory = history
     .map((entry) => `${entry.role === 'assistant' ? 'Lumi' : entry.author}: ${entry.content}`)
     .join('\n');
@@ -60,7 +83,12 @@ function buildPrompt({ persona, history, latestContent }) {
     `System: ${persona}`,
     'System: Keep responses concise, natural, and chat-friendly for Discord.',
     'System: Avoid roleplay-heavy formatting and avoid walls of text.',
+    'System: Use long-term memory clues only when relevant and do not claim certainty if memory is weak.',
+    deepRecall
+      ? 'System: The user asked for recall. Prioritize memory clues when they appear relevant.'
+      : 'System: Use recent context first. Use memory clues only if they clearly help.',
     renderedHistory ? `Recent chat context:\n${renderedHistory}` : 'Recent chat context: none',
+    renderMemoryClues(memoryClues),
     `User message: ${latestContent}`,
     'Reply as Lumi:',
   ].join('\n\n');
@@ -75,7 +103,13 @@ function normalizeResponse(text, maxChars) {
   return `${compact.slice(0, Math.max(1, maxChars - 3)).trim()}...`;
 }
 
-async function requestLlmCompletion({ latestContent, history, maxResponseChars }) {
+async function requestLlmCompletion({
+  latestContent,
+  history,
+  memoryClues,
+  deepRecall,
+  maxResponseChars,
+}) {
   const maxAttempts = Math.max(1, config.llmRetryLimit + 1);
   const failures = [];
   const localFirstEndpoints = config.llmUseLocalGpu ? getLocalFirstEndpoints() : null;
@@ -98,9 +132,11 @@ async function requestLlmCompletion({ latestContent, history, maxResponseChars }
           model: config.chatbotModel,
           stream: false,
           prompt: buildPrompt({
-            persona: config.chatbotPersona,
+            persona: getChatbotPersona(),
             history,
             latestContent,
+            memoryClues,
+            deepRecall,
           }),
         }),
         signal: AbortSignal.timeout(config.llmTimeoutMs),

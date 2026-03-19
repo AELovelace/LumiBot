@@ -44,6 +44,12 @@
       font-weight: 600;
     }
 
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
     p {
       margin: 6px 0 0;
       color: var(--muted);
@@ -54,7 +60,20 @@
       padding: 16px 20px;
       display: grid;
       gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      align-items: stretch;
       flex: 1;
+      min-height: 0;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
       min-height: 0;
     }
 
@@ -65,14 +84,19 @@
       align-items: center;
     }
 
-    button {
+    button,
+    select,
+    input {
       border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--surface-2);
       color: var(--text);
-      padding: 8px 12px;
-      cursor: pointer;
+      padding: 8px 10px;
       font-size: 13px;
+    }
+
+    button {
+      cursor: pointer;
     }
 
     button:hover {
@@ -101,7 +125,7 @@
     textarea {
       width: 100%;
       height: 100%;
-      min-height: 52vh;
+      min-height: 42vh;
       border: 1px solid var(--border);
       border-radius: 10px;
       background: #0c0f14;
@@ -118,6 +142,17 @@
       color: var(--muted);
     }
 
+    .grow {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-right: 6px;
+    }
+
     a {
       color: var(--accent);
     }
@@ -130,42 +165,99 @@
   </header>
 
   <main>
-    <div class="toolbar">
-      <button id="loadBtn">Load from DB</button>
-      <button id="saveBtn" class="primary">Save to DB</button>
-      <button id="formatBtn">Format JSON</button>
-      <button id="blankBtn">New Blank Snapshot</button>
-      <span class="meta" id="summary"></span>
-    </div>
+    <section class="panel">
+      <h2>Runtime State Editor</h2>
 
-    <div id="status" class="status"></div>
+      <div class="toolbar">
+        <button id="loadBtn">Load from DB</button>
+        <button id="saveBtn" class="primary">Save to DB</button>
+        <button id="formatBtn">Format JSON</button>
+        <button id="blankBtn">New Blank Snapshot</button>
+        <span class="meta" id="stateSummary"></span>
+      </div>
 
-    <textarea id="editor" spellcheck="false" aria-label="Chatbot memory JSON"></textarea>
+      <div id="stateStatus" class="status"></div>
 
-    <div class="meta">
-      Uses <a href="/state" target="_blank" rel="noreferrer">/state</a> API under the hood. Keep JSON shape as:
-      <code>{"channels": {...}, "settings": {...}}</code>
-    </div>
+      <textarea id="stateEditor" class="grow" spellcheck="false" aria-label="Chatbot runtime state JSON"></textarea>
+
+      <div class="meta">
+        Uses <a href="/state" target="_blank" rel="noreferrer">/state</a> for channel runtime snapshots.
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Per-User SQL Explorer</h2>
+
+      <div class="toolbar">
+        <button id="refreshUsersBtn">Refresh Users</button>
+        <span class="label">User</span>
+        <select id="userSelect" aria-label="Select user"></select>
+        <span class="meta" id="userSummary"></span>
+      </div>
+
+      <div class="toolbar">
+        <span class="label">Limit</span>
+        <input id="userLimit" type="number" min="1" max="500" value="100" aria-label="Entry limit">
+        <button id="loadUserBtn">Load Latest Rows</button>
+      </div>
+
+      <div class="toolbar">
+        <input id="userQuery" type="text" placeholder="Search selected user's memory..." aria-label="Search selected user memory" style="min-width:240px;flex:1;">
+        <button id="searchUserBtn">Search User</button>
+        <button id="clearUserBtn">Clear View</button>
+      </div>
+
+      <div id="userStatus" class="status"></div>
+
+      <textarea id="userEditor" class="grow" spellcheck="false" aria-label="Per-user memory explorer JSON"></textarea>
+
+      <div class="meta">
+        Uses <a href="/memory/users" target="_blank" rel="noreferrer">/memory/users</a> and
+        <code>/memory/user/{userId}?limit=100</code>.
+      </div>
+    </section>
   </main>
 
   <script>
-    const statusElement = document.getElementById('status');
-    const summaryElement = document.getElementById('summary');
-    const editor = document.getElementById('editor');
+    const stateStatusElement = document.getElementById('stateStatus');
+    const stateSummaryElement = document.getElementById('stateSummary');
+    const stateEditor = document.getElementById('stateEditor');
 
-    function setStatus(message, kind = '') {
-      statusElement.className = `status ${kind}`.trim();
-      statusElement.textContent = message;
+    const userStatusElement = document.getElementById('userStatus');
+    const userSummaryElement = document.getElementById('userSummary');
+    const userSelect = document.getElementById('userSelect');
+    const userLimitInput = document.getElementById('userLimit');
+    const userQueryInput = document.getElementById('userQuery');
+    const userEditor = document.getElementById('userEditor');
+
+    let knownUsers = [];
+
+    function setStatus(element, message, kind = '') {
+      element.className = `status ${kind}`.trim();
+      element.textContent = message;
     }
 
-    function updateSummary(state) {
+    function setStateStatus(message, kind = '') {
+      setStatus(stateStatusElement, message, kind);
+    }
+
+    function setUserStatus(message, kind = '') {
+      setStatus(userStatusElement, message, kind);
+    }
+
+    function updateStateSummary(state) {
       const channelCount = Object.keys(state?.channels || {}).length;
       const settingsCount = Object.keys(state?.settings || {}).length;
-      summaryElement.textContent = `Channels: ${channelCount} • Settings: ${settingsCount}`;
+      stateSummaryElement.textContent = `Channels: ${channelCount} • Settings: ${settingsCount}`;
+    }
+
+    function updateUserListSummary(users) {
+      const entryCount = users.reduce((sum, user) => sum + (Number(user.entryCount) || 0), 0);
+      userSummaryElement.textContent = `Users: ${users.length} • Entries: ${entryCount}`;
     }
 
     function parseEditorJson() {
-      const raw = editor.value.trim();
+      const raw = stateEditor.value.trim();
       if (!raw) {
         return { channels: {}, settings: {} };
       }
@@ -173,23 +265,38 @@
       return JSON.parse(raw);
     }
 
-    async function loadState() {
-      setStatus('Loading memory…');
+    function normalizeExplorerLimit() {
+      const parsed = Number.parseInt(userLimitInput.value, 10);
+      const limit = Number.isFinite(parsed) ? parsed : 100;
+      const normalized = Math.min(500, Math.max(1, limit));
+      userLimitInput.value = String(normalized);
+      return normalized;
+    }
 
-      const response = await fetch('/state', {
-        method: 'GET',
-        headers: { 'accept': 'application/json' },
-      });
+    function getSelectedUserId() {
+      return String(userSelect.value || '').trim();
+    }
 
+    async function apiJson(path, options = {}) {
+      const response = await fetch(path, options);
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.error || `Load failed (${response.status})`);
+        throw new Error(payload?.error || `Request failed (${response.status})`);
       }
+      return payload;
+    }
 
-      const rendered = JSON.stringify(payload, null, 2);
-      editor.value = rendered;
-      updateSummary(payload);
-      setStatus('Loaded memory from database.', 'ok');
+    async function loadState() {
+      setStateStatus('Loading runtime state…');
+
+      const payload = await apiJson('/state', {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      });
+
+      stateEditor.value = JSON.stringify(payload, null, 2);
+      updateStateSummary(payload);
+      setStateStatus('Loaded runtime state from database.', 'ok');
     }
 
     async function saveState() {
@@ -197,64 +304,218 @@
       try {
         snapshot = parseEditorJson();
       } catch (error) {
-        setStatus(`Invalid JSON: ${error.message}`, 'error');
+        setStateStatus(`Invalid JSON: ${error.message}`, 'error');
         return;
       }
 
-      setStatus('Saving memory…');
-
-      const response = await fetch('/state', {
+      setStateStatus('Saving runtime state…');
+      await apiJson('/state', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify(snapshot),
       });
 
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.error || `Save failed (${response.status})`);
-      }
-
-      editor.value = JSON.stringify(snapshot, null, 2);
-      updateSummary(snapshot);
-      setStatus('Saved memory to database.', 'ok');
+      stateEditor.value = JSON.stringify(snapshot, null, 2);
+      updateStateSummary(snapshot);
+      setStateStatus('Saved runtime state to database.', 'ok');
     }
 
-    function formatJson() {
+    function formatStateJson() {
       try {
         const parsed = parseEditorJson();
-        editor.value = JSON.stringify(parsed, null, 2);
-        updateSummary(parsed);
-        setStatus('Formatted JSON.', 'ok');
+        stateEditor.value = JSON.stringify(parsed, null, 2);
+        updateStateSummary(parsed);
+        setStateStatus('Formatted runtime state JSON.', 'ok');
       } catch (error) {
-        setStatus(`Invalid JSON: ${error.message}`, 'error');
+        setStateStatus(`Invalid JSON: ${error.message}`, 'error');
       }
     }
 
     function setBlankSnapshot() {
       const blank = { channels: {}, settings: {} };
-      editor.value = JSON.stringify(blank, null, 2);
-      updateSummary(blank);
-      setStatus('Loaded blank snapshot in editor (not saved yet).');
+      stateEditor.value = JSON.stringify(blank, null, 2);
+      updateStateSummary(blank);
+      setStateStatus('Loaded blank runtime snapshot in editor (not saved yet).');
+    }
+
+    function renderUserOptions(users, preferredUserId = '') {
+      const previous = preferredUserId || getSelectedUserId();
+      userSelect.innerHTML = '';
+
+      if (users.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No users found';
+        userSelect.append(option);
+        userSelect.disabled = true;
+        return '';
+      }
+
+      userSelect.disabled = false;
+      users.forEach((user) => {
+        const option = document.createElement('option');
+        option.value = user.userId;
+        option.textContent = `${user.userId} (${user.entryCount})`;
+        if (user.userId === previous) {
+          option.selected = true;
+        }
+        userSelect.append(option);
+      });
+
+      if (!userSelect.value && users[0]) {
+        userSelect.value = users[0].userId;
+      }
+
+      return getSelectedUserId();
+    }
+
+    function updateSelectedUserSummary(payload) {
+      const shown = Array.isArray(payload?.entries) ? payload.entries.length : 0;
+      const total = Number(payload?.totalEntries) || 0;
+      const tableName = payload?.tableName || 'n/a';
+      userSummaryElement.textContent = `User: ${payload?.userId || 'n/a'} • Showing: ${shown}/${total} • Table: ${tableName}`;
+    }
+
+    async function refreshUsers(options = {}) {
+      setUserStatus('Loading per-user memory registry…');
+      const payload = await apiJson('/memory/users', {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      });
+
+      knownUsers = Array.isArray(payload?.users) ? payload.users : [];
+      const selectedUser = renderUserOptions(knownUsers, options.preferredUserId || '');
+      updateUserListSummary(knownUsers);
+
+      if (!selectedUser) {
+        userEditor.value = JSON.stringify({ users: [] }, null, 2);
+        setUserStatus('No per-user memory rows found yet.');
+        return;
+      }
+
+      if (options.autoLoad === false) {
+        setUserStatus('Loaded per-user memory registry.', 'ok');
+        return;
+      }
+
+      await loadSelectedUser();
+    }
+
+    async function loadSelectedUser() {
+      const userId = getSelectedUserId();
+      if (!userId) {
+        setUserStatus('Select a user first.', 'error');
+        return;
+      }
+
+      const limit = normalizeExplorerLimit();
+      setUserStatus(`Loading latest rows for ${userId}…`);
+
+      const payload = await apiJson(`/memory/user/${encodeURIComponent(userId)}?limit=${limit}`, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      });
+
+      userEditor.value = JSON.stringify(payload, null, 2);
+      updateSelectedUserSummary(payload);
+      const loaded = Array.isArray(payload.entries) ? payload.entries.length : 0;
+      setUserStatus(`Loaded ${loaded} rows for ${userId}.`, 'ok');
+    }
+
+    async function searchSelectedUser() {
+      const userId = getSelectedUserId();
+      if (!userId) {
+        setUserStatus('Select a user first.', 'error');
+        return;
+      }
+
+      const query = userQueryInput.value.trim();
+      if (!query) {
+        setUserStatus('Enter search text or use Load Latest Rows.', 'error');
+        return;
+      }
+
+      const limit = normalizeExplorerLimit();
+      setUserStatus(`Searching memory for ${userId}…`);
+
+      const payload = await apiJson('/memory/search', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          userId,
+          query,
+          deep: false,
+          limit,
+        }),
+      });
+
+      userEditor.value = JSON.stringify(payload, null, 2);
+      const matches = Array.isArray(payload?.matches) ? payload.matches.length : 0;
+      userSummaryElement.textContent = `User: ${userId} • Matches: ${matches} • Limit: ${limit}`;
+      setUserStatus(`Found ${matches} matching rows for ${userId}.`, 'ok');
+    }
+
+    function clearUserView() {
+      userQueryInput.value = '';
+      userEditor.value = JSON.stringify({ entries: [] }, null, 2);
+      if (knownUsers.length > 0) {
+        updateUserListSummary(knownUsers);
+      } else {
+        userSummaryElement.textContent = '';
+      }
+      setUserStatus('Cleared explorer output.');
     }
 
     document.getElementById('loadBtn').addEventListener('click', () => {
       loadState().catch((error) => {
-        setStatus(error.message, 'error');
+        setStateStatus(error.message, 'error');
       });
     });
 
     document.getElementById('saveBtn').addEventListener('click', () => {
       saveState().catch((error) => {
-        setStatus(error.message, 'error');
+        setStateStatus(error.message, 'error');
       });
     });
 
-    document.getElementById('formatBtn').addEventListener('click', formatJson);
+    document.getElementById('formatBtn').addEventListener('click', formatStateJson);
     document.getElementById('blankBtn').addEventListener('click', setBlankSnapshot);
 
+    document.getElementById('refreshUsersBtn').addEventListener('click', () => {
+      refreshUsers({ autoLoad: false }).catch((error) => {
+        setUserStatus(error.message, 'error');
+      });
+    });
+
+    document.getElementById('loadUserBtn').addEventListener('click', () => {
+      loadSelectedUser().catch((error) => {
+        setUserStatus(error.message, 'error');
+      });
+    });
+
+    document.getElementById('searchUserBtn').addEventListener('click', () => {
+      searchSelectedUser().catch((error) => {
+        setUserStatus(error.message, 'error');
+      });
+    });
+
+    document.getElementById('clearUserBtn').addEventListener('click', clearUserView);
+
+    userSelect.addEventListener('change', () => {
+      loadSelectedUser().catch((error) => {
+        setUserStatus(error.message, 'error');
+      });
+    });
+
     setBlankSnapshot();
+    clearUserView();
+
     loadState().catch((error) => {
-      setStatus(error.message, 'error');
+      setStateStatus(error.message, 'error');
+    });
+
+    refreshUsers().catch((error) => {
+      setUserStatus(error.message, 'error');
     });
   </script>
 </body>

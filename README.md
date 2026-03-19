@@ -73,6 +73,7 @@ Behavior defaults in this implementation:
 Base env values (round-robin + failover):
 
 - `CHATBOT_MODEL=qwen2.5:7b`
+- `CHATBOT_PERSONA=...` hot-reloads from `.env` on the next model request (no restart needed)
 - `LLM_ENDPOINTS=http://172.27.23.252:11434,http://172.27.23.252:11435`
 - `LLM_TIMEOUT_MS=25000`
 - `LLM_RETRY_LIMIT=2`
@@ -92,23 +93,31 @@ Chat context and runtime Lumi settings now persist in SQLite through a local Pyt
 The bot auto-starts the service, prefers the workspace `.venv` interpreter when present, and falls back to the system Python launcher.
 If the configured memory-service port is unavailable, the bot automatically picks a free localhost port for that session.
 
+Conversation memory now also tracks per-user long-term history in dedicated SQL tables. Lumi can search those tables for context clues while chatting.
+
 Settings:
 
 - `CHATBOT_MEMORY_DB_FILE=data/chatbot-memory.sqlite3`
 - `CHATBOT_MEMORY_PYTHON=` (optional explicit Python executable path)
 - `CHATBOT_MEMORY_SERVICE_HOST=127.0.0.1`
 - `CHATBOT_MEMORY_SERVICE_PORT=8765`
+- `CHATBOT_MEMORY_SEARCH_LIMIT=6` (normal clue retrieval)
+- `CHATBOT_MEMORY_RECALL_LIMIT=20` (deeper recall retrieval)
 - `CHATBOT_MEMORY_FILE=data/chatbot-memory.json` (legacy JSON import source)
 - `CHATBOT_MEMORY_FLUSH_MS=5000`
 
 If the SQLite database is empty and the legacy JSON file exists, Lumi imports the existing memory automatically on first startup.
 
+By default, Lumi uses the recent short-term context window (`CHATBOT_CONTEXT_MESSAGES`, default `20`).
+If a message asks Lumi to remember or recall something, Lumi additionally performs a deeper search over the full SQL memory database.
+
 ### Local Memory Admin Web Page
 
-The Python memory service now exposes a local admin page to inspect and edit memory JSON directly.
+The Python memory service now exposes a local admin page to inspect and edit runtime state, and to explore per-user SQL memory.
 
 - URL: `http://127.0.0.1:8765/admin` (or your configured `CHATBOT_MEMORY_SERVICE_HOST` + `CHATBOT_MEMORY_SERVICE_PORT`)
-- Main actions: **Load from DB**, edit JSON, then **Save to DB**
+- Runtime state actions: **Load from DB**, edit JSON, then **Save to DB**
+- Per-user explorer: refresh user list, select a user, load latest rows, and run user-scoped search
 - The page runs on the host PC through the same local service used by the bot
 
 If the configured service port is unavailable, the bot may choose a temporary fallback localhost port for that run (check logs for the exact admin URL).

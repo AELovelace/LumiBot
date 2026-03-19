@@ -2,9 +2,11 @@ const { config } = require('./config');
 const { logger } = require('./logger');
 const { evaluateIncomingMessage, evaluateOutgoingMessage } = require('./moderation');
 const {
+  appendUserMemoryEntry,
   closeChatbotStateStore,
   loadChatbotState,
   scheduleStateSave,
+  searchUserMemory,
   flushStateSave,
 } = require('./chatbotStateStore');
 const { requestLlmCompletion } = require('./llmClient');
@@ -25,6 +27,43 @@ const runtimeSettings = {
   momentumMaxReplyChance: config.chatbotMomentumMaxReplyChance,
   maxResponseChars: config.chatbotMaxResponseChars,
 };
+
+const RECALL_INTENT_PATTERN = /\b(remember|recall|remind|memory|forgot|forget|earlier|previous|before|last time|have we talked|what did i say|did i ever)\b/iu;
+
+function shouldUseDeepRecall(text) {
+  if (!text || typeof text !== 'string') {
+    return false;
+  }
+
+  return RECALL_INTENT_PATTERN.test(text.toLowerCase());
+}
+
+function persistUserMemoryEntry(entry) {
+  void appendUserMemoryEntry(entry).catch((error) => {
+    logger.warn('Failed to persist per-user memory entry.', error.message);
+  });
+}
+
+async function fetchMemoryCluesForPrompt({ userId, query, deepRecall }) {
+  if (!userId) {
+    return [];
+  }
+
+  const limit = deepRecall ? config.chatbotMemoryRecallLimit : config.chatbotMemorySearchLimit;
+
+  try {
+    const payload = await searchUserMemory({
+      userId,
+      query,
+      deep: deepRecall,
+      limit,
+    });
+    return Array.isArray(payload?.matches) ? payload.matches : [];
+  } catch (error) {
+    logger.warn('Failed to query per-user memory clues.', error.message);
+    return [];
+  }
+}
 
 function sanitizeReplyChance(value) {
   const numeric = Number(value);
@@ -79,10 +118,7 @@ async function initializeChatbot() {
 
   const loaded = await loadChatbotState();
   Object.entries(loaded.channels).forEach(([channelId, value]) => {
-    channelState.set(channelId, {
-      history: Array.isArray(value.history) ? value.history : [],
-      lastReplyAt: Number.isFinite(value.lastReplyAt) ? value.lastReplyAt : 0,
-    });
+    channelState.set(channelId, value);
   });
 
   if (loaded.settings && typeof loaded.settings === 'object') {
@@ -467,10 +503,25 @@ async function handleAutonomousMessage(message) {
   }
 
   const state = getChannelState(message.channelId);
+  const incomingTimestamp = Number.isFinite(message.createdTimestamp)
+    ? Number(message.createdTimestamp)
+    : Date.now();
+
   pushHistoryEntry(state, {
     role: 'user',
     author: message.author.username,
     content: text,
+    timestamp: incomingTimestamp,
+  });
+
+  persistUserMemoryEntry({
+    userId: message.author.id,
+    channelId: message.channelId,
+    role: 'user',
+    authorId: message.author.id,
+    author: message.author.username,
+    content: text,
+    timestamp: incomingTimestamp,
   });
 
   const decision = shouldAttemptReply(message, state);
@@ -481,9 +532,18 @@ async function handleAutonomousMessage(message) {
 
   try {
     await message.channel.sendTyping();
+    const deepRecall = shouldUseDeepRecall(text);
+    const memoryClues = await fetchMemoryCluesForPrompt({
+      userId: message.author.id,
+      query: text,
+      deepRecall,
+    });
+
     const response = await requestLlmCompletion({
       latestContent: text,
-      history: state.history,
+      history: state.history.slice(-Math.max(1, runtimeSettings.contextMessages)),
+      memoryClues,
+      deepRecall,
       maxResponseChars: runtimeSettings.maxResponseChars,
     });
 
@@ -498,12 +558,24 @@ async function handleAutonomousMessage(message) {
     }
 
     await message.reply(outboundModeration.text);
-    state.lastReplyAt = Date.now();
+    const replyTimestamp = Date.now();
+    state.lastReplyAt = replyTimestamp;
     persistState();
     pushHistoryEntry(state, {
       role: 'assistant',
       author: 'Lumi',
       content: outboundModeration.text,
+      timestamp: replyTimestamp,
+    });
+
+    persistUserMemoryEntry({
+      userId: message.author.id,
+      channelId: message.channelId,
+      role: 'assistant',
+      authorId: message.client.user?.id || 'lumi',
+      author: 'Lumi',
+      content: outboundModeration.text,
+      timestamp: replyTimestamp,
     });
 
     logger.info(`Chatbot replied in channel ${message.channelId} (${decision.reason}).`);

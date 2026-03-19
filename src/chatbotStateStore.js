@@ -413,16 +413,30 @@ async function readJsonResponse(response) {
   }
 }
 
+async function serviceRequestJson(routePath, { method = 'GET', body = null } = {}) {
+  await ensureServiceReady();
+
+  const response = await fetch(`${getServiceBaseUrl()}${routePath}`, {
+    method,
+    headers: {
+      accept: 'application/json',
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const payload = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Memory service returned ${response.status}.`);
+  }
+
+  return payload;
+}
+
 async function loadChatbotState() {
   try {
-    await ensureServiceReady();
-    const response = await fetch(`${getServiceBaseUrl()}/state`, {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    const payload = await readJsonResponse(response);
-    if (!response.ok) {
-      throw new Error(payload?.error || `Memory service returned ${response.status}.`);
-    }
+    const payload = await serviceRequestJson('/state');
 
     return normalizeState(payload);
   } catch (error) {
@@ -432,19 +446,24 @@ async function loadChatbotState() {
 }
 
 async function writeSnapshot(snapshot) {
-  await ensureServiceReady();
-  const response = await fetch(`${getServiceBaseUrl()}/state`, {
+  await serviceRequestJson('/state', {
     method: 'PUT',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(snapshot),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    body: snapshot,
   });
-  const payload = await readJsonResponse(response);
-  if (!response.ok) {
-    throw new Error(payload?.error || `Memory service returned ${response.status}.`);
-  }
+}
+
+async function appendUserMemoryEntry(entry) {
+  return serviceRequestJson('/memory/log', {
+    method: 'POST',
+    body: entry,
+  });
+}
+
+async function searchUserMemory(options) {
+  return serviceRequestJson('/memory/search', {
+    method: 'POST',
+    body: options,
+  });
 }
 
 function scheduleStateSave(snapshotBuilder) {
@@ -527,8 +546,10 @@ async function closeChatbotStateStore() {
 }
 
 module.exports = {
+  appendUserMemoryEntry,
   closeChatbotStateStore,
   loadChatbotState,
   scheduleStateSave,
+  searchUserMemory,
   flushStateSave,
 };

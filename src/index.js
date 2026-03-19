@@ -6,6 +6,8 @@ const { config, getMissingConfigValues } = require('./config');
 const { handleControlPlaneInteraction, registerControlPlane } = require('./controlPlane');
 const { logger } = require('./logger');
 const { stopAllSessions } = require('./voice');
+const { killExistingProcesses } = require('./processCleanup');
+const { handleGuildMemberAdd } = require('./welcome');
 
 const missingConfigValues = getMissingConfigValues();
 if (missingConfigValues.length > 0) {
@@ -19,6 +21,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -72,6 +75,10 @@ client.on(Events.MessageCreate, (message) => {
   void handleMessageCreate(message);
 });
 
+client.on(Events.GuildMemberAdd, (member) => {
+  void handleGuildMemberAdd(member);
+});
+
 client.on(Events.InteractionCreate, (interaction) => {
   void handleControlPlaneInteraction(interaction);
 });
@@ -98,6 +105,10 @@ process.once('SIGTERM', () => {
 
 (async () => {
   logger.info('Starting SadGirlPlayer...');
+  
+  // Kill any existing processes before starting
+  await killExistingProcesses();
+  
   try {
     await client.login(config.discordToken);
   } catch (error) {

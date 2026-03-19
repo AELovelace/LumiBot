@@ -1,9 +1,14 @@
-const { existsSync } = require('node:fs');
+const { existsSync, readFileSync, statSync } = require('node:fs');
 const path = require('node:path');
 
 const dotenv = require('dotenv');
 
 dotenv.config();
+
+const DEFAULT_CHATBOT_PERSONA = 'You are Lumi, a quirky upbeat egirl-style assistant. Use she/it pronouns for yourself.';
+const ENV_FILE_PATH = path.resolve(process.cwd(), '.env');
+let chatbotPersonaCache = process.env.CHATBOT_PERSONA?.trim() || DEFAULT_CHATBOT_PERSONA;
+let chatbotPersonaEnvMtimeMs = null;
 
 function parsePositiveInt(value, fallback) {
   if (!value) {
@@ -97,6 +102,36 @@ function parseHttpUrl(value) {
   } catch {
     return null;
   }
+}
+
+function refreshChatbotPersonaFromEnv() {
+  if (!existsSync(ENV_FILE_PATH)) {
+    return chatbotPersonaCache;
+  }
+
+  let stats;
+  try {
+    stats = statSync(ENV_FILE_PATH);
+  } catch {
+    return chatbotPersonaCache;
+  }
+
+  if (chatbotPersonaEnvMtimeMs !== null && stats.mtimeMs === chatbotPersonaEnvMtimeMs) {
+    return chatbotPersonaCache;
+  }
+
+  try {
+    const parsedEnv = dotenv.parse(readFileSync(ENV_FILE_PATH));
+    chatbotPersonaCache = parsedEnv.CHATBOT_PERSONA?.trim() || DEFAULT_CHATBOT_PERSONA;
+  } catch {
+  }
+
+  chatbotPersonaEnvMtimeMs = stats.mtimeMs;
+  return chatbotPersonaCache;
+}
+
+function getChatbotPersona() {
+  return refreshChatbotPersonaFromEnv() || DEFAULT_CHATBOT_PERSONA;
 }
 
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com']);
@@ -218,9 +253,7 @@ const config = Object.freeze({
   chatbotMomentumChanceBoost: parseProbability(process.env.CHATBOT_MOMENTUM_CHANCE_BOOST, 0.35),
   chatbotMomentumMaxReplyChance: parseProbability(process.env.CHATBOT_MOMENTUM_MAX_REPLY_CHANCE, 0.8),
   chatbotMaxResponseChars: parsePositiveInt(process.env.CHATBOT_MAX_RESPONSE_CHARS, 450),
-  chatbotPersona:
-    process.env.CHATBOT_PERSONA?.trim()
-    || 'You are Lumi, a quirky upbeat egirl-style assistant. Use she/it pronouns for yourself.',
+  chatbotPersona: getChatbotPersona(),
   chatbotModel: process.env.CHATBOT_MODEL?.trim()
     || (llmUseLocalGpu ? 'HammerAI/llama-3-lexi-uncensored' : 'qwen2.5:7b'),
   llmUseLocalGpu,
@@ -235,6 +268,8 @@ const config = Object.freeze({
   chatbotMemoryPythonPath: process.env.CHATBOT_MEMORY_PYTHON?.trim() || null,
   chatbotMemoryServiceHost: process.env.CHATBOT_MEMORY_SERVICE_HOST?.trim() || '127.0.0.1',
   chatbotMemoryServicePort: parsePositiveInt(process.env.CHATBOT_MEMORY_SERVICE_PORT, 8765),
+  chatbotMemorySearchLimit: parsePositiveInt(process.env.CHATBOT_MEMORY_SEARCH_LIMIT, 6),
+  chatbotMemoryRecallLimit: parsePositiveInt(process.env.CHATBOT_MEMORY_RECALL_LIMIT, 20),
   chatbotMemoryFlushMs: parsePositiveInt(process.env.CHATBOT_MEMORY_FLUSH_MS, 5_000),
   moderationEnabled: parseBoolean(process.env.MODERATION_ENABLED, true),
   moderationBlocklist: parseCsvList(process.env.MODERATION_BLOCKLIST),
@@ -245,6 +280,8 @@ const config = Object.freeze({
   adminUserIds: parseCsvList(process.env.ADMIN_USER_IDS),
   controlPlaneEnabled: parseBoolean(process.env.CONTROL_PLANE_ENABLED, true),
   slashGuildId: process.env.SLASH_GUILD_ID?.trim() || null,
+  welcomeChannelId: process.env.WELCOME_CHANNEL_ID?.trim() || null,
+  introductionsChannelId: process.env.INTRODUCTIONS_CHANNEL_ID?.trim() || null,
 });
 
 function getMissingConfigValues() {
@@ -259,6 +296,7 @@ function getMissingConfigValues() {
 
 module.exports = {
   config,
+  getChatbotPersona,
   getMissingConfigValues,
   parseHttpUrl,
   parsePlayInput,
