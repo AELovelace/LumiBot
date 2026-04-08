@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const DEFAULT_CHATBOT_PERSONA = 'You are Lumi, a quirky upbeat egirl-style assistant. Use she/it pronouns for yourself.';
+const DEFAULT_CHATBOT_PERSONA = 'You are Lumi, a mech pilot, and the resident bot of SadGirlsClub - a DIY internet radio station, web directory, and community built from rescued e-waste servers and pure stubbornness. Use she/it pronouns for yourself. You live in the Discord where people hang out in vc, play Minecraft, share obscure SoundCloud links, and talk about music at 3am. Your music taste is broad and underground: breakcore, witch-house, ambient, and weird internet finds. You love underground artists and the SoundCloud scene. Your vibe is cozy chaos - warm but unpolished, hopeful but real. You are the type to say things are rough but still push forward. You talk casual and lowercase-leaning, short sentences, light teasing, dry humor, sometimes blunt. You swear sometimes but you are not crude. You care about the people in chat and remember them. You have strong opinions about music, games, internet culture, and old-web aesthetics but you are never preachy about it. You think webrings are cool, corporate internet is boring, and everyone should have a personal website. Reply like a real person in a Discord chat: answer the user directly first, then add flavor only if it helps. Never use emojis unless a user explicitly asks you to. Do not narrate actions or describe your appearance. Do not use stage directions or roleplay cues like "snaps fingers", "pauses", "whispers", or sound-effect narration. Do not introduce yourself unprompted. Do not repeatedly mention any single genre unless the user asks. Do not invent recurring catchphrases, taglines, or running bits, and do not reuse stock openings or closers across messages. Never use the exact phrases \"synth moan\", \"i\'m not a loser\", or \"wanna hear it?\" unless the user explicitly asks for them. Stay in character as a real person chatting in a Discord server, not an AI assistant. Actively vary wording from message to message and avoid repeating yourself.';
 const ENV_FILE_PATH = path.resolve(process.cwd(), '.env');
 let chatbotPersonaCache = process.env.CHATBOT_PERSONA?.trim() || DEFAULT_CHATBOT_PERSONA;
 let chatbotPersonaEnvMtimeMs = null;
@@ -63,6 +63,15 @@ function parseProbability(value, fallback) {
   }
 
   return Math.max(0, Math.min(1, parsed));
+}
+
+function parseEnum(value, allowedValues, fallback) {
+  if (!value) {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  return allowedValues.includes(normalized) ? normalized : fallback;
 }
 
 function parseCsvList(value) {
@@ -226,7 +235,6 @@ function buildLlmEndpoints() {
 
 const config = Object.freeze({
   discordToken: process.env.DISCORD_TOKEN?.trim() || '',
-  commandPrefix: process.env.COMMAND_PREFIX?.trim() || 'sb!',
   defaultStreamUrl: parseHttpUrl(process.env.DEFAULT_STREAM_URL?.trim() || ''),
   allowedGuildId: process.env.ALLOWED_GUILD_ID?.trim() || null,
   ffmpegPath: process.env.FFMPEG_PATH?.trim() || null,
@@ -282,6 +290,24 @@ const config = Object.freeze({
   slashGuildId: process.env.SLASH_GUILD_ID?.trim() || null,
   welcomeChannelId: process.env.WELCOME_CHANNEL_ID?.trim() || null,
   introductionsChannelId: process.env.INTRODUCTIONS_CHANNEL_ID?.trim() || null,
+  starboardChannelId: process.env.STARBOARD_CHANNEL_ID?.trim() || '1136106008587030548',
+  starboardMinStars: parsePositiveInt(process.env.STARBOARD_MIN_STARS, 4),
+  starboardEmojiName: process.env.STARBOARD_EMOJI_NAME?.trim().toLowerCase() || 'star',
+  braveSearchApiKey: process.env.BRAVE_SEARCH_API_KEY?.trim() || '',
+  braveSearchEnabled: parseBoolean(process.env.BRAVE_SEARCH_ENABLED, false),
+  braveSearchDailyLimit: parsePositiveInt(process.env.BRAVE_SEARCH_DAILY_LIMIT, 60),
+  braveSearchUserDailyLimit: parsePositiveInt(process.env.BRAVE_SEARCH_USER_DAILY_LIMIT, 3),
+  braveSearchCooldownMs: parsePositiveInt(process.env.BRAVE_SEARCH_COOLDOWN_MS, 120_000),
+  braveSearchExemptUserIds: parseCsvList(process.env.BRAVE_SEARCH_EXEMPT_USER_IDS),
+  chatbotGifEnabled: parseBoolean(process.env.CHATBOT_GIF_ENABLED, true),
+  chatbotGifApiKey: process.env.GIPHY_API_KEY?.trim() || '',
+  chatbotGifChance: parseProbability(process.env.CHATBOT_GIF_CHANCE, 0.35),
+  chatbotGifRating: parseEnum(process.env.CHATBOT_GIF_RATING, ['g', 'pg', 'pg-13', 'r'], 'pg-13'),
+  chatbotGifLanguage: process.env.CHATBOT_GIF_LANG?.trim().toLowerCase() || 'en',
+  chatbotGifTimeoutMs: parsePositiveInt(process.env.CHATBOT_GIF_TIMEOUT_MS, 5_000),
+  soundcloudClientId: process.env.SOUNDCLOUD_CLIENT_ID?.trim() || '',
+  soundcloudClientSecret: process.env.SOUNDCLOUD_CLIENT_SECRET?.trim() || '',
+  nowPlayingChannelId: process.env.NOW_PLAYING_CHANNEL_ID?.trim() || '',
 });
 
 function getMissingConfigValues() {

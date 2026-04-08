@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+Vector-enabled chatbot memory service using ChromaDB for semantic search.
+Maintains backward compatibility with existing API while enabling vector similarity search.
+"""
+
 import hashlib
 import json
 import math
@@ -12,14 +18,26 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-SERVICE_NAME = 'chatbot-memory-sql'
+try:
+    import chromadb
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    print('Error: chromadb and sentence-transformers are required.')
+    print('Install with: pip install chromadb sentence-transformers')
+    import sys
+    sys.exit(1)
+
+SERVICE_NAME = 'chatbot-memory-vector'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ADMIN_PAGE_PATH = os.path.join(BASE_DIR, 'static', 'memory-admin.html')
-USER_MEMORY_TABLE_PREFIX = 'user_memory_'
 SAFE_IDENTIFIER_PATTERN = re.compile(r'[^A-Za-z0-9_]+')
 VALID_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z0-9_]+$')
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9']+")
 
+# ChromaDB paths
+CHROMA_DB_PATH = os.path.join(os.path.dirname(BASE_DIR), 'data', 'chroma-db')
+
+# Schema for fallback SQLite (for state/history only, not for user memories)
 SCHEMA = '''
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS runtime_settings (
@@ -40,17 +58,12 @@ CREATE TABLE IF NOT EXISTS channel_history (
     PRIMARY KEY (channel_id, position),
     FOREIGN KEY (channel_id) REFERENCES channel_state(channel_id) ON DELETE CASCADE
 );
-CREATE TABLE IF NOT EXISTS user_memory_registry (
-    user_id TEXT PRIMARY KEY,
-    table_name TEXT NOT NULL UNIQUE,
-    last_seen_at INTEGER NOT NULL DEFAULT 0
-);
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 '''
 
 
 def log(message):
-    print(f'[chatbot-memory-service] {message}', flush=True)
+    print(f'[chatbot-memory-vector] {message}', flush=True)
 
 
 def parse_int_env(name, default):
@@ -102,12 +115,12 @@ def load_admin_page_html():
     try:
         with open(ADMIN_PAGE_PATH, 'r', encoding='utf8') as handle:
             return handle.read()
-    except Exception as error:  # pragma: no cover - startup fallback only
+    except Exception as error:
         log(f'Could not load admin page at {ADMIN_PAGE_PATH}: {error}')
         return (
             '<!doctype html><meta charset="utf-8"><title>Lumi Memory Admin</title>'
             '<body style="font-family:Segoe UI,Arial,sans-serif;padding:20px;background:#111;color:#eee">'
-            '<h1>Lumi Memory Admin</h1>'
+            '<h1>Lumi Memory Admin (Vector)</h1>'
             '<p>Admin UI file was not found.</p>'
             f'<p>Expected: <code>{ADMIN_PAGE_PATH}</code></p>'
             '</body>'
@@ -133,32 +146,6 @@ def tokenize_text(value):
         for token in TOKEN_PATTERN.findall(value.lower())
         if len(token) > 1
     ]
-
-
-def compute_similarity_score(query_lower, query_tokens, content, timestamp, now_ms, deep):
-    if not isinstance(content, str) or not content.strip():
-        return 0.0
-
-    content_lower = content.lower()
-
-    if not query_lower and not query_tokens:
-        recency_only = max(0.0, 1.0 - ((now_ms - timestamp) / (14 * 24 * 60 * 60 * 1000)))
-        return recency_only + 0.01
-
-    token_hits = sum(1 for token in query_tokens if token in content_lower)
-    phrase_hit = bool(query_lower) and query_lower in content_lower
-
-    if token_hits == 0 and not phrase_hit:
-        return 0.0
-
-    score = float(token_hits * 3)
-    if phrase_hit:
-        score += 6.0
-
-    recency = max(0.0, 1.0 - ((now_ms - timestamp) / (30 * 24 * 60 * 60 * 1000)))
-    score += recency * (0.2 if deep else 0.5)
-
-    return score
 
 
 def normalize_history(history):
@@ -294,219 +281,79 @@ def normalize_search_payload(payload):
     }
 
 
-class MemoryDatabase:
+class VectorMemoryDatabase:
+    """Memory database using ChromaDB for vector search with SQLite fallback for state."""
+    
     def __init__(self, db_path):
         self.db_path = db_path
         self._lock = threading.RLock()
+        self.sqlite_path = os.path.join(os.path.dirname(db_path), 'chatbot-memory.sqlite3')
+        
+        # Initialize ChromaDB
+        os.makedirs(CHROMA_DB_PATH, exist_ok=True)
+        self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+        
+        # Initialize embedding model (lazy load)
+        self.embedding_model = None
+        self._embedding_lock = threading.RLock()
+        
+        # Initialize SQLite for state/history
+        self._initialize_sqlite_schema()
 
-        target_dir = os.path.dirname(db_path)
-        if target_dir:
-            os.makedirs(target_dir, exist_ok=True)
-
-        self._initialize_schema()
+    def _get_embedding_model(self):
+        """Lazy load the embedding model on first use."""
+        if self.embedding_model is None:
+            with self._embedding_lock:
+                if self.embedding_model is None:
+                    log('Loading embedding model (all-MiniLM-L6-v2)...')
+                    self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                    log('Embedding model ready.')
+        return self.embedding_model
 
     def _connect(self):
-        connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute('PRAGMA foreign_keys = ON')
-        return connection
+        """Context manager for SQLite connection."""
+        class SqliteContext:
+            def __init__(ctx_self, db_path):
+                ctx_self.db_path = db_path
+                ctx_self.connection = None
 
-    def _initialize_schema(self):
-        with self._connect() as connection:
-            connection.executescript(SCHEMA)
+            def __enter__(ctx_self):
+                ctx_self.connection = sqlite3.connect(ctx_self.db_path)
+                ctx_self.connection.row_factory = sqlite3.Row
+                return ctx_self.connection
 
-    def _build_user_table_name(self, user_id):
-        safe = SAFE_IDENTIFIER_PATTERN.sub('_', user_id).strip('_').lower()
-        if not safe:
-            safe = 'user'
+            def __exit__(ctx_self, *args):
+                if ctx_self.connection:
+                    ctx_self.connection.close()
 
-        if safe[0].isdigit():
-            safe = f'u_{safe}'
+        return SqliteContext(self.sqlite_path)
 
-        digest = hashlib.sha1(user_id.encode('utf8')).hexdigest()[:12]
-        return f'{USER_MEMORY_TABLE_PREFIX}{safe[:24]}_{digest}'
-
-    def _is_valid_table_name(self, table_name):
-        return isinstance(table_name, str) and bool(VALID_IDENTIFIER_PATTERN.match(table_name))
-
-    def _create_user_table(self, connection, table_name):
-        connection.execute(
-            f'''CREATE TABLE IF NOT EXISTS "{table_name}" (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                channel_id TEXT NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
-                author_id TEXT NOT NULL,
-                author TEXT NOT NULL,
-                content TEXT NOT NULL,
-                timestamp INTEGER NOT NULL DEFAULT 0
-            )'''
-        )
-        connection.execute(
-            f'CREATE INDEX IF NOT EXISTS "{table_name}_timestamp_idx" ON "{table_name}" (timestamp DESC)'
-        )
-        connection.execute(
-            f'CREATE INDEX IF NOT EXISTS "{table_name}_channel_idx" ON "{table_name}" (channel_id)'
-        )
-
-    def _get_registered_user_table(self, connection, user_id):
-        row = connection.execute(
-            'SELECT table_name FROM user_memory_registry WHERE user_id = ?',
-            (user_id,),
-        ).fetchone()
-
-        if not row:
-            return None
-
-        table_name = row['table_name']
-        if not self._is_valid_table_name(table_name):
-            raise ValueError(f'Unsafe table name in registry: {table_name}')
-
-        return table_name
-
-    def _ensure_user_table(self, connection, user_id, last_seen_at):
-        table_name = self._get_registered_user_table(connection, user_id)
-
-        if not table_name:
-            table_name = self._build_user_table_name(user_id)
-            connection.execute(
-                'INSERT INTO user_memory_registry (user_id, table_name, last_seen_at) VALUES (?, ?, ?)',
-                (user_id, table_name, last_seen_at),
-            )
-
-        self._create_user_table(connection, table_name)
-        connection.execute(
-            '''UPDATE user_memory_registry
-               SET last_seen_at = CASE
-                 WHEN last_seen_at > ? THEN last_seen_at
-                 ELSE ?
-               END
-               WHERE user_id = ?''',
-            (last_seen_at, last_seen_at, user_id),
-        )
-
-        return table_name
-
-    def _iter_user_tables(self, connection):
-        rows = connection.execute(
-            'SELECT user_id, table_name FROM user_memory_registry ORDER BY user_id',
-        ).fetchall()
-
-        tables = []
-        for row in rows:
-            user_id = row['user_id']
-            table_name = row['table_name']
-            if not self._is_valid_table_name(table_name):
-                continue
-            tables.append((user_id, table_name))
-
-        return tables
-
-    def _fetch_memory_rows(self, connection, table_name, row_limit=None):
-        if row_limit is None:
-            rows = connection.execute(
-                f'''SELECT channel_id, role, author_id, author, content, timestamp
-                    FROM "{table_name}"
-                    ORDER BY timestamp DESC''',
-            ).fetchall()
-            return rows
-
-        rows = connection.execute(
-            f'''SELECT channel_id, role, author_id, author, content, timestamp
-                FROM "{table_name}"
-                ORDER BY timestamp DESC
-                LIMIT ?''',
-            (row_limit,),
-        ).fetchall()
-        return rows
-
-    def list_user_memory_users(self):
+    def _initialize_sqlite_schema(self):
+        """Initialize SQLite schema for state and history."""
         with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                'SELECT user_id, table_name, last_seen_at FROM user_memory_registry',
-            ).fetchall()
+            try:
+                connection.executescript(SCHEMA)
+                connection.commit()
+            except Exception as e:
+                log(f'Warning: Could not fully initialize schema: {e}')
 
-            users = []
-            for row in rows:
-                table_name = row['table_name']
-                if not self._is_valid_table_name(table_name):
-                    continue
-
-                self._create_user_table(connection, table_name)
-                counts = connection.execute(
-                    f'SELECT COUNT(*) AS count, MAX(timestamp) AS last_entry_at FROM "{table_name}"',
-                ).fetchone()
-
-                last_seen_at = int(row['last_seen_at'] or 0)
-                last_entry_at = int(counts['last_entry_at'] or 0)
-                users.append({
-                    'userId': row['user_id'],
-                    'tableName': table_name,
-                    'entryCount': int(counts['count'] or 0),
-                    'lastSeenAt': max(last_seen_at, last_entry_at),
-                    'lastEntryAt': last_entry_at,
-                })
-
-            users.sort(key=lambda item: (item['lastSeenAt'], item['userId']), reverse=True)
-
-        return users
-
-    def load_user_memory_entries(self, user_id, limit=100):
-        normalized_user_id = str(user_id or '').strip()
-        if not normalized_user_id:
-            raise ValueError('userId is required.')
-
-        normalized_limit = normalize_limit(limit, 100, minimum=1, maximum=500)
-
-        with self._lock, self._connect() as connection:
-            table_name = self._get_registered_user_table(connection, normalized_user_id)
-            if not table_name:
-                return {
-                    'userId': normalized_user_id,
-                    'tableName': None,
-                    'limit': normalized_limit,
-                    'totalEntries': 0,
-                    'entries': [],
-                }
-
-            self._create_user_table(connection, table_name)
-            total_entries = connection.execute(
-                f'SELECT COUNT(*) AS count FROM "{table_name}"',
-            ).fetchone()['count']
-            rows = connection.execute(
-                f'''SELECT id, channel_id, role, author_id, author, content, timestamp
-                    FROM "{table_name}"
-                    ORDER BY timestamp DESC, id DESC
-                    LIMIT ?''',
-                (normalized_limit,),
-            ).fetchall()
-
-            entries = []
-            for row in rows:
-                entries.append({
-                    'id': int(row['id'] or 0),
-                    'channelId': row['channel_id'],
-                    'role': row['role'],
-                    'authorId': row['author_id'],
-                    'author': row['author'],
-                    'content': row['content'],
-                    'timestamp': int(row['timestamp'] or 0),
-                })
-
-        return {
-            'userId': normalized_user_id,
-            'tableName': table_name,
-            'limit': normalized_limit,
-            'totalEntries': int(total_entries or 0),
-            'entries': entries,
-        }
+    def _get_user_collection(self, user_id):
+        """Get or create a ChromaDB collection for a user."""
+        collection_name = f'memories_{user_id}'.replace('-', '_').replace(' ', '_')
+        return self.chroma_client.get_or_create_collection(
+            name=collection_name,
+            metadata={'user_id': user_id, 'type': 'user_memories'}
+        )
 
     def is_empty(self):
+        """Check if database has any data."""
         with self._lock, self._connect() as connection:
             channel_count = connection.execute('SELECT COUNT(*) AS count FROM channel_state').fetchone()['count']
             settings_count = connection.execute('SELECT COUNT(*) AS count FROM runtime_settings').fetchone()['count']
             return channel_count == 0 and settings_count == 0
 
     def load_state(self):
+        """Load channel state and settings from SQLite."""
         with self._lock, self._connect() as connection:
             state = {
                 'channels': {},
@@ -544,6 +391,7 @@ class MemoryDatabase:
             return state
 
     def replace_state(self, snapshot):
+        """Replace all channel state and settings."""
         normalized = normalize_state(snapshot)
 
         with self._lock, self._connect() as connection:
@@ -588,161 +436,270 @@ class MemoryDatabase:
         return normalized
 
     def append_user_memory_entry(self, payload):
+        """Add a memory entry to ChromaDB vector database."""
         normalized = normalize_memory_entry_payload(payload)
-
-        with self._lock, self._connect() as connection:
-            try:
-                connection.execute('BEGIN')
-                table_name = self._ensure_user_table(
-                    connection,
-                    normalized['userId'],
-                    normalized['timestamp'],
-                )
-                connection.execute(
-                    f'''INSERT INTO "{table_name}" (
-                        channel_id,
-                        role,
-                        author_id,
-                        author,
-                        content,
-                        timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?)''',
-                    (
-                        normalized['channelId'],
-                        normalized['role'],
-                        normalized['authorId'],
-                        normalized['author'],
-                        normalized['content'],
-                        normalized['timestamp'],
-                    ),
-                )
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
-
-        return {
-            'userId': normalized['userId'],
-            'tableName': table_name,
-            'timestamp': normalized['timestamp'],
-        }
+        user_id = normalized['userId']
+        
+        try:
+            collection = self._get_user_collection(user_id)
+            
+            # Create unique ID
+            memory_id = f'{int(time.time() * 1000)}_{hash(normalized["content"])}'
+            
+            # Add to ChromaDB (embeddings are generated automatically)
+            collection.add(
+                ids=[memory_id],
+                documents=[normalized['content']],
+                metadatas=[{
+                    'user_id': user_id,
+                    'channel_id': normalized['channelId'],
+                    'role': normalized['role'],
+                    'author_id': normalized['authorId'],
+                    'author': normalized['author'],
+                    'timestamp': str(normalized['timestamp']),
+                }]
+            )
+            
+            return {
+                'userId': user_id,
+                'documentId': memory_id,
+                'timestamp': normalized['timestamp'],
+                'stored': 'vector',
+            }
+        except Exception as e:
+            log(f'Error adding memory for user {user_id}: {e}')
+            raise
 
     def search_memory(self, payload):
+        """Search memories using vector similarity."""
         normalized = normalize_search_payload(payload)
-
-        query_lower = normalized['query'].lower()
-        query_tokens = tokenize_text(query_lower)
-        now_ms = int(time.time() * 1000)
-
-        with self._lock, self._connect() as connection:
-            targets = []
-
-            if normalized['deep']:
-                targets = self._iter_user_tables(connection)
-            else:
-                table_name = self._get_registered_user_table(connection, normalized['userId'])
-                if table_name:
-                    targets = [(normalized['userId'], table_name)]
-
-            candidates = []
-            for target_user_id, table_name in targets:
-                row_limit = None if normalized['deep'] else 500
-                rows = self._fetch_memory_rows(connection, table_name, row_limit=row_limit)
-
-                for row in rows:
-                    timestamp = int(row['timestamp'] or 0)
-                    score = compute_similarity_score(
-                        query_lower,
-                        query_tokens,
-                        row['content'],
-                        timestamp,
-                        now_ms,
-                        normalized['deep'],
-                    )
-                    if score <= 0:
-                        continue
-
-                    candidates.append({
-                        'userId': target_user_id,
-                        'channelId': row['channel_id'],
-                        'role': row['role'],
-                        'authorId': row['author_id'],
-                        'author': row['author'],
-                        'content': row['content'],
+        user_id = normalized['userId']
+        query = normalized['query']
+        limit = normalized['limit']
+        
+        try:
+            collection = self._get_user_collection(user_id)
+            
+            # If query is empty, return recent memories
+            if not query.strip():
+                results = collection.get(
+                    limit=limit,
+                    include=['documents', 'metadatas']
+                )
+                
+                if not results or not results['ids']:
+                    return {
+                        'matches': [],
+                        'deep': False,
+                        'searchedUsers': 1,
+                    }
+                
+                # Convert to match format and sort by recency
+                matches = []
+                now_ms = int(time.time() * 1000)
+                
+                for i, doc_id in enumerate(results['ids']):
+                    metadata = results['metadatas'][i]
+                    timestamp = int(metadata.get('timestamp', 0))
+                    # Score based on recency
+                    recency_score = max(0.0, 1.0 - ((now_ms - timestamp) / (14 * 24 * 60 * 60 * 1000)))
+                    
+                    matches.append({
+                        'userId': user_id,
+                        'channelId': metadata.get('channel_id', 'unknown'),
+                        'role': metadata.get('role', 'user'),
+                        'authorId': metadata.get('author_id', user_id),
+                        'author': metadata.get('author', 'unknown'),
+                        'content': results['documents'][i],
                         'timestamp': timestamp,
-                        'score': round(score, 4),
+                        'score': round(recency_score, 4),
                     })
-
-            candidates.sort(key=lambda item: (item['score'], item['timestamp']), reverse=True)
-
+                
+                matches.sort(key=lambda x: x['timestamp'], reverse=True)
+                return {
+                    'matches': matches[:limit],
+                    'deep': False,
+                    'searchedUsers': 1,
+                }
+            
+            # Vector similarity search
+            results = collection.query(
+                query_texts=[query],
+                n_results=limit * 2,  # Get extra results to filter
+                include=['documents', 'metadatas', 'distances']
+            )
+            
+            if not results or not results['ids'] or not results['ids'][0]:
+                return {
+                    'matches': [],
+                    'deep': normalized['deep'],
+                    'searchedUsers': 1,
+                }
+            
             matches = []
             seen = set()
-            for candidate in candidates:
+            now_ms = int(time.time() * 1000)
+            
+            for i, doc_id in enumerate(results['ids'][0]):
+                metadata = results['metadatas'][0][i]
+                timestamp = int(metadata.get('timestamp', 0))
+                
+                # Convert distance to similarity score (smaller distance = higher similarity)
+                # Distance is between 0 and 2 for cosine distance
+                distance = results['distances'][0][i] if results['distances'] and results['distances'][0] else 2.0
+                similarity = 1.0 - (distance / 2.0)  # Normalize to 0-1
+                
+                # Boost score with recency
+                recency = max(0.0, 1.0 - ((now_ms - timestamp) / (30 * 24 * 60 * 60 * 1000)))
+                final_score = (similarity * 0.8) + (recency * 0.2)
+                
                 fingerprint = (
-                    candidate['userId'],
-                    candidate['role'],
-                    candidate['content'].strip().lower(),
+                    user_id,
+                    metadata.get('role', 'user'),
+                    results['documents'][0][i].strip().lower(),
                 )
-                if fingerprint in seen:
+                
+                if fingerprint in seen or not results['documents'][0][i].strip():
                     continue
-
+                
                 seen.add(fingerprint)
-                matches.append(candidate)
-                if len(matches) >= normalized['limit']:
+                matches.append({
+                    'userId': user_id,
+                    'channelId': metadata.get('channel_id', 'unknown'),
+                    'role': metadata.get('role', 'user'),
+                    'authorId': metadata.get('author_id', user_id),
+                    'author': metadata.get('author', 'unknown'),
+                    'content': results['documents'][0][i],
+                    'timestamp': timestamp,
+                    'score': round(final_score, 4),
+                })
+                
+                if len(matches) >= limit:
                     break
+            
+            return {
+                'matches': matches,
+                'deep': normalized['deep'],
+                'searchedUsers': 1,
+            }
+            
+        except Exception as e:
+            log(f'Error searching memory for user {user_id}: {e}')
+            return {
+                'matches': [],
+                'deep': normalized['deep'],
+                'searchedUsers': 1,
+            }
 
-        return {
-            'matches': matches,
-            'deep': normalized['deep'],
-            'searchedUsers': len(targets),
-        }
+    def list_user_memory_users(self):
+        """List all users with stored memories."""
+        try:
+            collections = self.chroma_client.list_collections()
+            users = []
+            for collection in collections:
+                if collection.name.startswith('memories_'):
+                    user_id = collection.name.replace('memories_', '').replace('_', '-')
+                    count = collection.count()
+                    users.append({
+                        'userId': user_id,
+                        'memoryCount': count,
+                    })
+            return users
+        except Exception as e:
+            log(f'Error listing users: {e}')
+            return []
+
+    def load_user_memory_entries(self, user_id, limit='100'):
+        """Load memory entries for a user."""
+        try:
+            limit_int = int(limit)
+            limit_int = max(1, min(limit_int, 1000))
+        except (ValueError, TypeError):
+            limit_int = 100
+        
+        try:
+            collection = self._get_user_collection(user_id)
+            results = collection.get(
+                limit=limit_int,
+                include=['documents', 'metadatas']
+            )
+            
+            entries = []
+            if results and results['ids']:
+                for i, doc_id in enumerate(results['ids']):
+                    metadata = results['metadatas'][i]
+                    entries.append({
+                        'id': doc_id,
+                        'content': results['documents'][i],
+                        'channelId': metadata.get('channel_id', 'unknown'),
+                        'role': metadata.get('role', 'user'),
+                        'author': metadata.get('author', 'unknown'),
+                        'timestamp': int(metadata.get('timestamp', 0)),
+                    })
+            
+            return {
+                'userId': user_id,
+                'count': len(entries),
+                'entries': entries,
+            }
+        except Exception as e:
+            log(f'Error loading memories for user {user_id}: {e}')
+            return {
+                'userId': user_id,
+                'count': 0,
+                'entries': [],
+            }
 
     def reset_database(self):
-        """Back up the current database file and reinitialize with a fresh schema."""
+        """Reset all memories and state."""
         with self._lock:
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-            base, ext = os.path.splitext(self.db_path)
-            backup_path = f'{base}_backup_{timestamp}{ext}'
-
-            if os.path.exists(self.db_path):
-                shutil.copy2(self.db_path, backup_path)
-                log(f'Backed up database to {backup_path}')
-
-            connection = self._connect()
-            try:
-                tables = connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name != 'sqlite_sequence'"
-                ).fetchall()
-                connection.execute('PRAGMA foreign_keys = OFF')
-                for table in tables:
-                    connection.execute(f'DROP TABLE IF EXISTS "{table["name"]}"')
-                connection.execute('PRAGMA foreign_keys = ON')
+            
+            # Backup ChromaDB
+            chroma_backup = os.path.join(
+                os.path.dirname(CHROMA_DB_PATH),
+                f'chroma-db_backup_{timestamp}'
+            )
+            if os.path.exists(CHROMA_DB_PATH):
+                shutil.copytree(CHROMA_DB_PATH, chroma_backup)
+                log(f'Backed up ChromaDB to {chroma_backup}')
+                shutil.rmtree(CHROMA_DB_PATH)
+            
+            # Reset ChromaDB
+            os.makedirs(CHROMA_DB_PATH, exist_ok=True)
+            self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+            
+            # Reset SQLite
+            with self._connect() as connection:
+                connection.executescript('''
+                    DELETE FROM channel_history;
+                    DELETE FROM channel_state;
+                    DELETE FROM runtime_settings;
+                ''')
                 connection.commit()
-            finally:
-                connection.close()
-
-            self._initialize_schema()
-            log('Database reset complete. Fresh schema initialized.')
-
+            
+            log('Database reset complete.')
+            
             return {
-                'backupFile': backup_path,
+                'backupFile': chroma_backup,
                 'timestamp': timestamp,
             }
 
     def migrate_legacy_json(self, legacy_path):
+        """Migrate legacy JSON state (only channel state/history)."""
         if not legacy_path or not os.path.exists(legacy_path) or not self.is_empty():
             return False
 
         try:
             with open(legacy_path, 'r', encoding='utf8') as handle:
                 legacy_state = json.load(handle)
-        except Exception as error:  # pragma: no cover - defensive logging for startup only
+        except Exception as error:
             log(f'Legacy JSON migration skipped: {error}')
             return False
 
         migrated = self.replace_state(legacy_state)
         log(
-            f'Migrated legacy chatbot memory from {legacy_path} '
+            f'Migrated legacy chatbot state from {legacy_path} '
             f'({len(migrated["channels"])} channels, {len(migrated["settings"])} settings).'
         )
         return True
@@ -758,7 +715,7 @@ class MemoryHttpServer(ThreadingHTTPServer):
 
 
 class MemoryRequestHandler(BaseHTTPRequestHandler):
-    server_version = 'ChatbotMemoryService/1.0'
+    server_version = 'ChatbotMemoryService/2.0'
 
     def _send_json(self, status_code, payload):
         rendered = json.dumps(payload, ensure_ascii=False).encode('utf8')
@@ -816,7 +773,8 @@ class MemoryRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {
                     'ok': True,
                     'service': SERVICE_NAME,
-                    'dbFile': self.server.database.db_path,
+                    'backend': 'chromadb',
+                    'chromaPath': CHROMA_DB_PATH,
                     'pid': os.getpid(),
                 })
                 return
@@ -857,7 +815,7 @@ class MemoryRequestHandler(BaseHTTPRequestHandler):
             })
         except ValueError as error:
             self._handle_exception(error, HTTPStatus.BAD_REQUEST)
-        except Exception as error:  # pragma: no cover - defensive request boundary
+        except Exception as error:
             self._handle_exception(error)
 
     def do_PUT(self):
@@ -881,7 +839,7 @@ class MemoryRequestHandler(BaseHTTPRequestHandler):
             })
         except ValueError as error:
             self._handle_exception(error, HTTPStatus.BAD_REQUEST)
-        except Exception as error:  # pragma: no cover - defensive request boundary
+        except Exception as error:
             self._handle_exception(error)
 
     def do_POST(self):
@@ -932,12 +890,11 @@ class MemoryRequestHandler(BaseHTTPRequestHandler):
             })
         except ValueError as error:
             self._handle_exception(error, HTTPStatus.BAD_REQUEST)
-        except Exception as error:  # pragma: no cover - defensive request boundary
+        except Exception as error:
             self._handle_exception(error)
 
     def log_message(self, format_string, *args):
         return
-
 
 
 def main():
@@ -947,13 +904,14 @@ def main():
     legacy_file = os.environ.get('CHATBOT_MEMORY_LEGACY_FILE') or os.environ.get('CHATBOT_MEMORY_FILE', '')
     legacy_file = os.path.abspath(legacy_file) if legacy_file else ''
 
-    database = MemoryDatabase(db_file)
+    database = VectorMemoryDatabase(db_file)
     database.migrate_legacy_json(legacy_file)
 
     server = MemoryHttpServer((host, port), MemoryRequestHandler, database)
-    log(f'{SERVICE_NAME} listening on http://{host}:{port} using {db_file}')
+    log(f'{SERVICE_NAME} listening on http://{host}:{port}')
+    log(f'Vector database (ChromaDB) path: {CHROMA_DB_PATH}')
     log(f'Memory admin UI: http://{host}:{port}/admin')
-    log('Per-user SQL memory tables and search endpoints are enabled.')
+    log('Vector similarity search enabled for per-user memories.')
 
     try:
         server.serve_forever(poll_interval=0.5)

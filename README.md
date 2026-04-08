@@ -26,6 +26,7 @@ A Discord bot that joins the same server voice channel as the user who requested
 Enable these privileged intents in the Discord Developer Portal:
 
 - Message Content Intent
+- Message Reactions Intent (required for starboard reposting)
 - Server Members Intent is not required for the current design
 
 Invite the bot with permissions that cover:
@@ -51,6 +52,16 @@ Invite the bot with permissions that cover:
 - `sb!jh` — Get a random Deep Thought, by Jack Handey
 - `sb!help` — Show quick command help
 - `sb!readme` — Show the full command list in Discord
+
+## Starboard
+
+Messages that get more than 3 star reactions are reposted to the configured starboard channel.
+
+Settings:
+
+- `STARBOARD_CHANNEL_ID=1136106008587030548`
+- `STARBOARD_MIN_STARS=4`
+- `STARBOARD_EMOJI_NAME=star` (counts custom `:star:` emoji name and Unicode `⭐`)
 
 ## Autonomous Chatbot Mode (Lumi)
 
@@ -168,6 +179,21 @@ Settings:
 - Cap how eager momentum can get: lower `CHATBOT_MOMENTUM_MAX_REPLY_CHANCE`
 - Longer answers: raise `CHATBOT_MAX_RESPONSE_CHARS`
 - Faster turn-taking: lower `CHATBOT_COOLDOWN_MS`
+
+### GIF Reactions (Giphy)
+
+Lumi can optionally append a Giphy link when the reply tone fits.
+
+Settings:
+
+- `CHATBOT_GIF_ENABLED=true`
+- `CHATBOT_GIF_CHANCE=0.35` (additional probability gate after normal reply generation)
+- `GIPHY_API_KEY=<your-giphy-api-key>`
+- `CHATBOT_GIF_RATING=pg-13`
+- `CHATBOT_GIF_LANG=en`
+- `CHATBOT_GIF_TIMEOUT_MS=5000`
+
+If `GIPHY_API_KEY` is missing, GIF lookups are skipped automatically.
 
 ## Notes
 

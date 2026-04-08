@@ -279,8 +279,13 @@ async function startStream(session, track) {
     }
 
       // For on-demand tracks, exit code 0 means the track finished normally.
-      // The player's Idle event will handle queue advancement — don't reconnect.
+      // Explicitly stop the player to ensure it transitions to idle and triggers queue advancement.
       if (code === 0 && session.track && session.track.type !== 'http') {
+        try {
+          session.player.stop(true);
+        } catch {
+          // Ignore — advanceQueue will still fire when idle event is triggered.
+        }
         return;
       }
 
@@ -310,7 +315,7 @@ function scheduleStreamReconnect(session, reason) {
     logger.error(`Stream reconnect limit reached. ${reason}`);
     void notifyTextChannel(
       session,
-      `The stream dropped too many times and the reconnect limit was reached. Use ${config.commandPrefix}play to try again.`,
+      `The stream dropped too many times and the reconnect limit was reached. Use \`/play\` to try again.`,
     );
     void stopActiveSession(session.guildId, 'stream reconnect limit reached');
     return;
@@ -348,7 +353,7 @@ function scheduleVoiceReconnect(session, reason) {
     logger.error(`Voice reconnect limit reached. ${reason}`);
     void notifyTextChannel(
       session,
-      `The voice connection could not recover. Use ${config.commandPrefix}play to try again.`,
+      `The voice connection could not recover. Use \`/play\` to try again.`,
     );
     void stopActiveSession(session.guildId, 'voice reconnect limit reached');
     return;
@@ -480,7 +485,7 @@ async function playForMember({ member, textChannel, track }) {
     songWatcher: null,
     streamUrl,
     track,
-    resumeDefaultStreamAfterQueue: isDefaultStreamTrack(track),
+    resumeDefaultStreamAfterQueue: !!config.defaultStreamUrl,
     skipRequested: false,
     manualStop: false,
   };

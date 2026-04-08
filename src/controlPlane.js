@@ -4,8 +4,9 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 
+const { buildPlayerCommands } = require('./commands');
 const { config } = require('./config');
-const { getRuntimeSettings, updateRuntimeSettings } = require('./chatbot');
+const { getRuntimeSettings, resetChatbotMemory, updateRuntimeSettings } = require('./chatbot');
 const { logger } = require('./logger');
 
 function isAdminUser(interaction) {
@@ -21,7 +22,7 @@ function isAdminUser(interaction) {
 }
 
 function buildCommands() {
-  return [
+  const lumiCommands = [
     new SlashCommandBuilder()
       .setName('lumi-status')
       .setDescription('Show Lumi chatbot runtime settings.')
@@ -109,7 +110,17 @@ function buildCommands() {
         .setRequired(false)
         .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.PublicThread, ChannelType.PrivateThread, ChannelType.AnnouncementThread))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    new SlashCommandBuilder()
+      .setName('lumi-reset')
+      .setDescription('Reset Lumi memory. Backs up the database and starts fresh.')
+      .addBooleanOption((option) => option
+        .setName('confirm')
+        .setDescription('Confirm you want to reset all memory')
+        .setRequired(true))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   ].map((command) => command.toJSON());
+
+  return [...lumiCommands, ...buildPlayerCommands()];
 }
 
 function formatSettings(settings) {
@@ -160,7 +171,8 @@ async function handleControlPlaneInteraction(interaction) {
     return;
   }
 
-  if (!interaction.commandName.startsWith('lumi-')) {
+  const adminCommands = new Set(['lumi-status', 'lumi-toggle', 'lumi-set', 'lumi-channel', 'lumi-reset']);
+  if (!adminCommands.has(interaction.commandName)) {
     return;
   }
 
@@ -275,6 +287,31 @@ async function handleControlPlaneInteraction(interaction) {
       content: `Updated channel whitelist: ${settings.channelIds.length > 0 ? settings.channelIds.join(', ') : 'none'}`,
       ephemeral: true,
     });
+  }
+
+  if (interaction.commandName === 'lumi-reset') {
+    const confirmed = interaction.options.getBoolean('confirm', true);
+    if (!confirmed) {
+      await interaction.reply({
+        content: 'Memory reset cancelled. Set `confirm` to True to proceed.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const result = await resetChatbotMemory();
+      await interaction.editReply({
+        content: `Lumi memory has been reset. A backup was saved to \`${result.backupFile}\`.`,
+      });
+    } catch (error) {
+      logger.error('Memory reset failed.', error.message);
+      await interaction.editReply({
+        content: `Memory reset failed: ${error.message}`,
+      });
+    }
   }
 }
 

@@ -1,12 +1,14 @@
-const { Client, Events, GatewayIntentBits } = require('discord.js');
+const { Client, Events, GatewayIntentBits, Partials } = require('discord.js');
 
 const { flushChatbotState, initializeChatbot, shutdownChatbotPersistence } = require('./chatbot');
-const { handleMessageCreate } = require('./commands');
+const { handleCommandInteraction, handleMessageCreate } = require('./commands');
 const { config, getMissingConfigValues } = require('./config');
 const { handleControlPlaneInteraction, registerControlPlane } = require('./controlPlane');
 const { logger } = require('./logger');
+const { initNowPlaying } = require('./nowPlaying');
 const { stopAllSessions } = require('./voice');
 const { killExistingProcesses } = require('./processCleanup');
+const { handleMessageReactionAdd, handleMessageReactionRemove } = require('./starboard');
 const { handleGuildMemberAdd } = require('./welcome');
 
 const missingConfigValues = getMissingConfigValues();
@@ -19,13 +21,21 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
   ],
+  partials: [
+    Partials.Channel,
+    Partials.Message,
+    Partials.Reaction,
+    Partials.User,
+  ],
 });
 
 let isShuttingDown = false;
+let nowPlayingWatcher = null;
 
 async function shutdown(signal) {
   if (isShuttingDown) {
@@ -34,6 +44,10 @@ async function shutdown(signal) {
 
   isShuttingDown = true;
   logger.info(`Received ${signal}, shutting down.`);
+
+  if (nowPlayingWatcher) {
+    try { nowPlayingWatcher.stop(); } catch { }
+  }
 
   try {
     await stopAllSessions(`process shutdown (${signal})`);
@@ -60,6 +74,7 @@ async function shutdown(signal) {
 client.once(Events.ClientReady, async (readyClient) => {
   await initializeChatbot();
   await registerControlPlane(readyClient);
+  nowPlayingWatcher = initNowPlaying(readyClient);
 
   logger.info(`Logged in as ${readyClient.user.tag}`);
   if (config.allowedGuildId) {
@@ -75,12 +90,21 @@ client.on(Events.MessageCreate, (message) => {
   void handleMessageCreate(message);
 });
 
+client.on(Events.MessageReactionAdd, (reaction) => {
+  void handleMessageReactionAdd(reaction);
+});
+
+client.on(Events.MessageReactionRemove, (reaction) => {
+  void handleMessageReactionRemove(reaction);
+});
+
 client.on(Events.GuildMemberAdd, (member) => {
   void handleGuildMemberAdd(member);
 });
 
 client.on(Events.InteractionCreate, (interaction) => {
   void handleControlPlaneInteraction(interaction);
+  void handleCommandInteraction(interaction);
 });
 
 client.on(Events.Error, (error) => {

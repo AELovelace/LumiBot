@@ -5,11 +5,52 @@ const {
   appendUserMemoryEntry,
   closeChatbotStateStore,
   loadChatbotState,
+  resetMemory,
   scheduleStateSave,
   searchUserMemory,
   flushStateSave,
 } = require('./chatbotStateStore');
-const { requestLlmCompletion } = require('./llmClient');
+const { requestGifSuggestion, requestLlmCompletion } = require('./llmClient');
+const { fetchGiphyGifUrl, hasGiphyConfig } = require('./giphyClient');
+const { retrieveMemoryContext } = require('./ragClient');
+const {
+  checkSearchAllowed,
+  executeBraveSearch,
+  formatSearchResultsForPrompt,
+  incrementSearchCount,
+} = require('./braveSearch');
+const { getCurrentNowPlayingTrack } = require('./nowPlaying');
+
+const DISCORD_MAX_CHARS = 2000;
+
+/**
+ * Split a long string into Discord-safe chunks (≤2000 chars),
+ * preferring to break at sentence or word boundaries.
+ */
+function splitMessage(text, maxLen = DISCORD_MAX_CHARS) {
+  if (text.length <= maxLen) return [text];
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > maxLen) {
+    const window = remaining.slice(0, maxLen);
+    let splitPoint = Math.max(
+      window.lastIndexOf('\n'),
+      window.lastIndexOf('. '),
+      window.lastIndexOf('? '),
+      window.lastIndexOf('! '),
+    );
+    if (splitPoint < maxLen / 2) {
+      splitPoint = window.lastIndexOf(' ');
+    }
+    if (splitPoint <= 0) {
+      splitPoint = maxLen - 1;
+    }
+    chunks.push(remaining.slice(0, splitPoint + 1).trim());
+    remaining = remaining.slice(splitPoint + 1).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
 
 const channelState = new Map();
 let initialized = false;
@@ -30,6 +71,10 @@ const runtimeSettings = {
 
 const RECALL_INTENT_PATTERN = /\b(remember|recall|remind|memory|forgot|forget|earlier|previous|before|last time|have we talked|what did i say|did i ever)\b/iu;
 
+const SEARCH_INTENT_PATTERN = /\blumi[,:]?\s+(?:search|look\s*up|google|find(?:\s+me)?|search\s+(?:the\s+)?(?:web|internet|online)\s+(?:for)?|what\s+does\s+the\s+(?:internet|web)\s+say\s+about)\s+(.+)/iu;
+
+const SONG_RECOMMENDATION_INTENT_PATTERN = /(?:\b(?:song|track|music)\b.*\b(?:recommend(?:ation)?s?|recs?)\b)|(?:\b(?:recommend(?:ation)?s?|recs?)\b.*\b(?:song|track|music|listen(?:ing)?)\b)|(?:\bwhat\s+should\s+i\s+listen\s+to\b)|(?:\bany\s+(?:song|music)\s+recs?\b)/iu;
+
 function shouldUseDeepRecall(text) {
   if (!text || typeof text !== 'string') {
     return false;
@@ -38,10 +83,64 @@ function shouldUseDeepRecall(text) {
   return RECALL_INTENT_PATTERN.test(text.toLowerCase());
 }
 
+/**
+ * Detect whether the user is explicitly asking Lumi to search the web.
+ * Returns { isSearch: boolean, query: string | null }.
+ */
+function detectSearchIntent(text) {
+  if (!text || typeof text !== 'string') {
+    return { isSearch: false, query: null };
+  }
+
+  const match = SEARCH_INTENT_PATTERN.exec(text);
+  if (match && match[1]) {
+    return { isSearch: true, query: match[1].trim() };
+  }
+
+  return { isSearch: false, query: null };
+}
+
+function detectSongRecommendationIntent(text) {
+  if (!text || typeof text !== 'string') {
+    return false;
+  }
+
+  return SONG_RECOMMENDATION_INTENT_PATTERN.test(text.toLowerCase());
+}
+
+function buildNowPlayingRecommendationReply(nowPlayingSnapshot) {
+  if (!nowPlayingSnapshot?.song) {
+    return null;
+  }
+
+  if (nowPlayingSnapshot.track?.url) {
+    return `for a song rec, i'd start with what's playing right now: **${nowPlayingSnapshot.track.title}** — ${nowPlayingSnapshot.track.artist}\n${nowPlayingSnapshot.track.url}`;
+  }
+
+  return `for a song rec, i'd start with what's playing right now: **${nowPlayingSnapshot.song}**`;
+}
+
 function persistUserMemoryEntry(entry) {
   void appendUserMemoryEntry(entry).catch((error) => {
     logger.warn('Failed to persist per-user memory entry.', error.message);
   });
+}
+
+async function fetchMemoryContextWithRAG({ userId, query, deepRecall }) {
+  if (!userId) {
+    return '';
+  }
+
+  const limit = deepRecall ? config.chatbotMemoryRecallLimit : config.chatbotMemorySearchLimit;
+
+  try {
+    // Use RAG to retrieve formatted context from memories
+    const ragContext = await retrieveMemoryContext(userId, query, limit);
+    return ragContext;
+  } catch (error) {
+    logger.warn('Failed to retrieve memory context with RAG.', error.message);
+    return '';
+  }
 }
 
 async function fetchMemoryCluesForPrompt({ userId, query, deepRecall }) {
@@ -63,6 +162,39 @@ async function fetchMemoryCluesForPrompt({ userId, query, deepRecall }) {
     logger.warn('Failed to query per-user memory clues.', error.message);
     return [];
   }
+}
+
+async function maybeAppendGifToReply({ latestContent, assistantReply, history }) {
+  if (!config.chatbotGifEnabled || !hasGiphyConfig()) {
+    return assistantReply;
+  }
+
+  if (Math.random() > config.chatbotGifChance) {
+    return assistantReply;
+  }
+
+  const gifQuery = await requestGifSuggestion({
+    latestContent,
+    assistantResponse: assistantReply,
+    history,
+  });
+  if (!gifQuery) {
+    return assistantReply;
+  }
+
+  const gifUrl = await fetchGiphyGifUrl(gifQuery);
+  if (!gifUrl) {
+    return assistantReply;
+  }
+
+  const candidateReply = `${assistantReply}\n${gifUrl}`;
+  const candidateModeration = evaluateOutgoingMessage(candidateReply);
+  if (!candidateModeration.allowed) {
+    logger.debug(`Skipped GIF attachment because moderation blocked it (${candidateModeration.reason}).`);
+    return assistantReply;
+  }
+
+  return candidateModeration.text;
 }
 
 function sanitizeReplyChance(value) {
@@ -175,6 +307,13 @@ async function flushChatbotState() {
 
 async function shutdownChatbotPersistence() {
   await closeChatbotStateStore();
+}
+
+async function resetChatbotMemory() {
+  const result = await resetMemory();
+  channelState.clear();
+  logger.info(`Chatbot memory reset. Backup saved to ${result.backupFile}.`);
+  return result;
 }
 
 function getRuntimeSettings() {
@@ -487,10 +626,6 @@ async function handleAutonomousMessage(message) {
     return;
   }
 
-  if (message.content.startsWith(config.commandPrefix)) {
-    return;
-  }
-
   const text = message.content?.trim();
   if (!text) {
     return;
@@ -532,8 +667,118 @@ async function handleAutonomousMessage(message) {
 
   try {
     await message.channel.sendTyping();
+
+    const recommendationIntent = detectSongRecommendationIntent(text);
+    if (recommendationIntent) {
+      try {
+        const nowPlayingSnapshot = await getCurrentNowPlayingTrack();
+        const recommendationReply = buildNowPlayingRecommendationReply(nowPlayingSnapshot);
+
+        if (recommendationReply) {
+          const recommendationModeration = evaluateOutgoingMessage(recommendationReply);
+          if (recommendationModeration.allowed) {
+            const recommendationChunks = splitMessage(recommendationModeration.text);
+            await message.reply(recommendationChunks[0]);
+            for (let i = 1; i < recommendationChunks.length; i += 1) {
+              // eslint-disable-next-line no-await-in-loop
+              await message.channel.send(recommendationChunks[i]);
+            }
+
+            const recommendationTimestamp = Date.now();
+            state.lastReplyAt = recommendationTimestamp;
+            persistState();
+            pushHistoryEntry(state, {
+              role: 'assistant',
+              author: 'Lumi',
+              content: recommendationModeration.text,
+              timestamp: recommendationTimestamp,
+            });
+
+            persistUserMemoryEntry({
+              userId: message.author.id,
+              channelId: message.channelId,
+              role: 'assistant',
+              authorId: message.client.user?.id || 'lumi',
+              author: 'Lumi',
+              content: recommendationModeration.text,
+              timestamp: recommendationTimestamp,
+            });
+
+            logger.info(`Chatbot replied with now-playing recommendation in channel ${message.channelId} (${decision.reason}).`);
+            return;
+          }
+
+          logger.warn(`Now-playing recommendation blocked by moderation (${recommendationModeration.reason}).`);
+        }
+      } catch (error) {
+        logger.warn('Failed to build now-playing recommendation reply.', error.message);
+      }
+    }
+
+    // --- Brave Search integration ---
+    const searchIntent = detectSearchIntent(text);
+    let searchResults = null;
+
+    if (searchIntent.isSearch) {
+      const searchCheck = checkSearchAllowed(message.author.id);
+      if (!searchCheck.allowed) {
+        // Generate an in-character rate-limit response via the LLM
+        try {
+          const rateLimitResponse = await requestLlmCompletion({
+            latestContent: text,
+            history: state.history.slice(-Math.max(1, runtimeSettings.contextMessages)),
+            memoryClues: [],
+            deepRecall: false,
+            maxResponseChars: runtimeSettings.maxResponseChars,
+            searchResults: null,
+            systemOverride: searchCheck.reason === 'cooldown'
+              ? `System: The user asked you to search the web but they need to wait before searching again. Let them know gently and in-character. Be sweet but firm.`
+              : `System: The user asked you to search the web, but they've used up their searches for today. Remind them gently and in-character that doll pays for each web search out of pocket, so you can only do a limited number per day. Be sweet but firm about it.`,
+          });
+
+          if (rateLimitResponse) {
+            const moderated = evaluateOutgoingMessage(rateLimitResponse);
+            if (moderated.allowed) {
+              const rateLimitChunks = splitMessage(moderated.text);
+              await message.reply(rateLimitChunks[0]);
+              for (let i = 1; i < rateLimitChunks.length; i += 1) {
+                // eslint-disable-next-line no-await-in-loop
+                await message.channel.send(rateLimitChunks[i]);
+              }
+              state.lastReplyAt = Date.now();
+              persistState();
+              pushHistoryEntry(state, { role: 'assistant', author: 'Lumi', content: moderated.text, timestamp: Date.now() });
+            }
+          }
+        } catch (error) {
+          logger.warn('Failed to generate search rate-limit response.', error.message);
+        }
+
+        return;
+      }
+
+      // Execute the web search
+      try {
+        const results = await executeBraveSearch(searchIntent.query);
+        if (results.length > 0) {
+          searchResults = formatSearchResultsForPrompt(results);
+          incrementSearchCount(message.author.id);
+          logger.info(`Brave Search executed for user ${message.author.id}: "${searchIntent.query}"`);
+        }
+      } catch (error) {
+        logger.warn('Brave Search request failed.', error.message);
+      }
+    }
+
     const deepRecall = shouldUseDeepRecall(text);
     const memoryClues = await fetchMemoryCluesForPrompt({
+      userId: message.author.id,
+      query: text,
+      deepRecall,
+    });
+
+    // Retrieve RAG context for memory-augmented generation
+    const ragContext = await fetchMemoryContextWithRAG({
       userId: message.author.id,
       query: text,
       deepRecall,
@@ -543,8 +788,10 @@ async function handleAutonomousMessage(message) {
       latestContent: text,
       history: state.history.slice(-Math.max(1, runtimeSettings.contextMessages)),
       memoryClues,
+      ragContext,
       deepRecall,
       maxResponseChars: runtimeSettings.maxResponseChars,
+      searchResults,
     });
 
     if (!response) {
@@ -557,14 +804,25 @@ async function handleAutonomousMessage(message) {
       return;
     }
 
-    await message.reply(outboundModeration.text);
+    const finalReply = await maybeAppendGifToReply({
+      latestContent: text,
+      assistantReply: outboundModeration.text,
+      history: state.history,
+    });
+
+    const chunks = splitMessage(finalReply);
+    await message.reply(chunks[0]);
+    for (let i = 1; i < chunks.length; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await message.channel.send(chunks[i]);
+    }
     const replyTimestamp = Date.now();
     state.lastReplyAt = replyTimestamp;
     persistState();
     pushHistoryEntry(state, {
       role: 'assistant',
       author: 'Lumi',
-      content: outboundModeration.text,
+      content: finalReply,
       timestamp: replyTimestamp,
     });
 
@@ -574,7 +832,7 @@ async function handleAutonomousMessage(message) {
       role: 'assistant',
       authorId: message.client.user?.id || 'lumi',
       author: 'Lumi',
-      content: outboundModeration.text,
+      content: finalReply,
       timestamp: replyTimestamp,
     });
 
@@ -589,6 +847,7 @@ module.exports = {
   getRuntimeSettings,
   handleAutonomousMessage,
   initializeChatbot,
+  resetChatbotMemory,
   shutdownChatbotPersistence,
   updateRuntimeSettings,
 };

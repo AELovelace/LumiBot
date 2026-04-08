@@ -6,9 +6,9 @@ const path = require('node:path');
 const { config } = require('./config');
 const { logger } = require('./logger');
 
-const SERVICE_NAME = 'chatbot-memory-sql';
+const SERVICE_NAME = 'chatbot-memory-vector';
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const SERVICE_SCRIPT_PATH = path.resolve(PROJECT_ROOT, 'python', 'chatbot_memory_service.py');
+const SERVICE_SCRIPT_PATH = path.resolve(PROJECT_ROOT, 'python', 'chatbot_memory_service_vector.py');
 const HEALTHCHECK_TIMEOUT_MS = 1_500;
 const REQUEST_TIMEOUT_MS = 10_000;
 const SERVICE_STARTUP_TIMEOUT_MS = 12_000;
@@ -466,6 +466,12 @@ async function searchUserMemory(options) {
   });
 }
 
+async function resetMemory() {
+  return serviceRequestJson('/memory/reset', {
+    method: 'POST',
+  });
+}
+
 function scheduleStateSave(snapshotBuilder) {
   if (pendingTimer) {
     clearTimeout(pendingTimer);
@@ -549,6 +555,7 @@ module.exports = {
   appendUserMemoryEntry,
   closeChatbotStateStore,
   loadChatbotState,
+  resetMemory,
   scheduleStateSave,
   searchUserMemory,
   flushStateSave,
