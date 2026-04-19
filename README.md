@@ -53,6 +53,11 @@ Invite the bot with permissions that cover:
 - `sb!help` — Show quick command help
 - `sb!readme` — Show the full command list in Discord
 
+Player-facing SadGirlCoin docs:
+
+- [docs/SADGIRLCOIN_USER_README.md](docs/SADGIRLCOIN_USER_README.md) - Bank, LumiStocks, Pachinko, Blackjack, and Horse Racing command guide with slash commands and simplified `!` commands
+- [docs/SADGIRLCOIN_DISCORD_ANNOUNCEMENT.md](docs/SADGIRLCOIN_DISCORD_ANNOUNCEMENT.md) - Casual Discord-style announcement version of the SadGirlCoin command guide
+
 ## Starboard
 
 Messages that get more than 3 star reactions are reposted to the configured starboard channel.

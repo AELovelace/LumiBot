@@ -1,0 +1,23 @@
+flowchart TD
+    A["requestLlmCompletion()"] --> B{"LLM_USE_LOCAL_GPU?"}
+    B -- Yes --> C["Local-first list:\n1. local GPU endpoint\n2. remote failovers"]
+    B -- No --> D["Round-robin across\nLLM_ENDPOINTS"]
+
+    C --> E["Attempt loop\nup to RETRY_LIMIT + 1"]
+    D --> E
+
+    E --> F["POST /api/generate\nmodel + prompt\nstream: false"]
+
+    F --> G{"HTTP OK?"}
+    G -- No --> H["Log failure\nsleep backoff"]
+    H --> E
+    G -- Yes --> I{"Empty\nresponse?"}
+    I -- Yes --> H
+    I -- No --> J["Extract thoughts and relay\nNormalize response"]
+
+    J --> K{"Normalized\nempty?"}
+    K -- Yes --> L["recoverFallbackResponse()"]
+    L --> M{"Fallback\nfound?"}
+    M -- No --> H
+    M -- Yes --> N["Return fallback"]
+    K -- No --> N2["Return normalized"]

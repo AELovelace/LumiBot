@@ -454,10 +454,6 @@ async function playForMember({ member, textChannel, track }) {
     throw new Error('Join a voice channel first.');
   }
 
-  if (config.allowedGuildId && member.guild.id !== config.allowedGuildId) {
-    throw new Error('This bot is restricted to another server.');
-  }
-
   const guildId = member.guild.id;
 
   // Stop any existing session in this guild before starting a new one.

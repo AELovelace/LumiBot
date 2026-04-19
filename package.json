@@ -8,13 +8,14 @@
     "start": "node src/index.js",
     "start:3080": "node scripts/start-3080.js",
     "dev": "node --watch src/index.js",
-    "check": "node --check src/index.js && node --check src/commands.js && node --check src/config.js && node --check src/logger.js && node --check src/stream.js && node --check src/voice.js && node --check src/chatbot.js && node --check src/llmClient.js && node --check src/chatbotStateStore.js && node --check src/moderation.js && node --check src/controlPlane.js && node --check src/starboard.js"
+    "check": "node --check src/index.js && node --check src/commands.js && node --check src/config.js && node --check src/logger.js && node --check src/stream.js && node --check src/voice.js && node --check src/chatbot.js && node --check src/llmClient.js && node --check src/chatbotStateStore.js && node --check src/moderation.js && node --check src/controlPlane.js && node --check src/starboard.js && node --check src/sadgirlEconomyStore.js && node --check src/sadgirlEconomyCommands.js && node --check src/sadgirlEconomyScheduler.js && node --check src/sadgirlStockActivation.js && node --check src/touhouStore.js && node --check src/touhouCommands.js && node --check src/vcRewards.js && node --check src/bigBusiness.js && node --check src/guildConfig.js && node --check src/webPanel.js && node --check src/panelSettings.js && node --check src/slots.js && node --check src/pachinko.js && node --check src/blackjack.js && node --check src/texasholdem.js && node --check src/horseracing.js && node --check src/stockEvents.js"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "dependencies": {
     "@discordjs/voice": "latest",
+    "better-sqlite3": "^12.9.0",
     "discord.js": "latest",
     "dotenv": "^16.4.7",
     "ffmpeg-static": "^5.2.0"

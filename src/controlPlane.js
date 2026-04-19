@@ -1,13 +1,19 @@
 const {
   ChannelType,
   PermissionFlagsBits,
+  PermissionsBitField,
   SlashCommandBuilder,
 } = require('discord.js');
 
 const { buildPlayerCommands } = require('./commands');
+const { buildEconomyCommands } = require('./sadgirlEconomyCommands');
 const { config } = require('./config');
 const { getRuntimeSettings, resetChatbotMemory, updateRuntimeSettings } = require('./chatbot');
 const { logger } = require('./logger');
+const { activeVoiceUsers, cleanupInvalidPersistedSessions, getVcRewardProgress } = require('./vcRewards');
+const { getBigBusinessBalance } = require('./sadgirlEconomyStore');
+const { matchPayout } = require('./bigBusiness');
+const { getGuildConfig, getBigBusinessUserId } = require('./guildConfig');
 
 function isAdminUser(interaction) {
   if (!interaction.inGuild()) {
@@ -21,8 +27,8 @@ function isAdminUser(interaction) {
   return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) || false;
 }
 
-function buildCommands() {
-  const lumiCommands = [
+function buildAdminCommands() {
+  return [
     new SlashCommandBuilder()
       .setName('lumi-status')
       .setDescription('Show Lumi chatbot runtime settings.')
@@ -118,9 +124,29 @@ function buildCommands() {
         .setDescription('Confirm you want to reset all memory')
         .setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    new SlashCommandBuilder()
+      .setName('lumi-bigbusinessdebug')
+      .setDescription('Debug: show VC participants and test Big Business matching.')
+      .addBooleanOption((option) => option
+        .setName('simulate')
+        .setDescription('Simulate a 15 SGC VC match for yourself')
+        .setRequired(false))
+      .addBooleanOption((option) => option
+        .setName('cleanup_invalid_sessions')
+        .setDescription('Purge persisted VC sessions from unconfigured/disabled guilds')
+        .setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    new SlashCommandBuilder()
+      .setName('lumi-reactionroles-debug')
+      .setDescription('Debug reaction-role config, permissions, and role hierarchy for this guild.')
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   ].map((command) => command.toJSON());
 
-  return [...lumiCommands, ...buildPlayerCommands()];
+  return lumiCommands;
+}
+
+function buildGlobalCommands() {
+  return [...buildPlayerCommands(), ...buildEconomyCommands()];
 }
 
 function formatSettings(settings) {
@@ -140,6 +166,14 @@ function formatSettings(settings) {
   ].join('\n');
 }
 
+function parseSlashGuildIds(rawValue) {
+  if (!rawValue) return [];
+  return String(rawValue)
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 async function registerControlPlane(client) {
   if (!config.controlPlaneEnabled) {
     logger.info('Slash control plane disabled via config.');
@@ -147,18 +181,30 @@ async function registerControlPlane(client) {
   }
 
   try {
-    const commands = buildCommands();
-    if (config.slashGuildId) {
-      const guild = await client.guilds.fetch(config.slashGuildId);
-      await guild.commands.set(commands);
-      logger.info(`Registered ${commands.length} slash commands for guild ${config.slashGuildId}.`);
-      return;
+    // Player & economy commands are always registered globally so games
+    // and bank work in every server the bot is in.
+    const globalCommands = buildGlobalCommands();
+    const adminCommands = buildAdminCommands();
+    const allGlobalCommands = [...globalCommands, ...adminCommands];
+
+    const guildIds = parseSlashGuildIds(config.slashGuildId);
+    for (const guildId of guildIds) {
+      try {
+        // Admin commands stay guild-scoped for fast updates
+        const guild = await client.guilds.fetch(guildId);
+        await guild.commands.set([...adminCommands, ...globalCommands]);
+        logger.info(`Registered ${adminCommands.length} admin commands for guild ${guildId}.`);
+      } catch (error) {
+        logger.warn(`Failed to register guild-scoped admin commands for guild ${guildId}.`, error.message);
+      }
     }
 
-    await client.application.commands.set(commands);
-    logger.info(`Registered ${commands.length} global slash commands.`);
+    // Register all commands globally so admin/debug commands are available
+    // even outside SLASH_GUILD_ID.
+    await client.application.commands.set(allGlobalCommands);
+    logger.info(`Registered ${allGlobalCommands.length} global slash commands (including admin).`);
   } catch (error) {
-    logger.error('Failed to register slash control plane commands.', error.message);
+    logger.error('Failed to register slash commands.', error.message);
   }
 }
 
@@ -171,7 +217,7 @@ async function handleControlPlaneInteraction(interaction) {
     return;
   }
 
-  const adminCommands = new Set(['lumi-status', 'lumi-toggle', 'lumi-set', 'lumi-channel', 'lumi-reset']);
+  const adminCommands = new Set(['lumi-status', 'lumi-toggle', 'lumi-set', 'lumi-channel', 'lumi-reset', 'lumi-bigbusinessdebug', 'lumi-reactionroles-debug']);
   if (!adminCommands.has(interaction.commandName)) {
     return;
   }
@@ -311,6 +357,191 @@ async function handleControlPlaneInteraction(interaction) {
       await interaction.editReply({
         content: `Memory reset failed: ${error.message}`,
       });
+    }
+  }
+
+  if (interaction.commandName === 'lumi-bigbusinessdebug') {
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const now = Date.now();
+      const guildId = interaction.guildId;
+      const guildCfg = getGuildConfig(guildId);
+      const businessName = guildCfg?.bigBusinessName || 'Big Business Inc';
+      const bigBusinessUserId = getBigBusinessUserId(guildId);
+      const balance = getBigBusinessBalance(bigBusinessUserId);
+
+      // Build VC participants report (filter to this guild)
+      const entries = [];
+      let totalPendingCoins = 0;
+
+      for (const [userId, entry] of activeVoiceUsers) {
+        if (entry.guildId && entry.guildId !== guildId) continue;
+        const progress = getVcRewardProgress(entry, now);
+        const hours = Math.floor(progress.rewardSeconds / 3600);
+        const minutes = Math.floor((progress.rewardSeconds % 3600) / 60);
+        const pendingCoins = progress.pendingCoins;
+        totalPendingCoins += pendingCoins;
+        entries.push(
+          `• **${entry.username || userId}** — ${hours}h ${minutes}m toward payout → **${pendingCoins} SGC** pending`
+        );
+      }
+
+      const vcReport = entries.length > 0
+        ? entries.join('\n')
+        : '_No users currently in voice channels._';
+
+      let simulateResult = '';
+      const simulate = interaction.options.getBoolean('simulate', false);
+      if (simulate) {
+        await matchPayout(interaction.user.username, 15, 'vc', guildId);
+        simulateResult = `\n\n✅ **Simulation complete** — triggered a 15 SGC VC match for you via ${businessName}. Check the announcement channel.`;
+      }
+
+      let cleanupResult = '';
+      const cleanupInvalid = interaction.options.getBoolean('cleanup_invalid_sessions', false);
+      if (cleanupInvalid) {
+        const result = cleanupInvalidPersistedSessions();
+        cleanupResult = `\n\n🧹 **Cleanup complete** — removed **${result.removed}** invalid persisted VC session(s) out of **${result.scanned}** scanned.`;
+      }
+
+      await interaction.editReply({
+        content: [
+          `🏢 **${businessName} — Debug Report**`,
+          '',
+          `🏦 **Balance:** ${balance.toLocaleString()} SGC`,
+          `👥 **VC Participants (${entries.length}):**`,
+          vcReport,
+          '',
+          `💰 **Total pending VC payout:** ${totalPendingCoins} SGC (matched 1:1 by ${businessName})`,
+          simulateResult,
+          cleanupResult,
+        ].join('\n'),
+      });
+    } catch (error) {
+      logger.error('Big Business debug command failed.', error.message);
+      await interaction.editReply({ content: `Debug failed: ${error.message}` });
+    }
+  }
+
+  if (interaction.commandName === 'lumi-reactionroles-debug') {
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      if (!interaction.inGuild() || !interaction.guildId) {
+        await interaction.editReply('This command must be run inside a guild.');
+        return;
+      }
+
+      const guild = interaction.guild;
+      const guildCfg = getGuildConfig(interaction.guildId);
+      if (!guildCfg) {
+        await interaction.editReply('❌ No guild config found. Add/configure this guild in the web panel first.');
+        return;
+      }
+
+      const lines = [];
+      lines.push(`🧪 **Reaction Roles Debug — ${guild.name}**`);
+      lines.push('');
+      lines.push(`Guild config: ${guildCfg.enabled ? 'enabled' : 'disabled'}`);
+      lines.push(`Configured message ID: ${guildCfg.reactionRoleMessageId || 'none'}`);
+      lines.push(`Configured assignments: ${Array.isArray(guildCfg.reactionRoleAssignments) ? guildCfg.reactionRoleAssignments.length : 0}`);
+
+      const me = guild.members.me || await guild.members.fetchMe();
+      const guildPerms = me.permissions;
+      const neededGuildPerms = [
+        PermissionFlagsBits.ManageRoles,
+        PermissionFlagsBits.AddReactions,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ViewChannel,
+      ];
+      const missingGuildPerms = neededGuildPerms.filter((perm) => !guildPerms.has(perm));
+
+      lines.push('');
+      if (missingGuildPerms.length > 0) {
+        const names = missingGuildPerms.map((perm) => new PermissionsBitField(perm).toArray().join(', ')).join(', ');
+        lines.push(`❌ Missing guild permissions: ${names}`);
+      } else {
+        lines.push('✅ Core guild permissions look good (Manage Roles, Add Reactions, Read Message History, View Channel).');
+      }
+
+      let targetChannel = null;
+      let targetMessage = null;
+      const configuredMessageId = String(guildCfg.reactionRoleMessageId || '').trim();
+
+      if (!configuredMessageId) {
+        lines.push('❌ No reaction role message ID configured.');
+      } else {
+        const channels = await guild.channels.fetch();
+        for (const channel of channels.values()) {
+          if (!channel || !channel.isTextBased() || typeof channel.messages?.fetch !== 'function') continue;
+          try {
+            const msg = await channel.messages.fetch(configuredMessageId);
+            if (msg) {
+              targetChannel = channel;
+              targetMessage = msg;
+              break;
+            }
+          } catch {
+            // keep searching
+          }
+        }
+
+        if (!targetMessage) {
+          lines.push('❌ Could not find the configured reaction-role message in any readable text channel.');
+          lines.push('   Ensure the message ID is correct and Lumi can View Channel + Read Message History there.');
+        } else {
+          lines.push(`✅ Found message in #${targetChannel.name} (${targetChannel.id}).`);
+          const channelPerms = targetChannel.permissionsFor(me);
+          const missingChannelPerms = neededGuildPerms.filter((perm) => !channelPerms?.has(perm));
+          if (missingChannelPerms.length > 0) {
+            const names = missingChannelPerms.map((perm) => new PermissionsBitField(perm).toArray().join(', ')).join(', ');
+            lines.push(`❌ Missing channel permissions in #${targetChannel.name}: ${names}`);
+          } else {
+            lines.push(`✅ Channel permissions in #${targetChannel.name} look good.`);
+          }
+        }
+      }
+
+      const assignments = Array.isArray(guildCfg.reactionRoleAssignments) ? guildCfg.reactionRoleAssignments : [];
+      if (assignments.length === 0) {
+        lines.push('❌ No emoji→role assignments configured.');
+      } else {
+        let okCount = 0;
+        let badCount = 0;
+        lines.push('');
+        lines.push('Assignment checks:');
+        for (const assignment of assignments) {
+          const roleId = String(assignment.roleId || '');
+          const emojiLabel = assignment.emojiLabel || assignment.emojiKey || 'unknown emoji';
+          const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
+          if (!role) {
+            badCount += 1;
+            lines.push(`- ❌ ${emojiLabel} → role ${roleId} not found in this guild.`);
+            continue;
+          }
+
+          if (!role.editable) {
+            badCount += 1;
+            lines.push(`- ❌ ${emojiLabel} → @${role.name} is not editable by Lumi (move Lumi role above it).`);
+            continue;
+          }
+
+          okCount += 1;
+          lines.push(`- ✅ ${emojiLabel} → @${role.name}`);
+        }
+        lines.push(`Summary: ${okCount} OK, ${badCount} failing assignment(s).`);
+      }
+
+      if (targetMessage && assignments.length > 0) {
+        lines.push('');
+        lines.push('Tip: React to that exact message from a non-bot account after saving web panel config.');
+      }
+
+      await interaction.editReply(lines.join('\n').slice(0, 3900));
+    } catch (error) {
+      logger.error('Reaction role debug command failed.', error.message);
+      await interaction.editReply(`Reaction role debug failed: ${error.message}`);
     }
   }
 }

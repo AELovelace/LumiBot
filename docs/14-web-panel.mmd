@@ -1,0 +1,96 @@
+graph TB
+    subgraph Server["🖥️ Web Panel Server"]
+        HTTP["node:http server\n0.0.0.0:7777\n(WEB_PANEL_HOST env)"]
+    end
+
+    subgraph Nav["📌 Navigation"]
+        DASH["/ Dashboard"]
+        STOCKS_NAV["/stocks Stocks"]
+        GUILDS_NAV["/guilds Guilds"]
+        ECON_NAV["/economy Economy"]
+        CASINO_NAV["/casino Casino"]
+        USERS_NAV["/users Users"]
+        MEM_NAV["/memory Memory"]
+        VC_NAV["/vc VC Tracker"]
+    end
+
+    subgraph Dashboard["📊 Dashboard (/)"]
+        D_GUILDS["Guild cards\nName, business, balance"]
+        D_SYSTEM["System accounts\nCentral Bank\nDoll Street\nMomiji Casino"]
+        D_VC["VC summary\nActive users, total time"]
+    end
+
+    subgraph StockPages["📈 Stock Management"]
+        S_LIST["GET /stocks\nAll stocks table\nticker, name, type,\nprice, MC, holders"]
+        S_DETAIL["GET /stocks/:id\nStock detail view"]
+        S_NAME["POST /stocks/:id/name\nRename stock\n(syncs guild config)"]
+        S_TICKER["POST /stocks/:id/ticker\nChange ticker\n(A-Z0-9, max 6)"]
+        S_META["metadata_json\ncustomName: true\ncustomTicker: true\n(pins synthetic names)"]
+    end
+
+    subgraph GuildPages["🏰 Guild Management"]
+        G_LIST["GET /guilds\nAll guilds table"]
+        G_NEW["GET/POST /guilds/new\nCreate guild"]
+        G_EDIT["GET/POST /guilds/:id\nEdit guild config"]
+        G_DEL["POST /guilds/:id/delete\nRemove guild"]
+    end
+
+    subgraph SettingsPages["⚙️ Settings"]
+        E_PAGE["GET/POST /economy\nEconomy, Tax, Reserve,\nScheduler, VC Rewards"]
+        C_PAGE["GET/POST /casino\nSlots, Pachinko, BJ,\nHold'em, Horse Racing"]
+        E_RESET["GET /economy/reset\nReset to defaults"]
+        C_RESET["GET /casino/reset\nReset to defaults"]
+        RELOAD["liveReloadAllSettings()\n10 modules hot-reloaded"]
+    end
+
+    subgraph UserPages["👤 User Management"]
+        U_LIST["GET /users?q=&page=\nSearch, paginated (50/pg)"]
+        U_DETAIL["GET /users/:id\nBalance, earned, spent,\ntransaction history"]
+        U_ADJUST["POST /users/:id/adjust\nAdjust balance + note"]
+    end
+
+    subgraph MemoryProxy["🧠 Memory Viewer"]
+        M_PAGE["GET /memory\nJS-driven UI"]
+        M_STATE["GET/PUT /api/memory/state\nRuntime state"]
+        M_USERS["GET /api/memory/users\nUser list"]
+        M_USER["GET /api/memory/user/:id\nUser memories"]
+        M_SEARCH["POST /api/memory/search\nSearch memories"]
+        PY["Python Memory Service\n127.0.0.1:8765"]
+    end
+
+    subgraph VCPage["🎤 VC Tracker"]
+        VC_VIEW["GET /vc\nActive users\nPending payouts\nAll-time leaderboard"]
+    end
+
+    subgraph APIs["📡 JSON APIs"]
+        API_G["GET /api/guilds\nAll configs + balances"]
+        API_S["GET /api/settings\nAll panel settings"]
+        API_U["GET /api/users\nAccount search"]
+    end
+
+    HTTP --> Nav
+    Nav --> DASH & STOCKS_NAV & GUILDS_NAV & ECON_NAV & CASINO_NAV & USERS_NAV & MEM_NAV & VC_NAV
+
+    DASH --> D_GUILDS & D_SYSTEM & D_VC
+    STOCKS_NAV --> S_LIST --> S_DETAIL
+    S_DETAIL --> S_NAME & S_TICKER
+    S_NAME & S_TICKER --> S_META
+
+    GUILDS_NAV --> G_LIST --> G_NEW & G_EDIT
+    G_EDIT --> G_DEL
+
+    ECON_NAV --> E_PAGE --> RELOAD
+    CASINO_NAV --> C_PAGE --> RELOAD
+    E_PAGE --> E_RESET
+    C_PAGE --> C_RESET
+
+    USERS_NAV --> U_LIST --> U_DETAIL --> U_ADJUST
+
+    MEM_NAV --> M_PAGE
+    M_PAGE --> M_STATE & M_USERS & M_USER & M_SEARCH
+    M_STATE & M_USERS & M_USER & M_SEARCH -->|"Proxy"| PY
+
+    VC_NAV --> VC_VIEW
+
+    HTTP --> APIs
+    APIs --> API_G & API_S & API_U

@@ -466,6 +466,13 @@ async function searchUserMemory(options) {
   });
 }
 
+async function fetchUserPromptProfile(options) {
+  return serviceRequestJson('/memory/profile', {
+    method: 'POST',
+    body: options,
+  });
+}
+
 async function resetMemory() {
   return serviceRequestJson('/memory/reset', {
     method: 'POST',
@@ -558,5 +565,6 @@ module.exports = {
   resetMemory,
   scheduleStateSave,
   searchUserMemory,
+  fetchUserPromptProfile,
   flushStateSave,
 };

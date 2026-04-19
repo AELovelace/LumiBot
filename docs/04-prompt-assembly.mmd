@@ -1,0 +1,26 @@
+flowchart TD
+    A["buildPrompt()"] --> S1["1️⃣ System: persona\nhot-reloaded from .env"]
+    S1 --> S2["2️⃣ System: rules\n• conciseness\n• anti-repetition\n• anti-roleplay\n• no fake links"]
+
+    S2 --> UP{"User context\nprofile?"}
+    UP -- Yes --> S3["3️⃣ Soft user profile\nknown facts, preferences\ntopics, style hints"]
+    UP -- No --> RC
+
+    S3 --> RC{"RAG context\navailable?"}
+    RC -- Yes --> S4["4️⃣ Memory context\nformatted by RAG service"]
+    RC -- No --> MC{"Memory clues\navailable?"}
+    MC -- Yes --> S5["4️⃣ Use clues cautiously"]
+    MC -- No --> S6["skip memory section"]
+
+    S4 --> REC
+    S5 --> REC
+    S6 --> REC
+
+    REC["5️⃣ Recall vs context-first\nbased on deepRecall flag"]
+    REC --> HIST["6️⃣ Recent chat context\nrendered history window"]
+    HIST --> CLUE["7️⃣ Long-term memory clues\nnumbered list or none"]
+    CLUE --> SEARCH{"Search results?"}
+    SEARCH -- Yes --> SR["8️⃣ Web search results\n+ citation instruction"]
+    SEARCH -- No --> UM
+    SR --> UM["9️⃣ User message"]
+    UM --> REPLY["🔟 Reply as Lumi:"]

@@ -1,0 +1,54 @@
+graph TB
+    subgraph Users["👤 Discord Users"]
+        U["User Wallet"]
+    end
+
+    subgraph SystemAccounts["🏛️ System Accounts"]
+        CB["🏦 Central Bank\n(Fees, Taxes, Raffles)"]
+        DS["📈 Doll Street\n(LumiStocks Escrow)"]
+        MC["🎰 Momiji Casino\n(House Bankroll)"]
+    end
+
+    subgraph Earning["💰 Earning SGC"]
+        MSG["📨 Message Rewards\n1 SGC per 50 chars"]
+        WL["🎰 Weekly Lottery\n50 SGC to random holder"]
+    end
+
+    subgraph Spending["💸 Spending SGC"]
+        TF["🔄 Transfer Fee\n1% normal / 50% lotto day"]
+        RT["🎟️ Raffle Ticket\n50 SGC"]
+        SA["⭐ Star Activation\n3 SGC per vote"]
+        SB["📊 Stock Buy\nFull bet amount"]
+        CB2["🃏 Casino Bets\nAll games"]
+        TA["🏠 Touhou Adopt\n25 SGC"]
+        TT["🎎 Touhou Trade Tax\n10% of sale price"]
+    end
+
+    subgraph Returns["🔙 Returns"]
+        RP["🎆 Raffle Prize\n25% of Central Bank"]
+        SP["📊 Stock Payout\nPool ÷ winners"]
+        CW["🃏 Casino Winnings\nPayout from house"]
+    end
+
+    subgraph Taxes["🏛️ Automated Taxes"]
+        MT["📅 Monthly Tax\n1% >100 / 5% >10K / 10% >1M"]
+        CD["📅 Daily Casino Deposit\n10% of Casino excess over 1M"]
+    end
+
+    MSG -->|"Minted"| U
+    WL -->|"Minted"| U
+
+    U -->|"Fee"| TF --> CB
+    U -->|"Ticket"| RT --> CB
+    U -->|"Vote"| SA --> DS
+    U -->|"Invest"| SB --> DS
+    U -->|"Bet"| CB2 --> MC
+    U -->|"Adopt"| TA
+    U -->|"Tax on buy"| TT --> CB
+
+    CB -->|"Prize"| RP --> U
+    DS -->|"Payout"| SP --> U
+    MC -->|"Win"| CW --> U
+
+    U -->|"Monthly"| MT --> CB
+    MC -->|"Daily"| CD --> CB

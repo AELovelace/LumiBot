@@ -1,5 +1,6 @@
 const { config, getChatbotPersona } = require('./config');
 const { logger } = require('./logger');
+const { relayThoughtSegments } = require('./thoughtRelay');
 
 let endpointIndex = 0;
 const BANNED_REPLY_PATTERNS = [
@@ -8,6 +9,7 @@ const BANNED_REPLY_PATTERNS = [
 const MAX_RECENT_ASSISTANT_MESSAGES = 4;
 const DUPLICATE_SENTENCE_THRESHOLD = 0.8;
 const DUPLICATE_MESSAGE_THRESHOLD = 0.88;
+const MAX_FINAL_SENTENCES = 10;
 
 function buildDelay(attempt) {
   return Math.min(config.llmRetryBaseDelayMs * attempt, 8_000);
@@ -80,6 +82,202 @@ function renderMemoryClues(memoryClues) {
   return `Long-term memory clues:\n${rendered}`;
 }
 
+function renderUserContextProfile(userContextProfile) {
+  if (!userContextProfile || typeof userContextProfile !== 'object') {
+    return '';
+  }
+
+  const sections = [];
+
+  if (typeof userContextProfile.summary === 'string' && userContextProfile.summary.trim()) {
+    sections.push(userContextProfile.summary.trim());
+  } else {
+    const knownFacts = Array.isArray(userContextProfile.knownFacts) ? userContextProfile.knownFacts : [];
+    const preferences = Array.isArray(userContextProfile.preferences) ? userContextProfile.preferences : [];
+    const ongoingTopics = Array.isArray(userContextProfile.ongoingTopics) ? userContextProfile.ongoingTopics : [];
+    const responseStyleHints = Array.isArray(userContextProfile.responseStyleHints)
+      ? userContextProfile.responseStyleHints
+      : [];
+    const recentHighlights = Array.isArray(userContextProfile.recentHighlights)
+      ? userContextProfile.recentHighlights
+      : [];
+
+    if (knownFacts.length > 0) {
+      sections.push(`Known facts: ${knownFacts.join('; ')}`);
+    }
+    if (preferences.length > 0) {
+      sections.push(`Preferences: ${preferences.join('; ')}`);
+    }
+    if (ongoingTopics.length > 0) {
+      sections.push(`Recurring topics: ${ongoingTopics.join(', ')}`);
+    }
+    if (recentHighlights.length > 0) {
+      sections.push(`Recent user context: ${recentHighlights.join(' | ')}`);
+    }
+    if (responseStyleHints.length > 0) {
+      sections.push(`Response style hints: ${responseStyleHints.join(' ')}`);
+    }
+  }
+
+  if (sections.length === 0) {
+    return '';
+  }
+
+  return `User context profile:\n${sections.join('\n')}`;
+}
+
+function extractThoughtSegments(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return [];
+  }
+
+  const leakSignalPattern = /(\bi\s+(?:need|should|can|could|must|will|want|have\s+to)\b|\bthe\s+user\s+is\s+probably\b|\bmaybe\s+something\s+like\b|\bkeep\s+it\s+short\b|\bin\s+line\s+with\s+(?:my|the)\s+vibe\b)/giu;
+  const quotePattern = /"([^"\n]{8,700})"|“([^”\n]{8,700})”/gu;
+
+  function extractQuotedCandidates(value) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return [];
+    }
+
+    return [...value.matchAll(quotePattern)]
+      .map((match) => {
+        const candidate = typeof match[1] === 'string' && match[1]
+          ? match[1]
+          : match[2];
+        return typeof candidate === 'string' ? candidate.trim() : '';
+      })
+      .filter((candidate) => candidate.length >= 8);
+  }
+
+  function isReasoningLeak(value) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return false;
+    }
+
+    const matches = value.match(leakSignalPattern) || [];
+    return matches.length >= 2;
+  }
+
+  const segments = [];
+  const closedPattern = /<think>([\s\S]*?)<\/think>/giu;
+
+  for (const match of text.matchAll(closedPattern)) {
+    const segment = typeof match[1] === 'string' ? match[1].trim() : '';
+    if (segment) {
+      segments.push(segment);
+    }
+  }
+
+  const withoutClosed = text.replace(closedPattern, '');
+  const unclosedMatch = withoutClosed.match(/<think>([\s\S]*)/iu);
+  if (unclosedMatch && typeof unclosedMatch[1] === 'string') {
+    const segment = unclosedMatch[1].replace(/<\/think>/giu, '').trim();
+    if (segment) {
+      segments.push(segment);
+    }
+  }
+
+  if (segments.length === 0 && isReasoningLeak(text)) {
+    const candidates = extractQuotedCandidates(text);
+    const selectedCandidate = candidates.length > 0 ? candidates[candidates.length - 1] : '';
+    const thoughtText = selectedCandidate
+      ? text.replace(`"${selectedCandidate}"`, '').trim()
+      : text.trim();
+
+    if (thoughtText) {
+      segments.push(thoughtText.slice(0, 1600));
+    }
+  }
+
+  return segments;
+}
+
+function extractQuotedReplyFromReasoningLeak(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return '';
+  }
+
+  const leakSignalPattern = /(\bi\s+(?:need|should|can|could|must|will|want|have\s+to)\b|\bthe\s+user\s+is\s+probably\b|\bmaybe\s+something\s+like\b|\bkeep\s+it\s+short\b|\bin\s+line\s+with\s+(?:my|the)\s+vibe\b)/giu;
+  const matches = text.match(leakSignalPattern) || [];
+  if (matches.length < 2) {
+    return '';
+  }
+
+  const quoted = [...text.matchAll(/"([^"\n]{8,700})"|“([^”\n]{8,700})”/gu)]
+    .map((match) => {
+      const candidate = typeof match[1] === 'string' && match[1]
+        ? match[1]
+        : match[2];
+      return typeof candidate === 'string' ? candidate.trim() : '';
+    })
+    .filter(Boolean);
+
+  if (quoted.length === 0) {
+    return '';
+  }
+
+  return quoted[quoted.length - 1];
+}
+
+function stripThinkingTags(text) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  let result = text.replace(/<think>[\s\S]*?<\/think>/giu, '');
+  let guard = 0;
+
+  while (/<think>/iu.test(result) && guard < 6) {
+    const openIndex = result.search(/<think>/iu);
+    const beforeThink = result.slice(0, openIndex).trim();
+    const thinkBody = result.slice(openIndex).replace(/^<think>/iu, '');
+    let recovered = '';
+
+    const finalMarkers = [
+      /(?:^|\n)\s*(?:final answer|answer|response)\s*[:\-]\s*/iu,
+      /(?:^|\n)\s*(?:assistant|lumi)\s*[:\-]\s*/iu,
+    ];
+
+    for (const marker of finalMarkers) {
+      const match = marker.exec(thinkBody);
+      if (match && Number.isFinite(match.index)) {
+        const candidate = thinkBody.slice(match.index + match[0].length).trim();
+        if (candidate) {
+          recovered = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!recovered) {
+      const paragraphs = thinkBody
+        .split(/\n\s*\n/u)
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+
+      for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
+        const candidate = paragraphs[index];
+        if (
+          candidate.length <= 600
+          && !/^\d+[.)]/u.test(candidate)
+          && !/^(thinking process|analysis|step\s*\d+)/iu.test(candidate)
+        ) {
+          recovered = candidate;
+          break;
+        }
+      }
+    }
+
+    result = [beforeThink, recovered].filter(Boolean).join('\n').trim();
+    guard += 1;
+  }
+
+  return result
+    .replace(/<\/think>/giu, '')
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim();
+}
+
 function stripBannedReplyPhrases(text) {
   let cleaned = text;
 
@@ -91,6 +289,170 @@ function stripBannedReplyPhrases(text) {
     .replace(/\s+([,.!?;:])/gu, '$1')
     .replace(/\s{2,}/gu, ' ')
     .trim();
+}
+
+function stripReasoningArtifactPrefixes(text) {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  return text
+    .replace(/^(?:final\s*polish|polish|final\s*draft|draft)\s*[:\-]\s*/iu, '')
+    .replace(/^(?:thinking\s*process|analysis|internal\s*note|chain\s*of\s*thought|cot)\s*[:\-]\s*/iu, '')
+    .trim();
+}
+
+function stripStageDirections(text) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  // Remove stage directions in *asterisks* or lowercase parentheses patterns
+  return text
+    .replace(/\*\w+(?:\s+\w+)*\*/gu, '')
+    .replace(/\(\s*(?:pauses?|whispers?|laughs?|sighs?|nods?|smiles?|gasps?|snaps|blinks?|winks?|grins?|frowns?|shrugs?|waves?|points?|looks?|stares?|glances?)\s*\)/giu, '')
+    .replace(/\.\.\.\s*(?:pauses?|whispers?|laughs?|sighs?|nods?|smiles?|gasps?|snaps|blinks?|winks?|grins?|frowns?|shrugs?|waves?|points?)\s*/giu, '')
+    .replace(/(?:^|\n)\s*(?:pauses?|whispers?|laughs?|sighs?|nods?|smiles?|gasps?|snaps|blinks?|winks?|grins?|frowns?|shrugs?|waves?|points?|leans|sits|stands|walks|runs|jumps|falls|climbs)\s*(?:\.|:|-|$)/giu, '\n')
+    .trim();
+}
+
+function stripPromptEchoAndTranscriptArtifacts(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return '';
+  }
+
+  let sanitized = text;
+
+  const hardCutMarkers = [
+    /\bUser message:\b/iu,
+    /\bReply as Lumi:\b/iu,
+    /\bRecent chat context:\b/iu,
+    /\bLong-term memory clues:\b/iu,
+    /\bWeb search results for the user's query:\b/iu,
+  ];
+
+  for (const marker of hardCutMarkers) {
+    const match = marker.exec(sanitized);
+    if (match && Number.isFinite(match.index)) {
+      sanitized = sanitized.slice(0, match.index).trim();
+      break;
+    }
+  }
+
+  const lines = sanitized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const filteredLines = lines.filter((line) => {
+    if (/^(?:lumi|assistant)\s*[:\-]/iu.test(line)) {
+      return true;
+    }
+
+    if (/^[a-z0-9_.-]{2,32}\s*[:\-]/iu.test(line)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return filteredLines.join('\n').trim();
+}
+
+function applySpeakerDelineators(text) {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  return text
+    .replace(/\s*lumi:\s*/giu, '\n')
+    .trim();
+}
+
+function censorLeadingSelfName(text) {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  return text.replace(/^\s*lumi(?=\b|[\s,.;:!?…-])/iu, 'l***');
+}
+
+function compactWhitespacePreserveNewlines(text) {
+  if (typeof text !== 'string') {
+    return '';
+  }
+
+  return text
+    .replace(/[ \t\f\v\r]+/gu, ' ')
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim();
+}
+
+function collapseRepeatedPhraseLoops(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return '';
+  }
+
+  let result = text;
+  const repeatedPhrasePattern = /\b([\p{L}\p{N}'-]{2,}(?:\s+[\p{L}\p{N}'-]{1,}){0,2})(?:\s+\1){4,}\b/giu;
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = result.replace(repeatedPhrasePattern, '$1');
+    if (next === result) {
+      break;
+    }
+    result = next;
+  }
+
+  return compactWhitespacePreserveNewlines(result);
+}
+
+function isDegenerateRepetitiveOutput(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return true;
+  }
+
+  const normalized = normalizeForComparison(text);
+  if (!normalized) {
+    return true;
+  }
+
+  const tokens = normalized
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  if (tokens.length < 12) {
+    return false;
+  }
+
+  const uniqueRatio = new Set(tokens).size / tokens.length;
+  if (tokens.length >= 20 && uniqueRatio < 0.22) {
+    return true;
+  }
+
+  for (let phraseLength = 1; phraseLength <= 3; phraseLength += 1) {
+    for (let start = 0; start <= tokens.length - phraseLength; start += 1) {
+      const phrase = tokens.slice(start, start + phraseLength).join(' ');
+      let repeats = 1;
+      let cursor = start + phraseLength;
+
+      while (cursor <= tokens.length - phraseLength) {
+        const candidate = tokens.slice(cursor, cursor + phraseLength).join(' ');
+        if (candidate !== phrase) {
+          break;
+        }
+        repeats += 1;
+        cursor += phraseLength;
+      }
+
+      if (repeats >= 6) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function normalizeForComparison(text) {
@@ -127,6 +489,19 @@ function splitIntoSentences(text) {
     .split(/(?<=[.!?])\s+/u)
     .map((segment) => segment.trim())
     .filter(Boolean);
+}
+
+function clampToSentenceLimit(text, maxSentences = MAX_FINAL_SENTENCES) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return '';
+  }
+
+  const sentences = splitIntoSentences(text);
+  if (sentences.length === 0 || sentences.length <= maxSentences) {
+    return text.trim();
+  }
+
+  return `${sentences.slice(0, maxSentences).join(' ').trim()}...`;
 }
 
 function getOverlapRatio(sourceTokens, targetTokens) {
@@ -255,7 +630,16 @@ function diversifyAgainstRecentAssistantHistory(text, history) {
   return diversified || text;
 }
 
-function buildPrompt({ persona, history, latestContent, memoryClues, ragContext, deepRecall, searchResults }) {
+function buildPrompt({
+  persona,
+  history,
+  latestContent,
+  memoryClues,
+  ragContext,
+  deepRecall,
+  searchResults,
+  userContextProfile,
+}) {
   const renderedHistory = history
     .map((entry) => `${entry.role === 'assistant' ? 'Lumi' : entry.author}: ${entry.content}`)
     .join('\n');
@@ -263,10 +647,23 @@ function buildPrompt({ persona, history, latestContent, memoryClues, ragContext,
   const sections = [
     `System: ${persona}`,
     'System: Keep responses concise, natural, and chat-friendly for Discord.',
+    'System: Prefer brief responses (1-3 sentences) when the message allows. Reserve longer responses (4-10 sentences) for complex questions or when depth is genuinely needed.',
+    'System: Never repeat words, short phrases, or sentence fragments in loops.',
     'System: Avoid roleplay-heavy formatting and avoid walls of text.',
+    'System: Never simulate both sides of a conversation. Reply as Lumi only.',
+    'System: Do not output transcript/log format or speaker labels like "username:".',
+    'System: Never invent or fabricate links. Only include URLs provided in trusted context (e.g., search results or tool output).',
     'System: Do not reuse the same opener, signature line, or catchphrase from your recent assistant messages.',
     'System: Never use the exact phrase "you know who you are".',
   ];
+
+  const renderedUserContextProfile = renderUserContextProfile(userContextProfile);
+  if (renderedUserContextProfile) {
+    sections.push(
+      'System: The following is a soft profile distilled from the user\'s past conversations. Use it only when relevant, and do not present uncertain memory as certain fact.',
+      renderedUserContextProfile,
+    );
+  }
 
   // Add RAG context if available
   if (ragContext && ragContext.trim()) {
@@ -303,18 +700,79 @@ function buildPrompt({ persona, history, latestContent, memoryClues, ragContext,
 }
 
 function normalizeResponse(text, maxChars, history) {
-  const stripped = stripBannedReplyPhrases(text);
+  const quotedFallback = extractQuotedReplyFromReasoningLeak(text);
+  const responseSource = quotedFallback || text;
+  const stripped = stripPromptEchoAndTranscriptArtifacts(
+    stripStageDirections(
+      stripReasoningArtifactPrefixes(
+        stripBannedReplyPhrases(stripThinkingTags(responseSource)),
+      ),
+    ),
+  );
   const diversified = diversifyAgainstRecentAssistantHistory(stripped, history);
-  const compact = diversified.replace(/\s+/gu, ' ').trim();
-  if (!compact) {
+  const delineated = applySpeakerDelineators(diversified);
+  const censoredLeadingName = censorLeadingSelfName(delineated);
+  const compact = compactWhitespacePreserveNewlines(censoredLeadingName);
+  const deLooped = collapseRepeatedPhraseLoops(compact);
+  if (!deLooped || isDegenerateRepetitiveOutput(deLooped)) {
     return '';
   }
 
-  if (compact.length <= maxChars) {
-    return compact;
+  const sentenceClamped = clampToSentenceLimit(deLooped);
+  if (isDegenerateRepetitiveOutput(sentenceClamped)) {
+    return '';
+  }
+  if (!sentenceClamped) {
+    return '';
   }
 
-  return `${compact.slice(0, Math.max(1, maxChars - 3)).trim()}...`;
+  if (sentenceClamped.length <= maxChars) {
+    return sentenceClamped;
+  }
+
+  return `${sentenceClamped.slice(0, Math.max(1, maxChars - 3)).trim()}...`;
+}
+
+function recoverFallbackResponse(text, maxChars) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return '';
+  }
+
+  const withoutOpenThinkTag = text
+    .replace(/<think>/giu, '')
+    .replace(/<\/think>/giu, '');
+  const paragraphs = withoutOpenThinkTag
+    .split(/\n\s*\n/u)
+    .map((segment) => segment.replace(/\s+/gu, ' ').trim())
+    .filter(Boolean);
+
+  if (paragraphs.length === 0) {
+    return '';
+  }
+
+  const candidateSource = collapseRepeatedPhraseLoops(
+    compactWhitespacePreserveNewlines(
+      applySpeakerDelineators(
+        stripPromptEchoAndTranscriptArtifacts(
+          stripReasoningArtifactPrefixes(paragraphs[paragraphs.length - 1]),
+        ),
+      ),
+    ),
+  );
+  const candidate = clampToSentenceLimit(candidateSource);
+  if (!candidate || /^(thinking process|analysis|step\s*\d+|final\s*polish)/iu.test(candidate)) {
+    return '';
+  }
+
+  if (isDegenerateRepetitiveOutput(candidate)) {
+    return '';
+  }
+
+  if (candidate.length <= maxChars) {
+    return candidate;
+  }
+
+  return `${candidate.slice(0, Math.max(1, maxChars - 3)).trim()}...`;
 }
 
 function sanitizeGifQuery(value) {
@@ -370,6 +828,7 @@ async function requestLlmCompletion({
   deepRecall,
   maxResponseChars,
   searchResults,
+  userContextProfile,
   systemOverride,
 }) {
   const maxAttempts = Math.max(1, config.llmRetryLimit + 1);
@@ -389,6 +848,8 @@ async function requestLlmCompletion({
         ? [
           `System: ${getChatbotPersona()}`,
           systemOverride,
+          'System: Never simulate both sides of a conversation. Reply as Lumi only.',
+          'System: Do not output transcript/log format or speaker labels like "username:".',
           'System: Do not reuse the same opener, signature line, or catchphrase from your recent assistant messages.',
           'System: Never use the exact phrase "you know who you are".',
           `User message: ${latestContent}`,
@@ -402,6 +863,7 @@ async function requestLlmCompletion({
           ragContext,
           deepRecall,
           searchResults,
+          userContextProfile,
         });
 
       const response = await fetch(`${endpoint}/api/generate`, {
@@ -427,13 +889,30 @@ async function requestLlmCompletion({
         throw new Error('Empty response from model.');
       }
 
+      void relayThoughtSegments(extractThoughtSegments(completion), {
+        kind: 'chat',
+        model: config.chatbotModel,
+        endpoint,
+      });
+
       logger.debug(
         `LLM request succeeded in ${Date.now() - startedAt}ms via ${endpoint} (attempt ${attempt}/${maxAttempts}).`,
       );
       const maxChars = Number.isFinite(maxResponseChars)
         ? Number(maxResponseChars)
         : config.chatbotMaxResponseChars;
-      return normalizeResponse(completion, maxChars, history);
+      const normalized = normalizeResponse(completion, maxChars, history);
+      if (!normalized) {
+        const fallback = recoverFallbackResponse(completion, maxChars);
+        if (fallback) {
+          logger.warn('Recovered response using fallback parser after normalization stripped model output.');
+          return fallback;
+        }
+
+        throw new Error('Empty response after normalization.');
+      }
+
+      return normalized;
     } catch (error) {
       failures.push(`${endpoint}: ${error.message}`);
       logger.warn(
@@ -501,7 +980,12 @@ async function requestGifSuggestion({ latestContent, assistantResponse, history 
       }
 
       const payload = await response.json();
-      const completion = typeof payload.response === 'string' ? payload.response : '';
+      const completion = stripThinkingTags(typeof payload.response === 'string' ? payload.response : '');
+      void relayThoughtSegments(extractThoughtSegments(typeof payload.response === 'string' ? payload.response : ''), {
+        kind: 'gif-decision',
+        model: config.chatbotModel,
+        endpoint,
+      });
       const parsedQuery = parseGifSuggestion(completion);
       if (!parsedQuery) {
         return null;

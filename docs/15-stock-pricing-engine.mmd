@@ -1,0 +1,64 @@
+graph TB
+    subgraph Inputs["📥 Price Inputs"]
+        TREASURY["Treasury Balance\nGuild: Big Business acct\nSynth: synthetic_treasury col"]
+        INVESTED["Invested Capital\nSUM(total_invested)\nfrom active shareholders"]
+        OUTSTANDING["Outstanding Shares\nMAX(actual, total_outstanding, 0)"]
+        PERF["Performance Score\n0.55 – 1.85"]
+        DEMAND["Demand Pressure\n-0.45 – 0.65"]
+    end
+
+    subgraph MarketCap["📊 Market Cap"]
+        MCAP["marketCap =\ntreasury + investedCapital"]
+        FLOAT["referenceFloat =\nMAX(outstandingShares, 100)"]
+        INTRINSIC["intrinsicPerShare =\nmarketCap / referenceFloat"]
+        FALLBACK{{"intrinsic = 0?"}}
+        FB_A["Try: treasury / 100"]
+        FB_B["Use: initial_price"]
+    end
+
+    subgraph Multipliers["🔧 Multipliers"]
+        PERF_MULT["performanceMultiplier =\n0.85 + (score - 1) × 0.7\nclamped [0.65, 1.55]"]
+        DEM_MULT["demandMultiplier =\n1 + demand_pressure\nclamped [0.5, 1.8]"]
+    end
+
+    subgraph FinalPrice["💰 Final Price"]
+        CALC["price = intrinsic\n× perfMultiplier\n× demandMultiplier"]
+        CLAMP["CLAMP\n[1, 250000] SGC"]
+        SAVE["UPDATE bb_stocks\nSET share_price"]
+    end
+
+    subgraph TradeImpact["📈 Trade Impact on Demand"]
+        TRADE{{"Trade type?"}}
+        BUY_IMP["BUY:\ndelta = (amount / liqBase) × 0.4\nclamped [0.005, 0.22]"]
+        SELL_IMP["SELL:\ndelta = -(proceeds / liqBase) × 0.4\nclamped [-0.22, -0.005]"]
+        APPLY["new_pressure =\n(old × 0.9) + delta\nclamped [-0.45, 0.65]"]
+    end
+
+    subgraph PerfScore["⭐ Performance Score Updates"]
+        PS_TYPE{{"Stock type?"}}
+        PS_GUILD["Guild Score:\n1 + (treasuryΔ × 0.5)\n+ (investmentΔ × 0.18)\n+ (demand × 0.22)"]
+        PS_SYNTH["Synthetic Score:\n1 + (basePerfΔ)\n× (0.9 + treasuryStdDev)"]
+        PS_CLAMP["clamped [0.55, 1.85]"]
+        PS_DECAY["Demand decay:\npressure × 0.97\n(per snapshot)"]
+    end
+
+    TREASURY --> MCAP
+    INVESTED --> MCAP
+    MCAP --> INTRINSIC
+    OUTSTANDING --> FLOAT --> INTRINSIC
+    INTRINSIC --> FALLBACK
+    FALLBACK -->|"No"| CALC
+    FALLBACK -->|"Yes"| FB_A --> FB_B --> CALC
+
+    PERF --> PERF_MULT --> CALC
+    DEMAND --> DEM_MULT --> CALC
+    CALC --> CLAMP --> SAVE
+
+    TRADE -->|"Buy"| BUY_IMP --> APPLY
+    TRADE -->|"Sell"| SELL_IMP --> APPLY
+    APPLY --> DEMAND
+
+    PS_TYPE -->|"Guild"| PS_GUILD --> PS_CLAMP
+    PS_TYPE -->|"Synthetic"| PS_SYNTH --> PS_CLAMP
+    PS_CLAMP --> PERF
+    PS_DECAY --> DEMAND

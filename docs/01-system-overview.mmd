@@ -1,0 +1,84 @@
+graph TB
+    subgraph Discord["Discord Gateway"]
+        DM["📨 Incoming Message"]
+        DR["📤 Outgoing Reply"]
+        DI["🎮 Slash Interaction"]
+        DE["⭐ Reaction Event"]
+    end
+
+    subgraph Bot["Node.js Bot Process"]
+        IDX["index.js\nBootstrap"]
+        CMD["commands.js\nPrefix & Slash Router"]
+        CB["chatbot.js\nDecision Engine"]
+        LLM["llmClient.js\nPrompt & Normalize"]
+        MOD["moderation.js\nInput/Output Filter"]
+        CP["controlPlane.js\nSlash Admin"]
+        TR["thoughtRelay.js\nThought Channel"]
+        GC["giphyClient.js\nGIF Lookup"]
+        BS["braveSearch.js\nWeb Search"]
+        RC["ragClient.js\nRAG Bridge"]
+        CSS["chatbotStateStore.js\nMemory Bridge"]
+        NP["nowPlaying.js\nSong Info"]
+        SB["starboard.js\nRepost Stars"]
+    end
+
+    subgraph Economy["SadGirlCoin Economy"]
+        ES["sadgirlEconomyStore.js\nSQLite Accounts & Ledger"]
+        EC["sadgirlEconomyCommands.js\n/lumi-bank & /lumi-stocks"]
+        ESC["sadgirlEconomyScheduler.js\nLeaderboard, Lottery, Taxes"]
+        SSA["sadgirlStockActivation.js\n⭐ Reaction → Market Live"]
+    end
+
+    subgraph Games["Casino Games"]
+        PKO["pachinko.js"]
+        BJK["blackjack.js"]
+        SLT["slots.js"]
+        THM["texasholdem.js"]
+        HRC["horseracing.js"]
+    end
+
+    subgraph Touhou["Touhou Market"]
+        TS["touhouStore.js\nSQLite Collection DB"]
+        TC["touhouCommands.js\n/lumi-touhou"]
+    end
+
+    subgraph Python["Python Services — localhost"]
+        MEM["Memory Service :8765\nSQLite + ChromaDB"]
+        RAG["RAG Service :8764\nContext Retrieval"]
+    end
+
+    subgraph LLMInfra["Ollama LLM Backends"]
+        EP1["Endpoint 1"]
+        EP2["Endpoint 2 — failover"]
+    end
+
+    subgraph External["External APIs"]
+        GIPHY["Giphy API"]
+        BRAVE["Brave Search API"]
+    end
+
+    DM --> IDX --> CMD
+    DI --> IDX
+    DE --> IDX --> SSA --> ES
+    CMD --> CB
+    CMD -->|"SGC per message"| ES
+    CB --> MOD
+    CB --> LLM
+    CB --> BS
+    CB --> NP
+    LLM --> EP1
+    LLM --> EP2
+    LLM --> TR
+    CB --> RC --> RAG
+    CB --> CSS --> MEM
+    CB --> GC --> GIPHY
+    BS --> BRAVE
+    CB --> DR
+    IDX --> CP
+    IDX --> SB
+    IDX --> ESC --> ES
+
+    CMD --> EC --> ES
+    CMD --> PKO & BJK & SLT & THM & HRC --> ES
+    CMD --> TC --> TS
+    TC --> ES

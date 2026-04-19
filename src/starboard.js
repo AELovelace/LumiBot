@@ -1,7 +1,10 @@
 const { EmbedBuilder } = require('discord.js');
 
-const { config } = require('./config');
+const { config, getChatbotPersona } = require('./config');
 const { logger } = require('./logger');
+const { awardStarboardCoins } = require('./sadgirlEconomyStore');
+const { matchPayout } = require('./bigBusiness');
+const { getGuildConfig } = require('./guildConfig');
 
 const STARBOARD_SOURCE_PREFIX = 'source:';
 const STARBOARD_SCAN_LIMIT = 100;
@@ -13,9 +16,72 @@ const MISSING_ACCESS_ERROR_CODE = 50_001;
 const MISSING_PERMISSIONS_ERROR_CODE = 50_013;
 const PERMISSION_WARNING_COOLDOWN_MS = 60_000;
 
+const STARBOARD_LLM_ENDPOINT = 'http://100.83.3.32:11434';
+const STARBOARD_LLM_MODEL = 'server-2';
+const STARBOARD_LLM_TIMEOUT_MS = 20_000;
+
 const sourceToStarboardMessageId = new Map();
 const processingSourceKeys = new Set();
 const permissionWarningTimestamps = new Map();
+/** Tracks the last star count we paid out for each source key */
+const sourcePaidStars = new Map();
+/** Tracks source keys that already received an LLM commentary */
+const commentaryPosted = new Set();
+
+// ---------------------------------------------------------------------------
+// LLM starboard commentary
+// ---------------------------------------------------------------------------
+
+function stripThinkingTags(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/giu, '')
+    .replace(/<\/?think>/giu, '')
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim();
+}
+
+/**
+ * Generate a short LLM commentary about a starred message.
+ * Lumi reacts to the content that just got starboarded.
+ */
+async function generateStarboardCommentary(author, messageContent, starCount, guildName) {
+  const snippet = (messageContent || '').slice(0, 500).trim() || '[image / attachment]';
+
+  const prompt = [
+    `System: ${getChatbotPersona()}`,
+    `System: A message just hit the starboard in ${guildName}. You are reacting to it in a short, casual way — like you just saw it pinned and want to comment. Keep it to 1-2 sentences. Be genuine, funny, or snarky as fits the content. Never use emojis. Do not use think tags or reasoning.`,
+    `${author} posted this and it got ${starCount} stars:`,
+    `"${snippet}"`,
+    'Your reaction:',
+  ].join('\n\n');
+
+  try {
+    const response = await fetch(`${STARBOARD_LLM_ENDPOINT}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: STARBOARD_LLM_MODEL,
+        stream: false,
+        prompt,
+      }),
+      signal: AbortSignal.timeout(STARBOARD_LLM_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const completion = typeof payload.response === 'string' ? payload.response : '';
+    const cleaned = stripThinkingTags(completion);
+    if (cleaned) return cleaned;
+  } catch (error) {
+    logger.warn('Starboard LLM commentary failed.', error.message);
+  }
+
+  return null; // no fallback — just skip if LLM fails
+}
 
 function isMissingPermissionError(error) {
   if (!error) {
@@ -34,9 +100,9 @@ function isUnknownMessageError(error) {
   return Boolean(error && error.code === UNKNOWN_MESSAGE_ERROR_CODE);
 }
 
-function warnMissingPermissions(scope, error) {
+function warnMissingPermissions(scope, error, channelId) {
   const now = Date.now();
-  const warningKey = `${scope}:${config.starboardChannelId}`;
+  const warningKey = `${scope}:${channelId || 'unknown'}`;
   const lastWarningAt = permissionWarningTimestamps.get(warningKey) || 0;
 
   if (now - lastWarningAt < PERMISSION_WARNING_COOLDOWN_MS) {
@@ -45,7 +111,7 @@ function warnMissingPermissions(scope, error) {
 
   permissionWarningTimestamps.set(warningKey, now);
   logger.warn(
-    `Starboard ${scope} skipped due to missing permissions. Check channel ${config.starboardChannelId} permissions: View Channel, Send Messages, Embed Links (and Read Message History for restart lookup).`,
+    `Starboard ${scope} skipped due to missing permissions. Check channel ${channelId || 'unknown'} permissions: View Channel, Send Messages, Embed Links (and Read Message History for restart lookup).`,
     error.message,
   );
 }
@@ -66,13 +132,13 @@ function isImageAttachment(attachment) {
   return /\.(png|jpe?g|gif|webp|bmp|tiff?)$/iu.test(attachment.url);
 }
 
-function isStarEmoji(emoji) {
+function isStarEmoji(emoji, emojiName) {
   if (!emoji?.name) {
     return false;
   }
 
   const normalizedName = emoji.name.toLowerCase();
-  const configuredName = config.starboardEmojiName.toLowerCase();
+  const configuredName = (emojiName || config.starboardEmojiName).toLowerCase();
   if (emoji.id) {
     return normalizedName === configuredName;
   }
@@ -197,12 +263,12 @@ async function findExistingStarboardMessage(starboardChannel, sourceKey) {
   return null;
 }
 
-async function fetchStarboardChannel(client) {
-  if (!config.starboardChannelId) {
+async function fetchStarboardChannel(client, channelId) {
+  if (!channelId) {
     return null;
   }
 
-  const channel = await client.channels.fetch(config.starboardChannelId);
+  const channel = await client.channels.fetch(channelId);
   if (!channel?.isTextBased() || typeof channel.send !== 'function' || !channel.messages) {
     return null;
   }
@@ -211,14 +277,6 @@ async function fetchStarboardChannel(client) {
 }
 
 async function processStarboardReaction(reaction) {
-  if (!config.starboardChannelId) {
-    return;
-  }
-
-  if (!isStarEmoji(reaction.emoji)) {
-    return;
-  }
-
   if (reaction.partial) {
     await reaction.fetch();
   }
@@ -236,11 +294,17 @@ async function processStarboardReaction(reaction) {
     return;
   }
 
-  if (config.allowedGuildId && message.guildId !== config.allowedGuildId) {
+  // Look up per-guild config — if no config, this guild is not tracked
+  const guildCfg = getGuildConfig(message.guildId);
+  if (!guildCfg || !guildCfg.enabled || !guildCfg.starboardChannelId) {
     return;
   }
 
-  if (message.channelId === config.starboardChannelId) {
+  if (!isStarEmoji(reaction.emoji, guildCfg.starboardEmojiName)) {
+    return;
+  }
+
+  if (message.channelId === guildCfg.starboardChannelId) {
     return;
   }
 
@@ -255,10 +319,10 @@ async function processStarboardReaction(reaction) {
 
     let starboardChannel;
     try {
-      starboardChannel = await fetchStarboardChannel(reaction.client);
+      starboardChannel = await fetchStarboardChannel(reaction.client, guildCfg.starboardChannelId);
     } catch (error) {
       if (isMissingPermissionError(error)) {
-        warnMissingPermissions('channel fetch', error);
+        warnMissingPermissions('channel fetch', error, guildCfg.starboardChannelId);
         return;
       }
 
@@ -266,12 +330,12 @@ async function processStarboardReaction(reaction) {
     }
 
     if (!starboardChannel) {
-      logger.warn(`Starboard channel ${config.starboardChannelId} not found or not text-based.`);
+      logger.warn(`Starboard channel ${guildCfg.starboardChannelId} not found or not text-based (guild ${message.guildId}).`);
       return;
     }
 
     const existingStarboardMessageId = await findExistingStarboardMessage(starboardChannel, sourceKey);
-    if (!existingStarboardMessageId && starCount < config.starboardMinStars) {
+    if (!existingStarboardMessageId && starCount < guildCfg.starboardMinStars) {
       return;
     }
 
@@ -280,37 +344,79 @@ async function processStarboardReaction(reaction) {
       try {
         await starboardChannel.messages.edit(existingStarboardMessageId, payload);
         sourceToStarboardMessageId.set(sourceKey, existingStarboardMessageId);
-        return;
       } catch (error) {
         if (isUnknownMessageError(error)) {
           sourceToStarboardMessageId.delete(sourceKey);
         } else if (isMissingPermissionError(error)) {
-          warnMissingPermissions('message edit', error);
+          warnMissingPermissions('message edit', error, guildCfg.starboardChannelId);
           return;
         } else {
           throw error;
         }
       }
-    }
+    } else if (starCount >= guildCfg.starboardMinStars) {
+      let created;
+      try {
+        created = await starboardChannel.send(payload);
+      } catch (error) {
+        if (isMissingPermissionError(error)) {
+          warnMissingPermissions('message send', error, guildCfg.starboardChannelId);
+          return;
+        }
 
-    if (starCount < config.starboardMinStars) {
-      return;
-    }
-
-    let created;
-    try {
-      created = await starboardChannel.send(payload);
-    } catch (error) {
-      if (isMissingPermissionError(error)) {
-        warnMissingPermissions('message send', error);
-        return;
+        throw error;
       }
 
-      throw error;
+      sourceToStarboardMessageId.set(sourceKey, created.id);
+      logger.info(`Starboard post created for message ${sourceKey}.`);
+
+      // Post LLM commentary in the guild's Big Business channel
+      if (!commentaryPosted.has(sourceKey) && guildCfg.bigBusinessChannelId) {
+        commentaryPosted.add(sourceKey);
+        void (async () => {
+          try {
+            const guildName = guildCfg.guildName || 'the server';
+            const commentary = await generateStarboardCommentary(
+              message.author?.username || 'someone',
+              message.content || '',
+              starCount,
+              guildName,
+            );
+            if (commentary) {
+              const bizChannel = await reaction.client.channels.fetch(guildCfg.bigBusinessChannelId).catch(() => null);
+              if (bizChannel) {
+                await bizChannel.send(`⭐ **Starboard Hit** — ${message.author?.username || 'someone'} just got ${starCount} star(s)\n> ${commentary}`);
+                logger.info(`Starboard commentary posted to business channel for ${sourceKey}.`);
+              }
+            }
+          } catch (err) {
+            logger.warn('Starboard: failed to post LLM commentary to business channel.', err.message);
+          }
+        })();
+      }
     }
 
-    sourceToStarboardMessageId.set(sourceKey, created.id);
-    logger.info(`Starboard post created for message ${sourceKey}.`);
+    // Award SGC for stars (1 coin per new star since last payout)
+    if (starCount >= guildCfg.starboardMinStars && message.author && !message.author.bot) {
+      try {
+        const previouslyPaid = sourcePaidStars.get(sourceKey) || 0;
+        const newStars = starCount - previouslyPaid;
+        if (newStars > 0) {
+          const awarded = awardStarboardCoins(
+            message.author.id,
+            message.author.username,
+            newStars,
+          );
+          if (awarded > 0) {
+            sourcePaidStars.set(sourceKey, starCount);
+            logger.info(`Starboard: awarded ${awarded} SGC to ${message.author.username} for ${newStars} new star(s) on ${sourceKey}.`);
+            void matchPayout(message.author.username, awarded, 'starboard', message.guildId);
+          }
+        }
+      } catch (error) {
+        logger.warn('Failed to award starboard coins.', error.message);
+      }
+    }
   } finally {
     processingSourceKeys.delete(sourceKey);
   }
@@ -321,7 +427,7 @@ async function handleMessageReactionAdd(reaction) {
     await processStarboardReaction(reaction);
   } catch (error) {
     if (isMissingPermissionError(error)) {
-      warnMissingPermissions('reaction add', error);
+      warnMissingPermissions('reaction add', error, 'unknown');
       return;
     }
 
@@ -334,7 +440,7 @@ async function handleMessageReactionRemove(reaction) {
     await processStarboardReaction(reaction);
   } catch (error) {
     if (isMissingPermissionError(error)) {
-      warnMissingPermissions('reaction remove', error);
+      warnMissingPermissions('reaction remove', error, 'unknown');
       return;
     }
 

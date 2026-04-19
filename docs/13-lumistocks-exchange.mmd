@@ -1,0 +1,102 @@
+graph TB
+    subgraph Commands["📈 LumiStocks Commands"]
+        LIST["/lumi-stocks list\n!invest list"]
+        BUY_CMD["/lumi-stocks buy\n!invest buy"]
+        SELL_CMD["/lumi-stocks sell\n!invest sell"]
+        PORT["/lumi-stocks portfolio\n!portfolio"]
+        INFO["/lumi-stocks info\n!invest info"]
+        OFFER["/lumi-stocks offer\n!invest offer"]
+        DIV_CMD["/lumi-stocks dividend\n(admin)"]
+        PRICE_CMD["/lumi-stocks price\n(admin)"]
+        RATE_CMD["/lumi-stocks rate\n(admin)"]
+    end
+
+    subgraph Universe["🌐 Stock Universe Sync"]
+        SYNC["syncStockUniverse()\nCalled on every query"]
+        GUILDS["getAllGuildConfigs()\nReal guild businesses"]
+        ENSURE["ensureStockForGuild()\nCreate/update guild stock"]
+        SYNTH["ensureSyntheticStockPool()\n18 synthetic companies"]
+        LISTING["Listing Logic\n≤10 real → fill to 10\n>10 real → all listed"]
+        SNAP["persistPerformanceSnapshot()\nUpdate scores & prices"]
+    end
+
+    subgraph BuyFlow["💰 Buy Flow"]
+        BUY_V["Validate:\nStock active & listed\nUser has balance"]
+        BUY_CALC["sharesBought =\namount / share_price"]
+        BUY_DEBIT["adjustBalance(user, -amount)"]
+        BUY_CREDIT{{"Stock type?"}}
+        BUY_GUILD["depositBigBusiness()\n→ Guild Treasury"]
+        BUY_SYNTH["synthetic_treasury\n+= amount"]
+        BUY_SHARE["Upsert bb_shareholders\nshares, avg_cost_basis"]
+        BUY_IMPACT["applyTradeImpact()\ndemand_pressure ↑\nrecalculatePrice()"]
+    end
+
+    subgraph SellFlow["💸 Sell Flow"]
+        SELL_V["Validate:\nHolding ≥ shares\nTreasury liquidity"]
+        SELL_CALC["proceeds =\nshares × share_price"]
+        SELL_DEBIT{{"Stock type?"}}
+        SELL_GUILD["adjustBalance(BB, -proceeds)\nDeduct from Guild"]
+        SELL_SYNTH["synthetic_treasury\n-= proceeds"]
+        SELL_CREDIT["adjustBalance(user, +proceeds)"]
+        SELL_SHARE["Update bb_shareholders\ndelete if shares = 0"]
+        SELL_IMPACT["applyTradeImpact()\ndemand_pressure ↓\nrecalculatePrice()"]
+    end
+
+    subgraph Dividends["🎁 Dividend Distribution"]
+        DIV_POOL["dividendPool =\ntreasury × rate\n(or admin override)"]
+        DIV_PER["perShare =\npool / totalShares"]
+        DIV_PAY["For each holder:\npayout = shares × perShare"]
+        DIV_DEBIT2{{"Stock type?"}}
+        DIV_GUILD2["Deduct from\nGuild Treasury"]
+        DIV_SYNTH2["Deduct from\nsynthetic_treasury"]
+        DIV_CREDIT2["adjustBalance(holder, +payout)"]
+        DIV_LOG["Record in\nbb_dividend_log"]
+        DIV_ANN["announceDividend()\nLLM corporate announcement"]
+    end
+
+    subgraph Pricing["📊 Price Recalculation"]
+        PR_TREASURY["treasuryBalance\nguild: BB balance\nsynth: synthetic_treasury"]
+        PR_INVESTED["investedCapital\nSUM(total_invested)\nwhere shares > 0"]
+        PR_MCAP["marketCap =\ntreasury + investedCapital"]
+        PR_INTRINSIC["intrinsicPerShare =\nmarketCap / referenceFloat"]
+        PR_PERF["performanceMultiplier\n0.65 – 1.55"]
+        PR_DEMAND["demandMultiplier\n0.5 – 1.8"]
+        PR_FINAL["finalPrice = intrinsic\n× perf × demand\nclamped [1, 250000]"]
+    end
+
+    subgraph Storage["💾 Database"]
+        DB_STOCKS["bb_stocks\nticker, price, treasury,\nperformance, demand"]
+        DB_HOLDERS["bb_shareholders\nshares, cost_basis,\ndividends"]
+        DB_TX["bb_transactions\nbuy/sell/dividend logs"]
+        DB_DIV["bb_dividend_log\npool, per_share, paid"]
+    end
+
+    LIST & BUY_CMD & SELL_CMD & PORT & INFO & OFFER --> SYNC
+    SYNC --> GUILDS --> ENSURE
+    SYNC --> SYNTH
+    ENSURE & SYNTH --> LISTING --> SNAP
+
+    BUY_CMD --> BUY_V --> BUY_CALC --> BUY_DEBIT --> BUY_CREDIT
+    BUY_CREDIT -->|"Guild"| BUY_GUILD
+    BUY_CREDIT -->|"Synthetic"| BUY_SYNTH
+    BUY_GUILD & BUY_SYNTH --> BUY_SHARE --> BUY_IMPACT
+
+    SELL_CMD --> SELL_V --> SELL_CALC --> SELL_DEBIT
+    SELL_DEBIT -->|"Guild"| SELL_GUILD
+    SELL_DEBIT -->|"Synthetic"| SELL_SYNTH
+    SELL_GUILD & SELL_SYNTH --> SELL_CREDIT --> SELL_SHARE --> SELL_IMPACT
+
+    DIV_CMD --> DIV_POOL --> DIV_PER --> DIV_PAY --> DIV_DEBIT2
+    DIV_DEBIT2 -->|"Guild"| DIV_GUILD2
+    DIV_DEBIT2 -->|"Synthetic"| DIV_SYNTH2
+    DIV_GUILD2 & DIV_SYNTH2 --> DIV_CREDIT2 --> DIV_LOG --> DIV_ANN
+
+    BUY_IMPACT & SELL_IMPACT --> PR_TREASURY --> PR_MCAP
+    PR_INVESTED --> PR_MCAP --> PR_INTRINSIC --> PR_FINAL
+    PR_PERF --> PR_FINAL
+    PR_DEMAND --> PR_FINAL
+
+    BUY_SHARE & SELL_SHARE --> DB_HOLDERS
+    BUY_IMPACT & SELL_IMPACT --> DB_STOCKS
+    BUY_IMPACT & SELL_IMPACT --> DB_TX
+    DIV_LOG --> DB_DIV

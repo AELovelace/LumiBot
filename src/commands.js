@@ -3,6 +3,16 @@ const { ChannelType, SlashCommandBuilder } = require('discord.js');
 const { config, parsePlayInput } = require('./config');
 const { handleAutonomousMessage } = require('./chatbot');
 const { logger } = require('./logger');
+const { awardMessageCoins } = require('./sadgirlEconomyStore');
+const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
+const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
+const { buildPachinkoCommand, handlePachinkoCommand } = require('./pachinko');
+const { buildBlackjackCommand, handleBlackjackCommand } = require('./blackjack');
+const { buildHoldemCommand, handleHoldemCommand } = require('./texasholdem');
+const { buildHorseRaceCommand, handleHorseRaceCommand } = require('./horseracing');
+const { buildSlotsCommand, handleSlotsCommand } = require('./slots');
+const { buildPrivateStockCommand, handlePrivateStockCommand, handleStockButtonInteraction } = require('./privateStockCommands');
+const { formatVcTime, getVcLeaderboard, getUserVcTime, activeVoiceUsers } = require('./vcRewards');
 const { getRandomQuote, addQuote, getRandomJackHandey } = require('./quotes');
 const { enqueue, getQueue, getQueueLength } = require('./queue');
 const { resolveTitle } = require('./stream');
@@ -47,7 +57,7 @@ function splitMessage(text, maxLen = DISCORD_MAX_CHARS) {
 }
 
 function buildPlayerCommands() {
-  return [
+  const cmds = [
     new SlashCommandBuilder()
       .setName('lumi-play')
       .setDescription('Play a YouTube/SoundCloud URL, search query, or HTTP stream URL.')
@@ -88,6 +98,8 @@ function buildPlayerCommands() {
         .setDescription('What to search for')
         .setRequired(true)),
   ].map((command) => command.toJSON());
+
+  return [...cmds, buildTouhouCommand(), buildPachinkoCommand(), buildBlackjackCommand(), buildHoldemCommand(), buildHorseRaceCommand(), buildSlotsCommand(), buildVcCommand(), buildPrivateStockCommand()];
 }
 
 function buildHelpText() {
@@ -102,6 +114,37 @@ function buildHelpText() {
     '`/lumi-jh` - Get a random Deep Thought, by Jack Handey.',
     '`/lumi-search <query>` - Ask Lumi to search the web for something.',
     '`/lumi-man` - Show this help message.',
+    '`/lumi-touhou adopt` - Adopt a random Touhou (25 SGC).',
+    '`/lumi-touhou collection` - View your Touhou collection.',
+    '`/lumi-touhou send <name> <user>` - Gift a Touhou to someone.',
+    '`/lumi-touhou trade <yours> <user> <theirs>` - Swap Touhous.',
+    '`/lumi-touhou sell <name> <price>` - List a Touhou for sale.',
+    '`/lumi-touhou buy <name>` - Buy a listed Touhou.',
+    '`/lumi-touhou market` - Browse the Touhou market.',
+    '`/lumi-touhou info <name>` - View Touhou details.',
+    '`/lumi-bank balance` - Check your SadGirlCoin balance and top 10.',
+    '`/lumi-bank send <user> <amount>` - Send SGC to another member.',
+    '`/lumi-bank raffle` - Buy a yearly raffle ticket (50 SGC).',
+    '`/lumi-bets list` - Show open LumiBet markets.',
+    '`/lumi-bets buy <market> <option> <amount>` - Invest in a market (option name or number).',
+    '`/lumi-stocks list` - Show listed Big Business and synthetic stocks.',
+    '`/lumi-stocks buy <ticker> <amount>` - Buy stock with SGC.',
+    '`/lumi-stocks sell <ticker> <shares>` - Sell stock back into the market.',
+    '`/lumi-stocks portfolio` - Show your stock portfolio.',
+    '`/lumi-pachinko <peg> <bet>` - Drop a pachinko ball and bet on the landing peg!',
+    '`/lumi-blackjack play <bet>` - Join a multiplayer blackjack table!',
+    '`/lumi-blackjack leave` - Leave the blackjack table.',
+    '`/lumi-blackjack bet <amount>` - Change your bet for the next hand.',
+    '`/lumi-holdem play <bet>` - Join a Texas Hold\'em table!',
+    '`/lumi-holdem leave` - Leave the Texas Hold\'em table.',
+    '`/lumi-holdem bet <amount>` - Change your ante for the next hand.',
+    '`/lumi-holdem raise <amount>` - Raise during a hand (custom amount).',
+    '`/lumi-horserace start` - Start or join a horse race lobby!',
+    '`/lumi-horserace leave` - Leave the horse race lobby.',
+    '`/lumi-slots start` - Open or join a slot machine!',
+    '`/lumi-slots leave` - Leave the slot machine.',
+    '`/lumi-vc rank` - Voice channel time leaderboard.',
+    '`/lumi-vc me` - Show your own VC time stats.',
   ].join('\n');
 }
 
@@ -369,6 +412,69 @@ async function handleSearchCommand(interaction) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// /lumi-vc — Voice channel time leaderboard
+// ---------------------------------------------------------------------------
+
+function buildVcCommand() {
+  return new SlashCommandBuilder()
+    .setName('lumi-vc')
+    .setDescription('Voice channel time leaderboard — see who hangs out the most.')
+    .addSubcommand((sub) => sub
+      .setName('rank')
+      .setDescription('Show the top 20 VC time leaderboard.'))
+    .addSubcommand((sub) => sub
+      .setName('me')
+      .setDescription('Show your own VC time stats.'))
+    .toJSON();
+}
+
+async function handleVcCommand(interaction) {
+  const sub = interaction.options.getSubcommand();
+
+  if (sub === 'me') {
+    const userId = interaction.user.id;
+    const total = getUserVcTime(userId);
+    const inVc = activeVoiceUsers.has(userId);
+    const status = inVc ? '🟢 Currently in VC' : '⚫ Not in VC';
+    await interaction.reply({
+      content: [
+        `**Your VC Time** — ${status}`,
+        `Total: **${formatVcTime(total)}**`,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  // Default: rank / leaderboard
+  const lb = getVcLeaderboard(20);
+  if (lb.length === 0) {
+    await interaction.reply({ content: 'No VC time tracked yet.', ephemeral: true });
+    return;
+  }
+
+  const lines = lb.map((row, i) => {
+    const medal = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+    const inVc = activeVoiceUsers.has(row.user_id) ? ' 🟢' : '';
+    return `${medal} **${row.username || row.user_id}** — ${formatVcTime(row.total_seconds)}${inVc}`;
+  });
+
+  const userId = interaction.user.id;
+  const userTotal = getUserVcTime(userId);
+  const userRank = lb.findIndex((r) => r.user_id === userId);
+
+  lines.push('');
+  if (userRank >= 0) {
+    lines.push(`Your rank: **#${userRank + 1}** — ${formatVcTime(userTotal)}`);
+  } else if (userTotal > 0) {
+    lines.push(`Your total: **${formatVcTime(userTotal)}** (not in top 20)`);
+  }
+
+  await interaction.reply({
+    content: `**🎧 Voice Channel Leaderboard**\n${lines.join('\n')}`,
+  });
+}
+
 const commandHandlers = new Map([
   ['lumi-play', handlePlayCommand],
   ['lumi-stop', handleStopCommand],
@@ -379,9 +485,23 @@ const commandHandlers = new Map([
   ['lumi-jh', handleJackHandeyCommand],
   ['lumi-man', handleManCommand],
   ['lumi-search', handleSearchCommand],
+  ['lumi-bank', handleBankCommand],
+  ['lumi-bets', handleBetsCommand],
+  ['lumi-stocks', handlePrivateStockCommand],
+  ['lumi-touhou', handleTouhouCommand],
+  ['lumi-pachinko', handlePachinkoCommand],
+  ['lumi-blackjack', handleBlackjackCommand],
+  ['lumi-holdem', handleHoldemCommand],
+  ['lumi-horserace', handleHorseRaceCommand],
+  ['lumi-slots', handleSlotsCommand],
+  ['lumi-vc', handleVcCommand],
 ]);
 
 async function handleCommandInteraction(interaction) {
+  if (await handleStockButtonInteraction(interaction)) {
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) {
     return;
   }
@@ -409,11 +529,410 @@ async function handleMessageCreate(message) {
     return;
   }
 
+  // ── Economy & casino games work in ALL guilds ──
+
+  // Award SadGirlCoin for chatting (1 SGC per 50 characters)
+  // Images count as 25 bonus chars (half a coin), videos count as 50 bonus chars (full coin)
+  if (config.economyEnabled) {
+    try {
+      let effectiveChars = message.content?.length ?? 0;
+
+      for (const attachment of message.attachments.values()) {
+        const ct = attachment.contentType ?? '';
+        if (ct.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/iu.test(attachment.url)) {
+          effectiveChars += 50;
+        } else if (ct.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|tiff?)$/iu.test(attachment.url)) {
+          effectiveChars += 25;
+        }
+      }
+
+      if (effectiveChars > 0) {
+        const coins = awardMessageCoins(message.author.id, message.author.username, effectiveChars);
+        if (coins > 0) {
+          logger.debug(`Awarded ${coins} SGC to ${message.author.username} (${effectiveChars} effective chars).`);
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to award message coins.', error.message);
+    }
+  }
+
+  // ── ! prefix shortcuts for casino games ──
+  if (message.content.startsWith('!')) {
+    const handled = await handlePrefixCommand(message);
+    if (handled) return;
+  }
+
+  // ── Autonomous chatbot: home guild only ──
   if (config.allowedGuildId && message.guildId !== config.allowedGuildId) {
     return;
   }
 
   await handleAutonomousMessage(message);
+}
+
+// ---------------------------------------------------------------------------
+// ! prefix command adapter — wraps a Message into a fake interaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a minimal object that mimics a Discord ChatInputCommandInteraction
+ * just enough for the game handlers to work (reply, editReply, fetchReply,
+ * followUp, options, user, channel, channelId, client).
+ */
+function fakeInteraction(message, optionsData = {}) {
+  let replyMsg = null;
+
+  const interaction = {
+    user: message.author,
+    member: message.member,
+    channelId: message.channelId,
+    channel: message.channel,
+    client: message.client,
+    guildId: message.guildId,
+
+    options: {
+      getSubcommand() { return optionsData._subcommand ?? null; },
+      getInteger(name) { return optionsData[name] ?? null; },
+      getNumber(name) { return optionsData[name] ?? null; },
+      getString(name) { return optionsData[name] ?? null; },
+      getUser(name) { return optionsData[name] ?? null; },
+    },
+
+    async reply(content) {
+      const payload = typeof content === 'string' ? { content } : content;
+      // Ephemeral messages → send as a normal reply that auto-deletes after 8s
+      if (payload.ephemeral) {
+        const m = await message.reply(payload.content);
+        setTimeout(() => m.delete().catch(() => {}), 8000);
+        replyMsg = m;
+        return m;
+      }
+      replyMsg = await message.channel.send({
+        content: payload.content,
+        components: payload.components,
+      });
+      return replyMsg;
+    },
+
+    async editReply(content) {
+      if (!replyMsg) return;
+      const payload = typeof content === 'string' ? { content } : content;
+      return replyMsg.edit(payload);
+    },
+
+    async fetchReply() {
+      return replyMsg;
+    },
+
+    async followUp(content) {
+      const payload = typeof content === 'string' ? { content } : content;
+      return message.channel.send(payload);
+    },
+
+    async deferReply() { /* no-op for prefix */ },
+  };
+
+  return interaction;
+}
+
+async function handlePrefixCommand(message) {
+  const text = message.content.trim();
+  const parts = text.split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+
+  // ── !pachinko <peg> <bet> ──
+  if (cmd === '!pachinko') {
+    const peg = parseInt(parts[1], 10);
+    const bet = parseInt(parts[2], 10);
+    if (!peg || !bet || peg < 1 || peg > 10 || bet < 1) {
+      await message.reply('Usage: `!pachinko <peg 1-10> <bet>`');
+      return true;
+    }
+    const fake = fakeInteraction(message, { peg, bet });
+    await handlePachinkoCommand(fake);
+    return true;
+  }
+
+  // ── !blackjack [bet] / !blackjack leave / !blackjack bet <amount> ──
+  if (cmd === '!blackjack' || cmd === '!bj') {
+    const sub = (parts[1] ?? '').toLowerCase();
+    if (sub === 'leave') {
+      const fake = fakeInteraction(message, { _subcommand: 'leave' });
+      await handleBlackjackCommand(fake);
+    } else if (sub === 'bet') {
+      const amount = parseInt(parts[2], 10);
+      if (!amount || amount < 1) {
+        await message.reply('Usage: `!blackjack bet <amount>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'bet', amount });
+      await handleBlackjackCommand(fake);
+    } else {
+      const bet = parseInt(sub, 10) || parseInt(parts[1], 10);
+      if (!bet || bet < 1) {
+        await message.reply('Usage: `!blackjack <bet>` | `!blackjack leave` | `!blackjack bet <amount>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'play', bet });
+      await handleBlackjackCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !holdem [bet] / !holdem leave / !holdem bet <amount> ──
+  if (cmd === '!holdem' || cmd === '!th') {
+    const sub = (parts[1] ?? '').toLowerCase();
+    if (sub === 'leave') {
+      const fake = fakeInteraction(message, { _subcommand: 'leave' });
+      await handleHoldemCommand(fake);
+    } else if (sub === 'bet') {
+      const amount = parseInt(parts[2], 10);
+      if (!amount || amount < 1) {
+        await message.reply('Usage: `!holdem bet <amount>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'bet', amount });
+      await handleHoldemCommand(fake);
+    } else if (sub === 'raise') {
+      const amount = parseInt(parts[2], 10);
+      if (!amount || amount < 1) {
+        await message.reply('Usage: `!holdem raise <amount>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'raise', amount });
+      await handleHoldemCommand(fake);
+    } else {
+      const bet = parseInt(sub, 10) || parseInt(parts[1], 10);
+      if (!bet || bet < 1) {
+        await message.reply('Usage: `!holdem <bet>` | `!holdem leave` | `!holdem bet <amount>` | `!holdem raise <amount>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'play', bet });
+      await handleHoldemCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !horseracing / !hr ──
+  if (cmd === '!horseracing' || cmd === '!hr') {
+    const sub = (parts[1] ?? '').toLowerCase();
+    if (sub === 'leave') {
+      const fake = fakeInteraction(message, { _subcommand: 'leave' });
+      await handleHorseRaceCommand(fake);
+    } else {
+      const fake = fakeInteraction(message, { _subcommand: 'start' });
+      await handleHorseRaceCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !slots ──
+  if (cmd === '!slots') {
+    const sub = (parts[1] ?? '').toLowerCase();
+    if (sub === 'leave') {
+      const fake = fakeInteraction(message, { _subcommand: 'leave' });
+      await handleSlotsCommand(fake);
+    } else {
+      const fake = fakeInteraction(message, { _subcommand: 'start' });
+      await handleSlotsCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !vc [rank|me] ──
+  if (cmd === '!vc') {
+    const sub = (parts[1] ?? 'rank').toLowerCase();
+    if (sub === 'me') {
+      const fake = fakeInteraction(message, { _subcommand: 'me' });
+      await handleVcCommand(fake);
+    } else {
+      const fake = fakeInteraction(message, { _subcommand: 'rank' });
+      await handleVcCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !bank [balance|send|raffle] ──
+  if (cmd === '!bank') {
+    const sub = (parts[1] ?? 'balance').toLowerCase();
+    if (sub === 'send') {
+      const mentioned = message.mentions.users.first();
+      const amount = parseInt(parts[3], 10) || parseInt(parts[2], 10);
+      if (!mentioned || !amount || amount < 1) {
+        await message.reply('Usage: `!bank send @user <amount>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'send', user: mentioned, amount, note: '' });
+      await handleBankCommand(fake);
+    } else if (sub === 'raffle') {
+      const fake = fakeInteraction(message, { _subcommand: 'raffle' });
+      await handleBankCommand(fake);
+    } else {
+      const fake = fakeInteraction(message, { _subcommand: 'balance' });
+      await handleBankCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !bets / !stocks [list|buy] ──
+  if (cmd === '!bets' || cmd === '!stocks') {
+    const sub = (parts[1] ?? 'list').toLowerCase();
+    if (sub === 'buy') {
+      const market = parseInt(parts[2], 10);
+      const side = (parts[3] ?? '').toLowerCase();
+      const amount = parseInt(parts[4], 10);
+      if (!market || !side || !amount || amount < 1) {
+        await message.reply('Usage: `!bets buy <market_id> <option> <amount>` (option = name or number)');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'buy', market, side, amount });
+      await handleBetsCommand(fake);
+    } else {
+      const fake = fakeInteraction(message, { _subcommand: 'list' });
+      await handleBetsCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !invest / !shares / !portfolio ──
+  if (cmd === '!invest' || cmd === '!shares' || cmd === '!portfolio') {
+    const sub = cmd === '!portfolio' ? 'portfolio' : (parts[1] ?? 'list').toLowerCase();
+
+    if (sub === 'buy') {
+      const ticker = parts[2] ?? '';
+      const amount = parseInt(parts[3], 10);
+      if (!ticker || !amount || amount < 1) {
+        await message.reply('Usage: `!invest buy <ticker> <amount>`');
+        return true;
+      }
+      await handlePrivateStockCommand(fakeInteraction(message, { _subcommand: 'buy', ticker, amount }));
+    } else if (sub === 'sell') {
+      const ticker = parts[2] ?? '';
+      const shares = parseFloat(parts[3]);
+      if (!ticker || !shares || shares <= 0) {
+        await message.reply('Usage: `!invest sell <ticker> <shares>`');
+        return true;
+      }
+      await handlePrivateStockCommand(fakeInteraction(message, { _subcommand: 'sell', ticker, shares }));
+    } else if (sub === 'info') {
+      const ticker = parts[2] ?? '';
+      if (!ticker) {
+        await message.reply('Usage: `!invest info <ticker>`');
+        return true;
+      }
+      await handlePrivateStockCommand(fakeInteraction(message, { _subcommand: 'info', ticker }));
+    } else if (sub === 'offer') {
+      const ticker = parts[2] ?? '';
+      if (!ticker) {
+        await message.reply('Usage: `!invest offer <ticker>`');
+        return true;
+      }
+      await handlePrivateStockCommand(fakeInteraction(message, { _subcommand: 'offer', ticker }));
+    } else if (sub === 'portfolio') {
+      await handlePrivateStockCommand(fakeInteraction(message, { _subcommand: 'portfolio' }));
+    } else {
+      await handlePrivateStockCommand(fakeInteraction(message, { _subcommand: 'list' }));
+    }
+    return true;
+  }
+
+  // ── !touhou / !2hu ──
+  if (cmd === '!touhou' || cmd === '!2hu') {
+    const sub = (parts[1] ?? 'collection').toLowerCase();
+
+    if (sub === 'adopt') {
+      const fake = fakeInteraction(message, { _subcommand: 'adopt' });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'send') {
+      const mentioned = message.mentions.users.first();
+      if (!mentioned) {
+        await message.reply('Usage: `!touhou send <name> @user`');
+        return true;
+      }
+      // Everything between "send" and the mention is the touhou name
+      const mentionIndex = text.indexOf('<@');
+      const name = text.slice(text.indexOf(sub) + sub.length, mentionIndex).trim();
+      if (!name) {
+        await message.reply('Usage: `!touhou send <name> @user`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'send', name, user: mentioned });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'trade') {
+      const mentioned = message.mentions.users.first();
+      if (!mentioned) {
+        await message.reply('Usage: `!touhou trade <yours> @user <theirs>`');
+        return true;
+      }
+      const mentionIndex = text.indexOf('<@');
+      const mentionEnd = text.indexOf('>', mentionIndex) + 1;
+      const yours = text.slice(text.indexOf(sub) + sub.length, mentionIndex).trim();
+      const theirs = text.slice(mentionEnd).trim();
+      if (!yours || !theirs) {
+        await message.reply('Usage: `!touhou trade <yours> @user <theirs>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'trade', yours, user: mentioned, theirs });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'sell') {
+      const lastSpaceIdx = text.lastIndexOf(' ');
+      const price = parseInt(text.slice(lastSpaceIdx + 1), 10);
+      const name = text.slice(text.indexOf(sub) + sub.length, lastSpaceIdx).trim();
+      if (!name || !price || price < 1) {
+        await message.reply('Usage: `!touhou sell <name> <price>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'sell', name, price });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'delist') {
+      const name = parts.slice(2).join(' ');
+      if (!name) {
+        await message.reply('Usage: `!touhou delist <name>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'delist', name });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'buy') {
+      const name = parts.slice(2).join(' ');
+      if (!name) {
+        await message.reply('Usage: `!touhou buy <name>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'buy', name });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'market') {
+      const fake = fakeInteraction(message, { _subcommand: 'market' });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'info') {
+      const name = parts.slice(2).join(' ');
+      if (!name) {
+        await message.reply('Usage: `!touhou info <name>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'info', name });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'search') {
+      const query = parts.slice(2).join(' ');
+      if (!query) {
+        await message.reply('Usage: `!touhou search <query>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'search', query });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'stats') {
+      const fake = fakeInteraction(message, { _subcommand: 'stats' });
+      await handleTouhouCommand(fake);
+    } else {
+      // Default: show own collection, or if user typed a name, show that user's collection
+      const mentioned = message.mentions.users.first();
+      const fake = fakeInteraction(message, { _subcommand: 'collection', user: mentioned || null });
+      await handleTouhouCommand(fake);
+    }
+    return true;
+  }
+
+  return false; // not a recognized prefix command
 }
 
 module.exports = {

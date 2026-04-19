@@ -1,0 +1,52 @@
+graph TB
+    subgraph Entry["🎮 Game Entry Points"]
+        PC["!pachinko / /lumi-pachinko"]
+        BJ["!blackjack / /lumi-blackjack"]
+        SL["!slots / /lumi-slots"]
+        TH["!holdem / /lumi-holdem"]
+        HR["!horseracing / /lumi-horserace"]
+    end
+
+    subgraph Casino["🎰 Momiji Casino (House)"]
+        MC["Momiji Casino Account\n__MOMIJI_CASINO__\nSeeded: 1,000,000 SGC"]
+    end
+
+    subgraph CentralBank["🏦 Central Bank"]
+        CB["Central Bank Account\n__CENTRAL_BANK__"]
+    end
+
+    subgraph Pachinko["🔮 Pachinko"]
+        PG["10-wide grid, 9 rows\nBall drifts ±1 per row"]
+        PP["Payouts:\nExact: 2x\n1 off: 1.5x\n2 off: 1x\n3+: 0x"]
+    end
+
+    subgraph Blackjack["🃏 Blackjack"]
+        BJG["2-deck shoe\nUp to 3 players\nDealer stands on 17+"]
+        BJP["Payouts:\nNatural BJ: 2.5x\nWin: 2x\nPush: 1x\nLose: 0x"]
+    end
+
+    subgraph Slots["🎰 Slots"]
+        SLG["3x3 grid, 6 symbols\nMultiplayer lobby\nAnimated 6-frame spin"]
+        SLP["Win conditions stack:\nRow 3-kind: 4x\nDiag 3-kind: 3x\nHand combo: 2x"]
+    end
+
+    subgraph Holdem["♠️ Texas Hold'em"]
+        THG["Ante-only, no raises\nUp to 6 players\nLumi CPU auto-joins solo"]
+        THP["Best 5 of 7 cards\nWinners split pot\nCPU wins stay in casino"]
+    end
+
+    subgraph HorseRace["🏇 Horse Racing"]
+        HRG["4 horses, 50-char track\n30s betting window\nBet: 5, 10, or 20 SGC"]
+        HRP["Winners split pool\nUnderdog: 2x multiplier\nNo winner: house keeps"]
+    end
+
+    PC --> PG --> PP
+    BJ --> BJG --> BJP
+    SL --> SLG --> SLP
+    TH --> THG --> THP
+    HR --> HRG --> HRP
+
+    PP & BJP & SLP & THP & HRP -->|"placeCasinoBet"| MC
+    MC -->|"payCasinoPayout"| PP & BJP & SLP & THP & HRP
+
+    MC -->|"Daily: 10% over 1M"| CB

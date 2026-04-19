@@ -1,0 +1,65 @@
+graph TB
+    subgraph Users["👤 Players"]
+        BU["Buyer"]
+        SE["Seller"]
+        AD["Admin"]
+    end
+
+    subgraph Market["🏪 Touhou Market"]
+        AV["Available Pool\n(Unclaimed Touhous)"]
+        OW["Owned Touhous\n(Per-user collections)"]
+        LI["Marketplace Listings\n(Player-set prices)"]
+    end
+
+    subgraph Actions["🔄 Actions"]
+        ADOPT["Adopt\n25 SGC → random Touhou"]
+        GIFT["Send / Gift\nFree, trade count +1"]
+        SWAP["Trade / Swap\nFree, both trade counts +1"]
+        LIST["Sell (List)\nNo cost, sets price"]
+        DELIST["Delist\nRemove from marketplace"]
+        BUY["Buy Listing\nBuyer pays full price"]
+    end
+
+    subgraph Economy["💰 SGC Flow"]
+        BUYER_PAY["Buyer pays listing price"]
+        SELLER_GET["Seller gets 90%"]
+        TAX["10% Tax → Central Bank"]
+        ADOPT_COST["25 SGC deducted"]
+    end
+
+    subgraph Rarity["⭐ Rarity Tiers"]
+        R1["Common\n0-1 trades"]
+        R2["🟢 Uncommon\n2-5 trades"]
+        R3["🔷 Rare\n6-11 trades"]
+        R4["💜 Epic\n12-19 trades"]
+        R5["🌟 Legendary\n20+ trades"]
+        R6["✨ Ultra-Plus Infinity Rare\nMomiji only"]
+    end
+
+    subgraph Admin["🔧 Admin Operations"]
+        ASSIGN["assign\nForce ownership"]
+        RELEASE["release\nReturn to market"]
+        RESET["reset-trades\nReset trade count"]
+    end
+
+    BU --> ADOPT --> AV
+    AV -->|"Random Touhou"| OW
+    ADOPT --> ADOPT_COST
+
+    SE --> GIFT --> OW
+    SE & BU --> SWAP --> OW
+    SE --> LIST --> LI
+    SE --> DELIST --> LI
+
+    BU --> BUY --> LI
+    BUY --> BUYER_PAY
+    BUYER_PAY --> SELLER_GET --> SE
+    BUYER_PAY --> TAX
+
+    LI -->|"Ownership transfers"| OW
+
+    OW -->|"Trade count"| R1 --> R2 --> R3 --> R4 --> R5
+
+    AD --> ASSIGN --> OW
+    AD --> RELEASE --> AV
+    AD --> RESET

@@ -4,12 +4,27 @@ const { flushChatbotState, initializeChatbot, shutdownChatbotPersistence } = req
 const { handleCommandInteraction, handleMessageCreate } = require('./commands');
 const { config, getMissingConfigValues } = require('./config');
 const { handleControlPlaneInteraction, registerControlPlane } = require('./controlPlane');
+const { initEconomyStore, closeEconomyStore, getEconomyDb } = require('./sadgirlEconomyStore');
+const { startEconomyScheduler, stopEconomyScheduler } = require('./sadgirlEconomyScheduler');
+const { initTouhouStore, closeTouhouStore } = require('./touhouStore');
+const { setTouhouDir } = require('./touhouCommands');
 const { logger } = require('./logger');
 const { initNowPlaying } = require('./nowPlaying');
 const { stopAllSessions } = require('./voice');
 const { killExistingProcesses } = require('./processCleanup');
 const { handleMessageReactionAdd, handleMessageReactionRemove } = require('./starboard');
+const { handleStockStarReaction } = require('./sadgirlStockActivation');
+const { handleReactionRoleAdd, handleReactionRoleRemove } = require('./reactionRoles');
+const { setThoughtRelayClient } = require('./thoughtRelay');
 const { handleGuildMemberAdd } = require('./welcome');
+const { handleVoiceStateUpdate, startVcRewards, stopVcRewards } = require('./vcRewards');
+const { initBigBusiness, stopBigBusiness } = require('./bigBusiness');
+const { initGuildConfig } = require('./guildConfig');
+const { startWebPanel, stopWebPanel } = require('./webPanel');
+const { initPrivateStockStore } = require('./privateStockStore');
+const { startPrivateStockScheduler, stopPrivateStockScheduler } = require('./privateStockScheduler');
+const { initStockEvents, stopStockEvents } = require('./stockEvents');
+const { reloadSettings: reloadPrivateStockSettings } = require('./privateStockCommands');
 
 const missingConfigValues = getMissingConfigValues();
 if (missingConfigValues.length > 0) {
@@ -33,6 +48,8 @@ const client = new Client({
     Partials.User,
   ],
 });
+
+setThoughtRelayClient(client);
 
 let isShuttingDown = false;
 let nowPlayingWatcher = null;
@@ -67,12 +84,141 @@ async function shutdown(signal) {
     logger.warn('Failed to stop chatbot memory SQL service during shutdown.', error.message);
   }
 
+  // Shutdown Touhou market
+  try {
+    closeTouhouStore();
+  } catch (error) {
+    logger.warn('Failed to close Touhou market DB during shutdown.', error.message);
+  }
+
+  // Stop VC rewards (pays out remaining hours)
+  try {
+    stopVcRewards();
+  } catch (error) {
+    logger.warn('Failed to stop VC rewards during shutdown.', error.message);
+  }
+
+  // Stop Big Business Inc
+  try {
+    stopBigBusiness();
+  } catch (error) {
+    logger.warn('Failed to stop Big Business Inc during shutdown.', error.message);
+  }
+
+  try {
+      stopStockEvents();
+    } catch (error) {
+      logger.warn('Failed to stop stock events during shutdown.', error.message);
+    }
+
+    try {
+  } catch (error) {
+    logger.warn('Failed to stop private stock scheduler during shutdown.', error.message);
+  }
+
+  // Stop web control panel
+  try {
+    stopWebPanel();
+  } catch (error) {
+    logger.warn('Failed to stop web panel during shutdown.', error.message);
+  }
+
+  // Shutdown SadGirlCoin economy
+  try {
+    stopEconomyScheduler();
+    closeEconomyStore();
+  } catch (error) {
+    logger.warn('Failed to close SadGirlCoin economy DB during shutdown.', error.message);
+  }
+
   client.destroy();
   process.exit(0);
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
   await initializeChatbot();
+
+  // Initialize SadGirlCoin economy
+  if (config.economyEnabled) {
+    // Initialize per-guild configuration (must run before economy systems)
+    try {
+      initGuildConfig();
+    } catch (error) {
+      logger.error('Failed to initialize guild config.', error.message);
+    }
+
+    try {
+      initEconomyStore(config.economyDbFile);
+
+      // Reload panel-configurable settings from DB overrides
+      try {
+        const { reloadSettings: reloadSlots } = require('./slots');
+        const { reloadSettings: reloadPachinko } = require('./pachinko');
+        const { reloadSettings: reloadBlackjack } = require('./blackjack');
+        const { reloadSettings: reloadHoldem } = require('./texasholdem');
+        const { reloadSettings: reloadHorseRacing } = require('./horseracing');
+        const { reloadSettings: reloadVcSettings } = require('./vcRewards');
+        const { reloadSettings: reloadScheduler } = require('./sadgirlEconomyScheduler');
+        const { reloadSettings: reloadCommands } = require('./sadgirlEconomyCommands');
+        reloadSlots();
+        reloadPachinko();
+        reloadBlackjack();
+        reloadHoldem();
+        reloadHorseRacing();
+        reloadVcSettings();
+        reloadScheduler();
+        reloadCommands();
+        logger.info('Panel settings loaded from database overrides.');
+      } catch (settingsErr) {
+        logger.warn('Could not reload panel settings (non-fatal).', settingsErr.message);
+      }
+
+      startEconomyScheduler(readyClient);
+    } catch (error) {
+      logger.error('Failed to initialize SadGirlCoin economy.', error.message);
+    }
+
+    // Initialize Touhou market
+    try {
+      const touhouDbPath = config.touhouDbFile;
+      const touhouImgDir = config.touhouDir;
+      initTouhouStore(touhouDbPath, touhouImgDir);
+      setTouhouDir(touhouImgDir);
+    } catch (error) {
+      logger.error('Failed to initialize Touhou market.', error.message);
+    }
+
+    // Start voice-channel coin rewards (15 SGC / hour)
+    try {
+      startVcRewards(readyClient);
+    } catch (error) {
+      logger.error('Failed to start VC rewards.', error.message);
+    }
+
+    // Start Big Business Inc matching fund
+    try {
+      initBigBusiness(readyClient);
+    } catch (error) {
+      logger.error('Failed to initialize Big Business Inc.', error.message);
+    }
+
+    try {
+      initPrivateStockStore(getEconomyDb());
+      reloadPrivateStockSettings();
+      startPrivateStockScheduler(readyClient);
+      initStockEvents(readyClient);
+    } catch (error) {
+      logger.error('Failed to initialize private stock exchange.', error.message);
+    }
+
+    // Start web control panel (127.0.0.1 only)
+    try {
+      startWebPanel();
+    } catch (error) {
+      logger.error('Failed to start web control panel.', error.message);
+    }
+  }
+
   await registerControlPlane(readyClient);
   nowPlayingWatcher = initNowPlaying(readyClient);
 
@@ -90,16 +236,23 @@ client.on(Events.MessageCreate, (message) => {
   void handleMessageCreate(message);
 });
 
-client.on(Events.MessageReactionAdd, (reaction) => {
+client.on(Events.MessageReactionAdd, (reaction, user) => {
   void handleMessageReactionAdd(reaction);
+  void handleReactionRoleAdd(reaction, user);
+  void handleStockStarReaction(reaction, user, client);
 });
 
-client.on(Events.MessageReactionRemove, (reaction) => {
+client.on(Events.MessageReactionRemove, (reaction, user) => {
   void handleMessageReactionRemove(reaction);
+  void handleReactionRoleRemove(reaction, user);
 });
 
 client.on(Events.GuildMemberAdd, (member) => {
   void handleGuildMemberAdd(member);
+});
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  handleVoiceStateUpdate(oldState, newState);
 });
 
 client.on(Events.InteractionCreate, (interaction) => {

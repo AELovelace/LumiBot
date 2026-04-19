@@ -1,0 +1,43 @@
+flowchart TD
+    A["📨 Discord message arrives"] --> B{"Channel\nwhitelisted?"}
+    B -- No --> Z1["🚫 Ignore"]
+    B -- Yes --> C{"Input\nmoderation"}
+    C -- "blocked" --> Z2["🚫 Drop silently"]
+    C -- allowed --> D["📝 Push to channel history\n+ persist user memory"]
+
+    D --> E{"shouldAttemptReply?"}
+    E -- No --> Z3["📋 Log skip reason"]
+    E -- Yes --> F["⌨️ sendTyping"]
+
+    F --> G{"Detect intent"}
+    G -- "🎵 Song rec" --> SR["Now-playing\nrecommendation"]
+    G -- "🖼️ GIF intent" --> GI["Direct GIF\nvia Giphy"]
+    G -- "🔍 Search intent" --> WS["Brave Search\nflow"]
+    G -- "💬 Normal chat" --> NC["Standard\nLLM flow"]
+
+    SR --> MOD_OUT
+    GI --> MOD_OUT
+    WS --> NC
+    NC --> H["🧠 Gather context — parallel"]
+
+    H --> H1["Memory clues\nChromaDB search"]
+    H --> H2["RAG context\nRAG service"]
+    H --> H3["User profile\naggregated history"]
+
+    H1 --> I["requestLlmCompletion"]
+    H2 --> I
+    H3 --> I
+    I --> J["buildPrompt"]
+    J --> K["POST /api/generate\nOllama"]
+    K --> L["Raw completion"]
+
+    L --> M["🔧 Response\nnormalization"]
+    M --> MOD_OUT{"Output\nmoderation"}
+
+    MOD_OUT -- blocked --> Z4["🚫 Discard"]
+    MOD_OUT -- allowed --> N{"maybeAppendGif?"}
+    N -- "chance passes" --> O["LLM GIF decision\n→ Giphy fetch"]
+    N -- skip --> P
+    O --> P["✉️ message.reply\nsplitMessage"]
+
+    P --> Q["💾 Update state\n+ persist memory"]

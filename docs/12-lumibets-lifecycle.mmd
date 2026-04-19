@@ -1,0 +1,65 @@
+graph TB
+    subgraph Entry["📈 LumiBets Entry"]
+        CREATE["create\n/lumi-bets create"]
+        QCREATE["!bets create\n(prefix alias)"]
+    end
+
+    subgraph AdminPath["🔧 Admin Create Path"]
+        ADMIN{{"Creator is\neconomy admin?"}}
+        AUTO["Status: open\n6 SGC seed from Central Bank"]
+        ANN["LLM Announcement\nPosted to #announcements"]
+    end
+
+    subgraph PendingPath["⭐ Normal Create Path"]
+        PEND["Status: pending\nPost with ⭐ prompt"]
+        STAR["Star Reactions\n3 SGC each"]
+        CHG["chargeStarReact\n2/3 → pool\n1/3 → Doll Street"]
+        THR{{"3+ stars?"}}
+        ACT["Status: open\nMarket goes live"]
+        ANN2["announceMarketLive\nLLM announcement"]
+    end
+
+    subgraph MarketTypes["📋 Market Types"]
+        YN["Yes / No\n(default)"]
+        MULTI["Multi-option\n2-5 comma-separated"]
+    end
+
+    subgraph Trading["💰 Trading"]
+        BUY["buyStockPosition\nUser → Doll Street"]
+        POOL["Market Pool\nAccumulates all bets"]
+        LIST["listOpenMarkets\n/lumi-bets list"]
+    end
+
+    subgraph Resolution["✅ Resolution (Admin Only)"]
+        RES["resolveMarket\nPick winning option"]
+        SPLIT["Pool ÷ winning positions\n(equal split, not weighted)"]
+        PAY["Doll Street → Winners"]
+        NOPAY["No winners?\nPool stays in Doll Street"]
+        ARCH["archiveResolvedMarket\nDelete original message"]
+    end
+
+    subgraph Accounts["🏛️ System Accounts"]
+        CB["🏦 Central Bank"]
+        DS["📈 Doll Street"]
+    end
+
+    CREATE & QCREATE --> MarketTypes --> ADMIN
+    ADMIN -->|"Yes"| AUTO
+    AUTO -->|"6 SGC"| CB -->|"Seed"| DS
+    AUTO --> ANN
+
+    ADMIN -->|"No"| PEND
+    PEND --> STAR --> CHG --> THR
+    CHG --> DS
+    THR -->|"Yes"| ACT --> ANN2
+    THR -->|"No"| STAR
+
+    ACT & AUTO --> LIST
+    LIST --> BUY --> POOL
+    BUY --> DS
+
+    POOL --> RES --> SPLIT
+    SPLIT --> PAY
+    SPLIT --> NOPAY
+    PAY --> DS
+    RES --> ARCH

@@ -4,11 +4,35 @@ const { config } = require('./config');
 const { logger } = require('./logger');
 const { createSongWatcher } = require('./songwatcher');
 const { searchSoundCloud } = require('./soundcloudSearch');
+const { getSetting } = require('./panelSettings');
 
 const SOUNDCLOUD_ORANGE = 0xff5500;
 const SONG_POLL_FETCH_TIMEOUT_MS = 10_000;
 const MIN_NOW_PLAYING_CACHE_TTL_MS = 5_000;
 const MAX_NOW_PLAYING_CACHE_TTL_MS = 60_000;
+
+let NOW_PLAYING_CHANNEL_ID = config.nowPlayingChannelId || '';
+let SONG_POLL_URL = config.songPollUrl;
+let SONG_POLL_INTERVAL_MS = config.songPollIntervalMs;
+
+let activeClient = null;
+let activeWatcher = null;
+
+function reloadSettings() {
+  try {
+    NOW_PLAYING_CHANNEL_ID = String(getSetting('runtime.nowPlayingChannelId') || '').trim() || config.nowPlayingChannelId || '';
+    SONG_POLL_URL = String(getSetting('runtime.songPollUrl') || '').trim() || config.songPollUrl;
+    SONG_POLL_INTERVAL_MS = Number(getSetting('runtime.songPollIntervalMs')) || config.songPollIntervalMs;
+  } catch {
+    NOW_PLAYING_CHANNEL_ID = config.nowPlayingChannelId || '';
+    SONG_POLL_URL = config.songPollUrl;
+    SONG_POLL_INTERVAL_MS = config.songPollIntervalMs;
+  }
+
+  if (activeClient) {
+    restartWatcher();
+  }
+}
 
 const nowPlayingState = {
   song: null,
@@ -24,9 +48,7 @@ function cloneNowPlayingState() {
 
   return {
     song: nowPlayingState.song,
-    track: nowPlayingState.track
-      ? { ...nowPlayingState.track }
-      : null,
+    track: nowPlayingState.track ? { ...nowPlayingState.track } : null,
     updatedAt: nowPlayingState.updatedAt,
   };
 }
@@ -34,7 +56,7 @@ function cloneNowPlayingState() {
 function getNowPlayingCacheTtlMs() {
   return Math.max(
     MIN_NOW_PLAYING_CACHE_TTL_MS,
-    Math.min(config.songPollIntervalMs, MAX_NOW_PLAYING_CACHE_TTL_MS),
+    Math.min(SONG_POLL_INTERVAL_MS, MAX_NOW_PLAYING_CACHE_TTL_MS),
   );
 }
 
@@ -46,12 +68,12 @@ function setNowPlayingState(song, track) {
 
 async function fetchCurrentSongFromPollUrl() {
   try {
-    const response = await fetch(config.songPollUrl, {
+    const response = await fetch(SONG_POLL_URL, {
       signal: AbortSignal.timeout(SONG_POLL_FETCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
-      logger.warn(`Now-playing fetch: HTTP ${response.status} from ${config.songPollUrl}`);
+      logger.warn(`Now-playing fetch: HTTP ${response.status} from ${SONG_POLL_URL}`);
       return null;
     }
 
@@ -110,16 +132,6 @@ async function getCurrentNowPlayingTrack() {
   return refreshNowPlayingSnapshot();
 }
 
-/**
- * Build a Discord embed for a SoundCloud track.
- *
- * @param {object} track
- * @param {string} track.title
- * @param {string} track.artist
- * @param {string} track.url
- * @param {string | null} track.artworkUrl
- * @returns {EmbedBuilder}
- */
 function buildTrackEmbed(track) {
   const embed = new EmbedBuilder()
     .setColor(SOUNDCLOUD_ORANGE)
@@ -134,31 +146,28 @@ function buildTrackEmbed(track) {
   return embed;
 }
 
-/**
- * Start a persistent, session-independent song watcher that posts now-playing
- * updates to the configured channel on every song change.
- *
- * Should be called once inside the `ClientReady` handler.
- *
- * @param {import('discord.js').Client} client
- * @returns {{ stop: () => void }}
- */
-function initNowPlaying(client) {
-  if (!config.nowPlayingChannelId) {
+function startWatcher(client) {
+  if (!NOW_PLAYING_CHANNEL_ID) {
     logger.warn('Now-playing watcher: NOW_PLAYING_CHANNEL_ID is not set — watcher will not start.');
     return { stop: () => {} };
   }
 
-  logger.info(`Now-playing watcher: starting (channel=${config.nowPlayingChannelId}, poll=${config.songPollIntervalMs}ms)`);
+  logger.info(`Now-playing watcher: starting (channel=${NOW_PLAYING_CHANNEL_ID}, poll=${SONG_POLL_INTERVAL_MS}ms)`);
 
-  const watcher = createSongWatcher({
-    url: config.songPollUrl,
-    intervalMs: config.songPollIntervalMs,
+  return createSongWatcher({
+    url: SONG_POLL_URL,
+    intervalMs: SONG_POLL_INTERVAL_MS,
     onSongChange: async (newSong) => {
       try {
-        const channel = await client.channels.fetch(config.nowPlayingChannelId);
+        const targetChannelId = NOW_PLAYING_CHANNEL_ID;
+        if (!targetChannelId) {
+          logger.warn('Now-playing watcher: now-playing channel not configured at runtime.');
+          return;
+        }
+
+        const channel = await client.channels.fetch(targetChannelId);
         if (!channel?.isTextBased()) {
-          logger.warn(`Now-playing watcher: channel ${config.nowPlayingChannelId} is not a text channel.`);
+          logger.warn(`Now-playing watcher: channel ${targetChannelId} is not a text channel.`);
           return;
         }
 
@@ -177,11 +186,36 @@ function initNowPlaying(client) {
       }
     },
   });
-
-  return watcher;
 }
+
+function restartWatcher() {
+  if (!activeClient) return;
+  if (activeWatcher) {
+    try { activeWatcher.stop(); } catch { /* */ }
+    activeWatcher = null;
+  }
+  activeWatcher = startWatcher(activeClient);
+}
+
+function initNowPlaying(client) {
+  activeClient = client;
+  reloadSettings();
+
+  return {
+    stop() {
+      if (activeWatcher) {
+        try { activeWatcher.stop(); } catch { /* */ }
+        activeWatcher = null;
+      }
+      activeClient = null;
+    },
+  };
+}
+
+reloadSettings();
 
 module.exports = {
   getCurrentNowPlayingTrack,
   initNowPlaying,
+  reloadSettings,
 };

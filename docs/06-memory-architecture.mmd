@@ -1,0 +1,29 @@
+graph LR
+    subgraph NodeJS["Node.js Process"]
+        CSS["chatbotStateStore.js"]
+        RC["ragClient.js"]
+        CB["chatbot.js"]
+    end
+
+    subgraph VectorService["Memory Service :8765"]
+        HTTP1["HTTP API"]
+        SQLITE["SQLite\nstate + user rows"]
+        CHROMA["ChromaDB\nvector embeddings"]
+        EMB["sentence-transformers\nall-MiniLM-L6-v2"]
+
+        HTTP1 --> SQLITE
+        HTTP1 --> CHROMA
+        CHROMA --> EMB
+    end
+
+    subgraph RAGService["RAG Service :8764"]
+        HTTP2["HTTP API"]
+        CHROMA2["ChromaDB\nshared data dir"]
+
+        HTTP2 --> CHROMA2
+    end
+
+    CB -- "append / search / profile" --> CSS
+    CSS -- "HTTP JSON" --> HTTP1
+    CB -- "retrieveMemoryContext" --> RC
+    RC -- "POST /rag/retrieve" --> HTTP2

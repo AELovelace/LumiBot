@@ -1,0 +1,28 @@
+flowchart TD
+    RAW["Raw model output"] --> LEAK{"Reasoning leak?\n2+ planning phrases"}
+
+    LEAK -- Yes --> QUOTE["Extract last quoted\ncandidate reply"]
+    LEAK -- No --> STRIP
+
+    QUOTE --> TR["Route planning text\nto thoughts channel"]
+    QUOTE --> STRIP
+
+    STRIP["1. stripThinkingTags\nremove think tags"]
+    STRIP --> BAN["2. stripBannedReplyPhrases\nremove banned phrases"]
+    BAN --> REASON["3. stripReasoningArtifactPrefixes\nremove Final draft etc"]
+    REASON --> STAGE["4. stripStageDirections\nremove pauses etc"]
+    STAGE --> ECHO["5. stripPromptEchoAndTranscriptArtifacts\ncut at User message etc"]
+
+    ECHO --> DIV["6. diversifyAgainstRecentHistory\nprune repeated sentences\nvs last 4 assistant msgs"]
+
+    DIV --> DELIN["7. applySpeakerDelineators\nstrip Lumi labels"]
+    DELIN --> CENSOR["8. censorLeadingSelfName\nLumi to l***"]
+    CENSOR --> COMPACT["9. compactWhitespace"]
+
+    COMPACT --> DELOOP["10. collapseRepeatedPhraseLoops\ncollapse 5+ repeats"]
+    DELOOP --> DEGEN{"11. Degenerate?\nunique ratio below 0.22\nor 6+ consecutive repeats"}
+
+    DEGEN -- Yes --> EMPTY["Return empty\ntriggers fallback or retry"]
+    DEGEN -- No --> CLAMP["12. clampToSentenceLimit\nmax 10 sentences"]
+    CLAMP --> MAXCHAR["Truncate to\nmaxResponseChars"]
+    MAXCHAR --> OUT["Cleaned reply"]

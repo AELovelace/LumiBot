@@ -1,0 +1,66 @@
+graph TB
+    subgraph Timers["⏰ Scheduler Timer Loop (1-hour interval)"]
+        LOOP["scheduleLotteryChecks\nRuns every 60 minutes"]
+    end
+
+    subgraph Leaderboard["📊 Leaderboard (12-hour interval)"]
+        LB["scheduleLeaderboard\n00:00 & 12:00 UTC"]
+        LBP["Post top 50 holders\n+ Central Bank\n+ Doll Street balances"]
+    end
+
+    subgraph WeeklyLottery["🎰 Weekly Lottery"]
+        WC["checkWeeklyLottery"]
+        WD{{"Sunday UTC?"}}
+        WR["runWeeklyLottery\nRandom holder wins 50 SGC"]
+        LD["setLottoDay\n50% transfer fee today"]
+    end
+
+    subgraph MonthlyTax["🏛️ Monthly Tax Collection"]
+        MC["checkMonthlyTaxes"]
+        MD{{"1st of month?"}}
+        MT["collectMonthlyTaxes"]
+        T1["1% on bal > 100"]
+        T2["5% on bal > 10K"]
+        T3["10% on bal > 1M"]
+        TA["Announce top 10\ntaxpayers"]
+    end
+
+    subgraph DailyCasino["🎰 Daily Casino Deposit"]
+        DC["checkDailyCasinoDeposit"]
+        DD{{"New day?"}}
+        CD["casinoDailyReserveDeposit\n10% of Casino excess over 1M"]
+        CA["Announce deposit\namount"]
+    end
+
+    subgraph YearlyRaffle["🎆 Yearly Raffle"]
+        YC["checkYearlyRaffle"]
+        YD{{"Dec 31?"}}
+        YR["runYearlyRaffle\nWinner gets 25% of Central Bank"]
+    end
+
+    subgraph Channel["📢 Leaderboard Channel"]
+        CH["#leaderboard\n1494913175886233600"]
+    end
+
+    LB --> LBP --> CH
+
+    LOOP --> WC --> WD
+    WD -->|"Yes"| WR --> CH
+    WR --> LD
+    WD -->|"No"| MC
+
+    LOOP --> MC --> MD
+    MD -->|"Yes"| MT
+    MT --> T1
+    MT --> T2
+    MT --> T3
+    T1 & T2 & T3 --> TA --> CH
+    MD -->|"No"| DC
+
+    LOOP --> DC --> DD
+    DD -->|"Yes"| CD --> CA --> CH
+    DD -->|"No"| YC
+
+    LOOP --> YC --> YD
+    YD -->|"Yes"| YR --> CH
+    YD -->|"No, skip"| LOOP

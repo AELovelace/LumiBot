@@ -1,15 +1,31 @@
 const { config } = require('./config');
 const { logger } = require('./logger');
 const { requestLlmCompletion } = require('./llmClient');
+const { getSetting } = require('./panelSettings');
 
 const INTRO_VIDEO_URL =
   'https://cdn.discordapp.com/attachments/959117873702395974/1439780356751364147/dollcord_intro.mp4?ex=69bc9a72&is=69bb48f2&hm=a4a66e3eb8321afa96b71c412d551b9c23c3d36e7601aefa6083c59d1341c927&';
 
+let WELCOME_CHANNEL_ID = config.welcomeChannelId || '';
+let INTRODUCTIONS_CHANNEL_ID = config.introductionsChannelId || '';
+
+function reloadSettings() {
+  try {
+    WELCOME_CHANNEL_ID = String(getSetting('runtime.welcomeChannelId') || '').trim() || config.welcomeChannelId || '';
+    INTRODUCTIONS_CHANNEL_ID = String(getSetting('runtime.introductionsChannelId') || '').trim() || config.introductionsChannelId || '';
+  } catch {
+    WELCOME_CHANNEL_ID = config.welcomeChannelId || '';
+    INTRODUCTIONS_CHANNEL_ID = config.introductionsChannelId || '';
+  }
+}
+
+reloadSettings();
+
 async function generateWelcomeMessage(member) {
   const username = member.user.username;
   const displayName = member.displayName || username;
-  const introMention = config.introductionsChannelId
-    ? `<#${config.introductionsChannelId}>`
+  const introMention = INTRODUCTIONS_CHANNEL_ID
+    ? `<#${INTRODUCTIONS_CHANNEL_ID}>`
     : '#introductions';
 
   const prompt =
@@ -38,16 +54,16 @@ async function generateWelcomeMessage(member) {
 }
 
 async function handleGuildMemberAdd(member) {
-  if (!config.welcomeChannelId) {
+  if (!WELCOME_CHANNEL_ID) {
     return;
   }
 
   try {
-    const channel = await member.guild.channels.fetch(config.welcomeChannelId);
+    const channel = await member.guild.channels.fetch(WELCOME_CHANNEL_ID);
 
     if (!channel || !channel.isTextBased()) {
       logger.warn(
-        `Welcome channel ${config.welcomeChannelId} not found or is not text-based.`,
+        `Welcome channel ${WELCOME_CHANNEL_ID} not found or is not text-based.`,
       );
       return;
     }
@@ -59,11 +75,11 @@ async function handleGuildMemberAdd(member) {
     });
 
     logger.info(
-      `Sent welcome message for ${member.user.tag} in channel ${config.welcomeChannelId}.`,
+      `Sent welcome message for ${member.user.tag} in channel ${WELCOME_CHANNEL_ID}.`,
     );
   } catch (error) {
     logger.error('Failed to send welcome message.', error.message);
   }
 }
 
-module.exports = { handleGuildMemberAdd };
+module.exports = { handleGuildMemberAdd, reloadSettings };

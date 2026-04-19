@@ -58,8 +58,30 @@ CREATE TABLE IF NOT EXISTS channel_history (
     PRIMARY KEY (channel_id, position),
     FOREIGN KEY (channel_id) REFERENCES channel_state(channel_id) ON DELETE CASCADE
 );
-PRAGMA user_version = 3;
+CREATE TABLE IF NOT EXISTS user_prompt_profiles (
+    user_id TEXT PRIMARY KEY,
+    profile_json TEXT NOT NULL,
+    source_memory_count INTEGER NOT NULL DEFAULT 0,
+    refreshed_at INTEGER NOT NULL DEFAULT 0
+);
+PRAGMA user_version = 4;
 '''
+
+STOPWORDS = {
+    'about', 'after', 'again', 'aint', 'also', 'always', 'and', 'any', 'are', 'been',
+    'before', 'being', 'both', 'but', 'can', 'cant', 'could', 'couldnt', 'did', 'didnt',
+    'does', 'doesnt', 'doing', 'dont', 'each', 'even', 'feel', 'felt', 'for', 'from',
+    'get', 'getting', 'got', 'had', 'has', 'have', 'having', 'her', 'here', 'hers',
+    'him', 'his', 'how', 'https', 'http', 'ill', 'im', 'into', 'ive', 'just', 'kind',
+    'kinda', 'know', 'like', 'likes', 'liked', 'love', 'loved', 'maybe', 'more', 'much',
+    'need', 'not', 'now', 'okay', 'our', 'out', 'really', 'said', 'same', 'should',
+    'since', 'some', 'something', 'still', 'such', 'than', 'that', 'thats', 'the',
+    'their', 'them', 'then', 'there', 'they', 'this', 'those', 'though', 'time', 'too',
+    'very', 'want', 'wants', 'wanted', 'was', 'wasnt', 'were', 'what', 'when', 'where',
+    'which', 'while', 'who', 'with', 'would', 'wouldnt', 'yeah', 'you', 'your', 'yours',
+}
+PROFILE_CACHE_TTL_MS = 15 * 60 * 1000
+MAX_PROFILE_SOURCE_MEMORIES = 120
 
 
 def log(message):
@@ -279,6 +301,70 @@ def normalize_search_payload(payload):
         'deep': parse_boolean(payload.get('deep')),
         'limit': normalize_limit(payload.get('limit'), 8, minimum=1, maximum=50),
     }
+
+
+def normalize_profile_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError('Profile payload must be a JSON object.')
+
+    user_id = str(payload.get('userId') or '').strip()
+    if not user_id:
+        raise ValueError('userId is required for profile generation.')
+
+    query = payload.get('query')
+    query = query if isinstance(query, str) else str(query or '')
+
+    return {
+        'userId': user_id,
+        'query': query.strip(),
+        'forceRefresh': parse_boolean(payload.get('forceRefresh')),
+    }
+
+
+def trim_text(value, max_length=180):
+    if not isinstance(value, str):
+        return ''
+
+    compact = re.sub(r'\s+', ' ', value).strip()
+    if len(compact) <= max_length:
+        return compact
+
+    return compact[:max_length - 3].rstrip() + '...'
+
+
+def extract_first_person_candidates(text):
+    if not isinstance(text, str) or not text.strip():
+        return []
+
+    compact = trim_text(text, 220)
+    patterns = [
+        r"\bi(?:'m| am)\s+[^.!?]{4,140}",
+        r"\bi(?:'ve| have)\s+[^.!?]{4,140}",
+        r"\bi\s+(?:like|love|prefer|enjoy|hate|dislike|want|need|work|live|study|make|play|listen|use)\s+[^.!?]{3,140}",
+        r"\bmy\s+(?:favorite|job|work|partner|girlfriend|boyfriend|name|pronouns|playlist|project|setup|schedule)\s+[^.!?]{3,140}",
+    ]
+    matches = []
+    lowered = compact.lower()
+    for pattern in patterns:
+        for match in re.finditer(pattern, lowered, re.IGNORECASE):
+            snippet = compact[match.start():match.end()]
+            snippet = trim_text(snippet.strip(' .,!?:;'), 160)
+            if len(snippet) >= 8:
+                matches.append(snippet)
+    return matches
+
+
+def rank_topic_terms(entries):
+    counts = {}
+    for entry in entries:
+        content = entry.get('content', '')
+        for token in tokenize_text(content):
+            if len(token) < 4 or token in STOPWORDS:
+                continue
+            counts[token] = counts.get(token, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [token for token, count in ranked if count >= 2][:8]
 
 
 class VectorMemoryDatabase:
@@ -650,6 +736,201 @@ class VectorMemoryDatabase:
                 'entries': [],
             }
 
+    def _load_cached_prompt_profile(self, connection, user_id):
+        row = connection.execute(
+            'SELECT profile_json, source_memory_count, refreshed_at FROM user_prompt_profiles WHERE user_id = ?',
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        try:
+            profile = json.loads(row['profile_json'])
+        except json.JSONDecodeError:
+            return None
+
+        return {
+            'profile': profile,
+            'sourceMemoryCount': int(row['source_memory_count'] or 0),
+            'refreshedAt': int(row['refreshed_at'] or 0),
+        }
+
+    def _store_prompt_profile(self, connection, user_id, profile, source_memory_count, refreshed_at):
+        connection.execute(
+            '''
+            INSERT INTO user_prompt_profiles (user_id, profile_json, source_memory_count, refreshed_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                profile_json = excluded.profile_json,
+                source_memory_count = excluded.source_memory_count,
+                refreshed_at = excluded.refreshed_at
+            ''',
+            (user_id, json.dumps(profile, ensure_ascii=False), source_memory_count, refreshed_at),
+        )
+
+    def _collect_profile_source_entries(self, user_id):
+        collection = self._get_user_collection(user_id)
+        count = collection.count()
+        if count <= 0:
+            return count, []
+
+        limit = min(MAX_PROFILE_SOURCE_MEMORIES, count)
+        results = collection.get(
+            limit=limit,
+            include=['documents', 'metadatas']
+        )
+
+        entries = []
+        ids = results.get('ids') or []
+        metadatas = results.get('metadatas') or []
+        documents = results.get('documents') or []
+
+        for i, doc_id in enumerate(ids):
+            metadata = metadatas[i] if i < len(metadatas) else {}
+            document = documents[i] if i < len(documents) else ''
+            entries.append({
+                'id': doc_id,
+                'content': document,
+                'role': metadata.get('role', 'user'),
+                'author': metadata.get('author', 'unknown'),
+                'timestamp': int(metadata.get('timestamp', 0)),
+                'channelId': metadata.get('channel_id', 'unknown'),
+            })
+
+        entries.sort(key=lambda item: int(item.get('timestamp') or 0), reverse=True)
+        return count, entries
+
+    def _synthesize_prompt_profile(self, user_id, query, entries, source_memory_count):
+        user_entries = [entry for entry in entries if entry.get('role') == 'user' and entry.get('content', '').strip()]
+        assistant_entries = [entry for entry in entries if entry.get('role') == 'assistant' and entry.get('content', '').strip()]
+        now_ms = int(time.time() * 1000)
+
+        known_facts = []
+        seen_facts = set()
+        for entry in user_entries:
+            for candidate in extract_first_person_candidates(entry.get('content', '')):
+                key = candidate.lower()
+                if key in seen_facts:
+                    continue
+                seen_facts.add(key)
+                known_facts.append(candidate)
+                if len(known_facts) >= 6:
+                    break
+            if len(known_facts) >= 6:
+                break
+
+        preference_patterns = [
+            r"\bi\s+(?:like|love|prefer|enjoy)\s+[^.!?]{3,120}",
+            r"\bmy favorite\s+[^.!?]{3,120}",
+            r"\bi\s+(?:hate|dislike|dont like|don't like)\s+[^.!?]{3,120}",
+        ]
+        preferences = []
+        seen_preferences = set()
+        for entry in user_entries:
+            content = trim_text(entry.get('content', ''), 220)
+            lowered = content.lower()
+            for pattern in preference_patterns:
+                for match in re.finditer(pattern, lowered, re.IGNORECASE):
+                    candidate = trim_text(content[match.start():match.end()].strip(' .,!?:;'), 160)
+                    key = candidate.lower()
+                    if len(candidate) < 8 or key in seen_preferences:
+                        continue
+                    seen_preferences.add(key)
+                    preferences.append(candidate)
+                    if len(preferences) >= 5:
+                        break
+                if len(preferences) >= 5:
+                    break
+            if len(preferences) >= 5:
+                break
+
+        recent_window_ms = 21 * 24 * 60 * 60 * 1000
+        recent_user_entries = [
+            entry for entry in user_entries
+            if now_ms - int(entry.get('timestamp') or 0) <= recent_window_ms
+        ] or user_entries[:30]
+        ongoing_topics = rank_topic_terms(recent_user_entries or user_entries)
+
+        question_count = sum(1 for entry in user_entries[:40] if '?' in entry.get('content', ''))
+        short_message_count = sum(1 for entry in user_entries[:40] if len(entry.get('content', '').strip()) <= 80)
+        lowercase_heavy_count = sum(
+            1 for entry in user_entries[:40]
+            if entry.get('content', '') and entry.get('content', '') == entry.get('content', '').lower()
+        )
+
+        response_style_hints = []
+        inspected_count = max(1, min(len(user_entries), 40))
+        if short_message_count / inspected_count >= 0.65:
+            response_style_hints.append('Usually chats in short back-and-forth messages.')
+        if question_count / inspected_count >= 0.35:
+            response_style_hints.append('Often asks direct questions and benefits from clear answers first.')
+        if lowercase_heavy_count / inspected_count >= 0.6:
+            response_style_hints.append('Lowercase-leaning casual style tends to fit naturally.')
+        if not response_style_hints:
+            response_style_hints.append('Keep the tone conversational and grounded unless the user asks for more detail.')
+
+        recent_highlights = []
+        for entry in recent_user_entries[:4]:
+            recent_highlights.append(trim_text(entry.get('content', ''), 140))
+
+        profile = {
+            'userId': user_id,
+            'query': query,
+            'sourceMemoryCount': int(source_memory_count),
+            'knownFacts': known_facts,
+            'preferences': preferences,
+            'ongoingTopics': ongoing_topics,
+            'responseStyleHints': response_style_hints,
+            'recentHighlights': recent_highlights,
+            'assistantMemoryFootprint': min(len(assistant_entries), 20),
+            'generatedAt': now_ms,
+        }
+
+        summary_lines = []
+        if known_facts:
+            summary_lines.append('Known facts: ' + '; '.join(known_facts[:4]))
+        if preferences:
+            summary_lines.append('Preferences: ' + '; '.join(preferences[:3]))
+        if ongoing_topics:
+            summary_lines.append('Recurring topics: ' + ', '.join(ongoing_topics[:6]))
+        if recent_highlights:
+            summary_lines.append('Recent user context: ' + ' | '.join(recent_highlights[:3]))
+        if response_style_hints:
+            summary_lines.append('Response style hints: ' + ' '.join(response_style_hints[:2]))
+        profile['summary'] = '\n'.join(summary_lines)
+        return profile
+
+    def get_user_prompt_profile(self, payload):
+        normalized = normalize_profile_payload(payload)
+        user_id = normalized['userId']
+        query = normalized['query']
+        force_refresh = normalized['forceRefresh']
+        now_ms = int(time.time() * 1000)
+
+        with self._lock, self._connect() as connection:
+            source_memory_count, entries = self._collect_profile_source_entries(user_id)
+            cached = self._load_cached_prompt_profile(connection, user_id)
+
+            cache_valid = (
+                cached is not None
+                and not force_refresh
+                and cached['sourceMemoryCount'] == source_memory_count
+                and (now_ms - cached['refreshedAt']) <= PROFILE_CACHE_TTL_MS
+            )
+            if cache_valid:
+                profile = dict(cached['profile'])
+                profile['cacheHit'] = True
+                profile['refreshedAt'] = cached['refreshedAt']
+                return profile
+
+            profile = self._synthesize_prompt_profile(user_id, query, entries, source_memory_count)
+            self._store_prompt_profile(connection, user_id, profile, source_memory_count, now_ms)
+            connection.commit()
+
+            profile['cacheHit'] = False
+            profile['refreshedAt'] = now_ms
+            return profile
+
     def reset_database(self):
         """Reset all memories and state."""
         with self._lock:
@@ -675,6 +956,7 @@ class VectorMemoryDatabase:
                     DELETE FROM channel_history;
                     DELETE FROM channel_state;
                     DELETE FROM runtime_settings;
+                    DELETE FROM user_prompt_profiles;
                 ''')
                 connection.commit()
             
@@ -859,6 +1141,16 @@ class MemoryRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == '/memory/search':
                 payload = self._read_json_body()
                 result = self.server.database.search_memory(payload)
+                self._send_json(HTTPStatus.OK, {
+                    'ok': True,
+                    'service': SERVICE_NAME,
+                    **result,
+                })
+                return
+
+            if parsed.path == '/memory/profile':
+                payload = self._read_json_body()
+                result = self.server.database.get_user_prompt_profile(payload)
                 self._send_json(HTTPStatus.OK, {
                     'ok': True,
                     'service': SERVICE_NAME,

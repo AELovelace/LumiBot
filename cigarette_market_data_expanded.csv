@@ -1,0 +1,135 @@
+Rank,Brand,Variant,Flavor Type,Size
+1,Marlboro,Red,Full Flavor,King
+2,Marlboro,Red,Full Flavor,100s
+3,Marlboro,Gold,Light,King
+4,Marlboro,Gold,Light,100s
+5,Marlboro,Silver,Ultra Light,King
+6,Marlboro,Silver,Ultra Light,100s
+7,Marlboro,Menthol,Menthol,King
+8,Marlboro,Menthol,Menthol,100s
+9,Marlboro,Smooth,Smooth,King
+10,Marlboro,Smooth,Smooth,100s
+11,Marlboro,Black,Full Flavor,King
+12,Marlboro,Black,Full Flavor,100s
+13,Marlboro,NXT,Capsule Menthol,King
+14,Marlboro,NXT,Capsule Menthol,100s
+15,Marlboro,Ice,Menthol,King
+16,Marlboro,Ice,Menthol,100s
+17,Marlboro,27,Full Flavor,King
+18,Marlboro,27,Full Flavor,100s
+19,Marlboro,Special Select,Full Flavor,King
+20,Marlboro,Special Select,Full Flavor,100s
+21,Newport,Green,Menthol,King
+22,Newport,Green,Menthol,100s
+23,Newport,Gold,Light,King
+24,Newport,Gold,Light,100s
+25,Newport,Blue,Light,King
+26,Newport,Blue,Light,100s
+27,Newport,Red,Full Flavor,King
+28,Newport,Red,Full Flavor,100s
+29,Newport,Non-Menthol,Full Flavor,King
+30,Newport,Non-Menthol,Full Flavor,100s
+31,Camel,Filters,Full Flavor,King
+32,Camel,Filters,Full Flavor,100s
+33,Camel,Blue,Light,King
+34,Camel,Blue,Light,100s
+35,Camel,Silver,Ultra Light,King
+36,Camel,Silver,Ultra Light,100s
+37,Camel,Crush,Capsule Menthol,King
+38,Camel,Crush,Capsule Menthol,100s
+39,Camel,Crush Bold,Menthol,King
+40,Camel,Crush Bold,Menthol,100s
+41,Camel,Turkish Gold,Full Flavor,King
+42,Camel,Turkish Gold,Full Flavor,100s
+43,Camel,Wides,Full Flavor,King
+44,Camel,Wides,Full Flavor,100s
+45,Camel,Black,Full Flavor,King
+46,Camel,Black,Full Flavor,100s
+47,American Spirit,Blue,Light,King
+48,American Spirit,Blue,Light,100s
+49,American Spirit,Yellow,Organic,King
+50,American Spirit,Yellow,Organic,100s
+51,American Spirit,Green,Menthol,King
+52,American Spirit,Green,Menthol,100s
+53,American Spirit,Black,Full Flavor,King
+54,American Spirit,Black,Full Flavor,100s
+55,American Spirit,Turquoise,Light,King
+56,American Spirit,Turquoise,Light,100s
+57,Pall Mall,Red,Full Flavor,King
+58,Pall Mall,Red,Full Flavor,100s
+59,Pall Mall,Blue,Light,King
+60,Pall Mall,Blue,Light,100s
+61,Pall Mall,Menthol,Menthol,King
+62,Pall Mall,Menthol,Menthol,100s
+63,Pall Mall,Gold,Light,King
+64,Pall Mall,Gold,Light,100s
+65,L&M,Red,Full Flavor,King
+66,L&M,Red,Full Flavor,100s
+67,L&M,Blue,Light,King
+68,L&M,Blue,Light,100s
+69,L&M,Menthol,Menthol,King
+70,L&M,Menthol,Menthol,100s
+71,L&M,Silver,Ultra Light,King
+72,L&M,Silver,Ultra Light,100s
+73,Lucky Strike,Red,Full Flavor,King
+74,Lucky Strike,Red,Full Flavor,100s
+75,Lucky Strike,Blue,Light,King
+76,Lucky Strike,Blue,Light,100s
+77,Lucky Strike,Gold,Light,King
+78,Lucky Strike,Gold,Light,100s
+79,Lucky Strike,Menthol,Menthol,King
+80,Lucky Strike,Menthol,Menthol,100s
+81,Winston,Red,Full Flavor,King
+82,Winston,Red,Full Flavor,100s
+83,Winston,Blue,Light,King
+84,Winston,Blue,Light,100s
+85,Winston,Gold,Light,King
+86,Winston,Gold,Light,100s
+87,Winston,Menthol,Menthol,King
+88,Winston,Menthol,Menthol,100s
+89,Kool,Menthol,Menthol,King
+90,Kool,Menthol,Menthol,100s
+91,Kool,Blue,Light,King
+92,Kool,Blue,Light,100s
+93,Kool,Green,Menthol,King
+94,Kool,Green,Menthol,100s
+95,Parliament,Full Flavor,Varies,King
+96,Parliament,Full Flavor,Varies,100s
+97,Parliament,Lights,Light,King
+98,Parliament,Lights,Light,100s
+99,Parliament,Menthol,Menthol,King
+100,Parliament,Menthol,Menthol,100s
+101,Parliament,Silver,Ultra Light,King
+102,Parliament,Silver,Ultra Light,100s
+103,Basic,Red,Full Flavor,King
+104,Basic,Red,Full Flavor,100s
+105,Basic,Gold,Light,King
+106,Basic,Gold,Light,100s
+107,Basic,Blue,Light,King
+108,Basic,Blue,Light,100s
+109,Basic,Menthol,Menthol,King
+110,Basic,Menthol,Menthol,100s
+111,305s,Red,Full Flavor,King
+112,305s,Red,Full Flavor,100s
+113,305s,Blue,Light,King
+114,305s,Blue,Light,100s
+115,305s,Menthol,Menthol,King
+116,305s,Menthol,Menthol,100s
+117,Maverick,Red,Full Flavor,King
+118,Maverick,Red,Full Flavor,100s
+119,Maverick,Blue,Light,King
+120,Maverick,Blue,Light,100s
+121,Maverick,Menthol,Menthol,King
+122,Maverick,Menthol,Menthol,100s
+123,Montego,Red,Full Flavor,King
+124,Montego,Red,Full Flavor,100s
+125,Montego,Blue,Light,King
+126,Montego,Blue,Light,100s
+127,Montego,Menthol,Menthol,King
+128,Montego,Menthol,Menthol,100s
+129,Eagle 20s,Red,Full Flavor,King
+130,Eagle 20s,Red,Full Flavor,100s
+131,Eagle 20s,Blue,Light,King
+132,Eagle 20s,Blue,Light,100s
+133,Eagle 20s,Menthol,Menthol,King
+134,Eagle 20s,Menthol,Menthol,100s

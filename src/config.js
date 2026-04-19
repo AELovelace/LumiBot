@@ -140,6 +140,16 @@ function refreshChatbotPersonaFromEnv() {
 }
 
 function getChatbotPersona() {
+  try {
+    const { getSystemState } = require('./sadgirlEconomyStore');
+    const runtimeOverride = getSystemState('setting.chatbot.persona');
+    if (runtimeOverride && String(runtimeOverride).trim()) {
+      return String(runtimeOverride).trim();
+    }
+  } catch {
+    // Economy DB may not be initialized yet; fall back to .env/default.
+  }
+
   return refreshChatbotPersonaFromEnv() || DEFAULT_CHATBOT_PERSONA;
 }
 
@@ -305,9 +315,14 @@ const config = Object.freeze({
   chatbotGifRating: parseEnum(process.env.CHATBOT_GIF_RATING, ['g', 'pg', 'pg-13', 'r'], 'pg-13'),
   chatbotGifLanguage: process.env.CHATBOT_GIF_LANG?.trim().toLowerCase() || 'en',
   chatbotGifTimeoutMs: parsePositiveInt(process.env.CHATBOT_GIF_TIMEOUT_MS, 5_000),
+  thoughtChannelIds: parseCsvList(process.env.THOUGHTS_CHANNEL_IDS),
   soundcloudClientId: process.env.SOUNDCLOUD_CLIENT_ID?.trim() || '',
   soundcloudClientSecret: process.env.SOUNDCLOUD_CLIENT_SECRET?.trim() || '',
   nowPlayingChannelId: process.env.NOW_PLAYING_CHANNEL_ID?.trim() || '',
+  economyDbFile: process.env.SADGIRLCOIN_DB_FILE?.trim() || 'data/sadgirlcoin.sqlite3',
+  economyEnabled: parseBoolean(process.env.SADGIRLCOIN_ENABLED, true),
+  touhouDbFile: process.env.TOUHOU_DB_FILE?.trim() || 'data/touhou-market.sqlite3',
+  touhouDir: process.env.TOUHOU_DIR?.trim() || 'touhous',
 });
 
 function getMissingConfigValues() {

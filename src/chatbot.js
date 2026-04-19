@@ -1,9 +1,11 @@
 const { config } = require('./config');
 const { logger } = require('./logger');
+const { getSetting } = require('./panelSettings');
 const { evaluateIncomingMessage, evaluateOutgoingMessage } = require('./moderation');
 const {
   appendUserMemoryEntry,
   closeChatbotStateStore,
+  fetchUserPromptProfile,
   loadChatbotState,
   resetMemory,
   scheduleStateSave,
@@ -74,6 +76,7 @@ const RECALL_INTENT_PATTERN = /\b(remember|recall|remind|memory|forgot|forget|ea
 const SEARCH_INTENT_PATTERN = /\blumi[,:]?\s+(?:search|look\s*up|google|find(?:\s+me)?|search\s+(?:the\s+)?(?:web|internet|online)\s+(?:for)?|what\s+does\s+the\s+(?:internet|web)\s+say\s+about)\s+(.+)/iu;
 
 const SONG_RECOMMENDATION_INTENT_PATTERN = /(?:\b(?:song|track|music)\b.*\b(?:recommend(?:ation)?s?|recs?)\b)|(?:\b(?:recommend(?:ation)?s?|recs?)\b.*\b(?:song|track|music|listen(?:ing)?)\b)|(?:\bwhat\s+should\s+i\s+listen\s+to\b)|(?:\bany\s+(?:song|music)\s+recs?\b)/iu;
+const GIF_INTENT_PATTERN = /\b(?:gif|giphy|reaction\s+gif|post\s+a\s+gif|send\s+a\s+gif)\b/iu;
 
 function shouldUseDeepRecall(text) {
   if (!text || typeof text !== 'string') {
@@ -106,6 +109,50 @@ function detectSongRecommendationIntent(text) {
   }
 
   return SONG_RECOMMENDATION_INTENT_PATTERN.test(text.toLowerCase());
+}
+
+function buildGifQueryFromMessage(text) {
+  if (!text || typeof text !== 'string') {
+    return 'reaction';
+  }
+
+  const normalized = text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+  if (!normalized) {
+    return 'reaction';
+  }
+
+  const stripped = normalized
+    .replace(/\b(?:can|could|would|you|please|lumi|post|send|show|me|a|an|the|some|just|maybe|like)\b/gu, ' ')
+    .replace(/\b(?:gif|giphy|reaction)\b/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+  if (!stripped) {
+    return 'reaction';
+  }
+
+  return stripped.split(' ').slice(0, 5).join(' ');
+}
+
+function detectGifIntent(text) {
+  if (!text || typeof text !== 'string') {
+    return { isGif: false, query: null };
+  }
+
+  if (!GIF_INTENT_PATTERN.test(text.toLowerCase())) {
+    return { isGif: false, query: null };
+  }
+
+  return {
+    isGif: true,
+    query: buildGifQueryFromMessage(text),
+  };
 }
 
 function buildNowPlayingRecommendationReply(nowPlayingSnapshot) {
@@ -164,6 +211,23 @@ async function fetchMemoryCluesForPrompt({ userId, query, deepRecall }) {
   }
 }
 
+async function fetchUserContextProfileForPrompt({ userId, query }) {
+  if (!userId) {
+    return null;
+  }
+
+  try {
+    const payload = await fetchUserPromptProfile({
+      userId,
+      query,
+    });
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch (error) {
+    logger.warn('Failed to build user context profile for prompt.', error.message);
+    return null;
+  }
+}
+
 async function maybeAppendGifToReply({ latestContent, assistantReply, history }) {
   if (!config.chatbotGifEnabled || !hasGiphyConfig()) {
     return assistantReply;
@@ -215,6 +279,43 @@ function sanitizePositive(value, fallback) {
   return numeric;
 }
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function parseCsvList(value) {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function reloadSettings() {
+  try {
+    runtimeSettings.enabled = parseBoolean(getSetting('chatbot.enabled'), runtimeSettings.enabled);
+    const channelIds = parseCsvList(getSetting('chatbot.channelIds'));
+    if (channelIds.length > 0) {
+      runtimeSettings.channelIds = channelIds;
+    }
+    runtimeSettings.replyChance = sanitizeReplyChance(getSetting('chatbot.replyChance'));
+    runtimeSettings.interestThreshold = sanitizePositive(getSetting('chatbot.interestThreshold'), runtimeSettings.interestThreshold);
+    runtimeSettings.contextMessages = sanitizePositive(getSetting('chatbot.contextMessages'), runtimeSettings.contextMessages);
+    runtimeSettings.cooldownMs = sanitizePositive(getSetting('chatbot.cooldownMs'), runtimeSettings.cooldownMs);
+    runtimeSettings.followupCooldownMs = sanitizePositive(getSetting('chatbot.followupCooldownMs'), runtimeSettings.followupCooldownMs);
+    runtimeSettings.maxResponseChars = sanitizePositive(getSetting('chatbot.maxResponseChars'), runtimeSettings.maxResponseChars);
+  } catch {
+    // Defaults from persisted chatbot runtime state/config remain in effect.
+  }
+}
+
 function snapshotState() {
   const channels = {};
   channelState.forEach((value, key) => {
@@ -258,7 +359,7 @@ async function initializeChatbot() {
       ? loaded.settings.enabled
       : runtimeSettings.enabled;
     runtimeSettings.channelIds = Array.isArray(loaded.settings.channelIds)
-      ? loaded.settings.channelIds.filter(Boolean)
+      ? [...new Set([...config.chatbotChannelIds, ...loaded.settings.channelIds.filter(Boolean)])]
       : runtimeSettings.channelIds;
     runtimeSettings.replyChance = sanitizeReplyChance(loaded.settings.replyChance);
     runtimeSettings.interestThreshold = sanitizePositive(
@@ -292,6 +393,7 @@ async function initializeChatbot() {
   }
 
   initialized = true;
+  reloadSettings();
   logger.info(
     `Loaded chatbot memory: channels=${channelState.size}, enabled=${runtimeSettings.enabled}, replyChance=${runtimeSettings.replyChance}`,
   );
@@ -715,6 +817,77 @@ async function handleAutonomousMessage(message) {
       }
     }
 
+    const gifIntent = detectGifIntent(text);
+    if (gifIntent.isGif) {
+      if (!hasGiphyConfig()) {
+        const noGifConfigReply = evaluateOutgoingMessage('i can do that once giphy is connected (GIPHY_API_KEY is missing right now).');
+        if (noGifConfigReply.allowed) {
+          await message.reply(noGifConfigReply.text);
+          const noGifTimestamp = Date.now();
+          state.lastReplyAt = noGifTimestamp;
+          persistState();
+          pushHistoryEntry(state, {
+            role: 'assistant',
+            author: 'Lumi',
+            content: noGifConfigReply.text,
+            timestamp: noGifTimestamp,
+          });
+        }
+        return;
+      }
+
+      const gifUrl = await fetchGiphyGifUrl(gifIntent.query || 'reaction');
+      if (gifUrl) {
+        let chatter = 'sure, here you go.';
+        try {
+          const generatedChatter = await requestLlmCompletion({
+            latestContent: text,
+            history: state.history.slice(-Math.max(1, runtimeSettings.contextMessages)),
+            memoryClues: [],
+            deepRecall: false,
+            maxResponseChars: 120,
+            searchResults: null,
+            systemOverride: 'System: The user asked for a GIF. Reply with one short casual sentence (max 12 words) in character. Do not include any URL, emoji, hashtag, or extra punctuation spam. Keep it natural and low-key.',
+          });
+
+          if (generatedChatter && generatedChatter.trim()) {
+            chatter = generatedChatter.trim();
+          }
+        } catch (error) {
+          logger.debug('Failed to generate GIF chatter line, using fallback.', error.message);
+        }
+
+        const gifReplyText = `${chatter}\n${gifUrl}`;
+        const gifModeration = evaluateOutgoingMessage(gifReplyText);
+        if (gifModeration.allowed) {
+          await message.reply(gifModeration.text);
+
+          const gifTimestamp = Date.now();
+          state.lastReplyAt = gifTimestamp;
+          persistState();
+          pushHistoryEntry(state, {
+            role: 'assistant',
+            author: 'Lumi',
+            content: gifModeration.text,
+            timestamp: gifTimestamp,
+          });
+
+          persistUserMemoryEntry({
+            userId: message.author.id,
+            channelId: message.channelId,
+            role: 'assistant',
+            authorId: message.client.user?.id || 'lumi',
+            author: 'Lumi',
+            content: gifModeration.text,
+            timestamp: gifTimestamp,
+          });
+
+          logger.info(`Chatbot replied with direct GIF in channel ${message.channelId} (${decision.reason}).`);
+          return;
+        }
+      }
+    }
+
     // --- Brave Search integration ---
     const searchIntent = detectSearchIntent(text);
     let searchResults = null;
@@ -784,6 +957,11 @@ async function handleAutonomousMessage(message) {
       deepRecall,
     });
 
+    const userContextProfile = await fetchUserContextProfileForPrompt({
+      userId: message.author.id,
+      query: text,
+    });
+
     const response = await requestLlmCompletion({
       latestContent: text,
       history: state.history.slice(-Math.max(1, runtimeSettings.contextMessages)),
@@ -792,6 +970,7 @@ async function handleAutonomousMessage(message) {
       deepRecall,
       maxResponseChars: runtimeSettings.maxResponseChars,
       searchResults,
+      userContextProfile,
     });
 
     if (!response) {
@@ -847,6 +1026,7 @@ module.exports = {
   getRuntimeSettings,
   handleAutonomousMessage,
   initializeChatbot,
+  reloadSettings,
   resetChatbotMemory,
   shutdownChatbotPersistence,
   updateRuntimeSettings,

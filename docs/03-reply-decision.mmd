@@ -1,0 +1,19 @@
+flowchart TD
+    START["📨 Incoming message"] --> COOL{"In cooldown?\ncooldownMs or\nfollowupCooldownMs"}
+    COOL -- Yes --> SKIP["❌ Skip — cooldown"]
+    COOL -- No --> DIRECT{"Directly\n@mentioned\nor replied-to?"}
+
+    DIRECT -- Yes --> REPLY["✅ Reply\nreason: direct"]
+    DIRECT -- No --> INTEREST["computeInterestScore"]
+
+    INTEREST --> IS["Score sources:\n• has ? → +2\n• question word → +2\n• lumi/opinion/help → +2\n• personal stmt → +1\n• exclamation → +1\n• long msg → +1"]
+
+    IS --> CONV["+ conversationScore\nfrom recent history"]
+
+    CONV --> MOM["+ momentum\nboost & threshold relief"]
+
+    MOM --> EFF{"effective interest\n≥ adjusted\nthreshold?"}
+    EFF -- Yes --> REPLY2["✅ Reply\nreason: interest"]
+    EFF -- No --> RAND{"random roll\n< effective\nreplyChance?"}
+    RAND -- Yes --> REPLY3["✅ Reply\nreason: random"]
+    RAND -- No --> NOPE["❌ Skip\nno trigger"]

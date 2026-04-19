@@ -1,5 +1,6 @@
 const { config } = require('./config');
 const { logger } = require('./logger');
+const { getSetting } = require('./panelSettings');
 
 const DAY_MS = 86_400_000;
 
@@ -17,6 +18,47 @@ const userCounters = new Map();
  * Per-user cooldown timestamps — Map<userId, lastSearchAt>.
  */
 const userCooldowns = new Map();
+
+let braveSearchEnabled = config.braveSearchEnabled;
+let braveSearchDailyLimit = config.braveSearchDailyLimit;
+let braveSearchUserDailyLimit = config.braveSearchUserDailyLimit;
+let braveSearchCooldownMs = config.braveSearchCooldownMs;
+let braveSearchExemptUserIds = [...config.braveSearchExemptUserIds];
+
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function parseCsvList(value) {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function reloadSettings() {
+  try {
+    braveSearchEnabled = parseBoolean(getSetting('search.enabled'), config.braveSearchEnabled);
+    braveSearchDailyLimit = Number(getSetting('search.dailyLimit')) || config.braveSearchDailyLimit;
+    braveSearchUserDailyLimit = Number(getSetting('search.userDailyLimit')) || config.braveSearchUserDailyLimit;
+    braveSearchCooldownMs = Number(getSetting('search.cooldownMs')) || config.braveSearchCooldownMs;
+    const exemptCsv = getSetting('search.exemptUserIds');
+    braveSearchExemptUserIds = parseCsvList(exemptCsv);
+  } catch {
+    braveSearchEnabled = config.braveSearchEnabled;
+    braveSearchDailyLimit = config.braveSearchDailyLimit;
+    braveSearchUserDailyLimit = config.braveSearchUserDailyLimit;
+    braveSearchCooldownMs = config.braveSearchCooldownMs;
+    braveSearchExemptUserIds = [...config.braveSearchExemptUserIds];
+  }
+}
+
+reloadSettings();
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -41,7 +83,7 @@ function getUserCounter(userId) {
 }
 
 function isExemptUser(userId) {
-  return config.braveSearchExemptUserIds.includes(userId);
+  return braveSearchExemptUserIds.includes(userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -53,7 +95,7 @@ function isExemptUser(userId) {
  * Returns { allowed: boolean, reason: string }.
  */
 function checkSearchAllowed(userId) {
-  if (!config.braveSearchEnabled) {
+  if (!braveSearchEnabled) {
     return { allowed: false, reason: 'search-disabled' };
   }
 
@@ -63,15 +105,15 @@ function checkSearchAllowed(userId) {
 
   // Global daily cap
   resetIfExpired(globalCounter);
-  if (globalCounter.count >= config.braveSearchDailyLimit) {
+  if (globalCounter.count >= braveSearchDailyLimit) {
     return { allowed: false, reason: 'global-daily-limit' };
   }
 
   // Per-user cooldown (skip for exempt users)
   if (!isExemptUser(userId)) {
     const lastSearch = userCooldowns.get(userId);
-    if (lastSearch && Date.now() - lastSearch < config.braveSearchCooldownMs) {
-      const remainingSec = Math.ceil((config.braveSearchCooldownMs - (Date.now() - lastSearch)) / 1_000);
+    if (lastSearch && Date.now() - lastSearch < braveSearchCooldownMs) {
+      const remainingSec = Math.ceil((braveSearchCooldownMs - (Date.now() - lastSearch)) / 1_000);
       return { allowed: false, reason: `cooldown:${remainingSec}s` };
     }
   }
@@ -79,7 +121,7 @@ function checkSearchAllowed(userId) {
   // Per-user daily limit (skip for exempt users)
   if (!isExemptUser(userId)) {
     const userCounter = getUserCounter(userId);
-    if (userCounter.count >= config.braveSearchUserDailyLimit) {
+    if (userCounter.count >= braveSearchUserDailyLimit) {
       return { allowed: false, reason: 'user-daily-limit' };
     }
   }
@@ -150,8 +192,8 @@ function incrementSearchCount(userId) {
   userCooldowns.set(userId, Date.now());
 
   logger.debug(
-    `Search counter incremented: global=${globalCounter.count}/${config.braveSearchDailyLimit}, ` +
-    `user=${userId} count=${getUserCounter(userId).count}/${config.braveSearchUserDailyLimit}`,
+    `Search counter incremented: global=${globalCounter.count}/${braveSearchDailyLimit}, ` +
+    `user=${userId} count=${getUserCounter(userId).count}/${braveSearchUserDailyLimit}`,
   );
 }
 
@@ -168,7 +210,7 @@ function getSearchStats() {
   });
 
   return {
-    global: { count: globalCounter.count, limit: config.braveSearchDailyLimit, windowStart: globalCounter.windowStart },
+    global: { count: globalCounter.count, limit: braveSearchDailyLimit, windowStart: globalCounter.windowStart },
     perUser,
   };
 }
@@ -179,4 +221,5 @@ module.exports = {
   formatSearchResultsForPrompt,
   getSearchStats,
   incrementSearchCount,
+  reloadSettings,
 };
