@@ -6,6 +6,7 @@ const { logger } = require('./logger');
 const { awardMessageCoins } = require('./sadgirlEconomyStore');
 const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
 const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
+const { buildCigaretteCommand, handleCigaretteCommand } = require('./cigaretteCommands');
 const { buildPachinkoCommand, handlePachinkoCommand } = require('./pachinko');
 const { buildBlackjackCommand, handleBlackjackCommand } = require('./blackjack');
 const { buildHoldemCommand, handleHoldemCommand } = require('./texasholdem');
@@ -99,7 +100,7 @@ function buildPlayerCommands() {
         .setRequired(true)),
   ].map((command) => command.toJSON());
 
-  return [...cmds, buildTouhouCommand(), buildPachinkoCommand(), buildBlackjackCommand(), buildHoldemCommand(), buildHorseRaceCommand(), buildSlotsCommand(), buildVcCommand(), buildPrivateStockCommand()];
+  return [...cmds, buildTouhouCommand(), buildCigaretteCommand(), buildPachinkoCommand(), buildBlackjackCommand(), buildHoldemCommand(), buildHorseRaceCommand(), buildSlotsCommand(), buildVcCommand(), buildPrivateStockCommand()];
 }
 
 function buildHelpText() {
@@ -122,6 +123,10 @@ function buildHelpText() {
     '`/lumi-touhou buy <name>` - Buy a listed Touhou.',
     '`/lumi-touhou market` - Browse the Touhou market.',
     '`/lumi-touhou info <name>` - View Touhou details.',
+    '`/lumi-cigarette gacha` - Pull one random cigarette (1 SGC).',
+    '`/lumi-cigarette case` - View your cigarette case.',
+    '`/lumi-cigarette smoke <slot>` - Smoke a cigarette from your case (use `/lumi-cigarette case` to see slot numbers).',
+    '`/lumi-cigarette trade <yours> <user> <theirs>` - Trade cigarettes.',
     '`/lumi-bank balance` - Check your SadGirlCoin balance and top 10.',
     '`/lumi-bank send <user> <amount>` - Send SGC to another member.',
     '`/lumi-bank raffle` - Buy a yearly raffle ticket (50 SGC).',
@@ -489,6 +494,7 @@ const commandHandlers = new Map([
   ['lumi-bets', handleBetsCommand],
   ['lumi-stocks', handlePrivateStockCommand],
   ['lumi-touhou', handleTouhouCommand],
+  ['lumi-cigarette', handleCigaretteCommand],
   ['lumi-pachinko', handlePachinkoCommand],
   ['lumi-blackjack', handleBlackjackCommand],
   ['lumi-holdem', handleHoldemCommand],
@@ -775,8 +781,8 @@ async function handlePrefixCommand(message) {
     return true;
   }
 
-  // ── !bets / !stocks [list|buy] ──
-  if (cmd === '!bets' || cmd === '!stocks') {
+  // ── !bets [list|buy] ──
+  if (cmd === '!bets') {
     const sub = (parts[1] ?? 'list').toLowerCase();
     if (sub === 'buy') {
       const market = parseInt(parts[2], 10);
@@ -795,8 +801,8 @@ async function handlePrefixCommand(message) {
     return true;
   }
 
-  // ── !invest / !shares / !portfolio ──
-  if (cmd === '!invest' || cmd === '!shares' || cmd === '!portfolio') {
+  // ── !stocks / !invest / !shares / !portfolio ──
+  if (cmd === '!stocks' || cmd === '!invest' || cmd === '!shares' || cmd === '!portfolio') {
     const sub = cmd === '!portfolio' ? 'portfolio' : (parts[1] ?? 'list').toLowerCase();
 
     if (sub === 'buy') {
@@ -928,6 +934,47 @@ async function handlePrefixCommand(message) {
       const mentioned = message.mentions.users.first();
       const fake = fakeInteraction(message, { _subcommand: 'collection', user: mentioned || null });
       await handleTouhouCommand(fake);
+    }
+    return true;
+  }
+
+  // ── !cigarette / !cigs / !cig ──
+  if (cmd === '!cigarette' || cmd === '!cigs' || cmd === '!cig') {
+    const sub = (parts[1] ?? 'case').toLowerCase();
+
+    if (sub === 'gacha' || sub === 'pull' || sub === 'dispense') {
+      await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'gacha' }));
+    } else if (sub === 'smoke') {
+      const slotStr = parts[2]?.trim();
+      const slot = parseInt(slotStr, 10);
+      if (!slotStr || isNaN(slot) || slot < 1) {
+        await message.reply('Usage: `!cigarette smoke <slot number>` (use `!cigarette case` to see slot numbers)');
+        return true;
+      }
+      await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'smoke', slot }));
+    } else if (sub === 'trade') {
+      const mentioned = message.mentions.users.first();
+      if (!mentioned) {
+        await message.reply('Usage: `!cigarette trade <yours> @user <theirs>`');
+        return true;
+      }
+      const mentionIndex = text.indexOf('<@');
+      const mentionEnd = text.indexOf('>', mentionIndex) + 1;
+      const yours = text.slice(text.indexOf(sub) + sub.length, mentionIndex).trim();
+      const theirs = text.slice(mentionEnd).trim();
+      if (!yours || !theirs) {
+        await message.reply('Usage: `!cigarette trade <yours> @user <theirs>`');
+        return true;
+      }
+      await handleCigaretteCommand(fakeInteraction(message, {
+        _subcommand: 'trade',
+        yours,
+        user: mentioned,
+        theirs,
+      }));
+    } else {
+      const mentioned = message.mentions.users.first();
+      await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'case', user: mentioned || null }));
     }
     return true;
   }

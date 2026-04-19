@@ -13,6 +13,8 @@ const CENTRAL_BANK_USER_ID = '__CENTRAL_BANK__';
 const DOLL_STREET_USER_ID = '__DOLL_STREET__';
 const MOMIJI_CASINO_USER_ID = '__MOMIJI_CASINO__';
 const BIG_BUSINESS_USER_ID = '__BIG_BUSINESS__'; // legacy — kept for migration
+const TAYS_TOBACCO_USER_ID = '__TAYS_TOBACCO__';
+const TOUHOU_MGMT_USER_ID = '__TOUHOU_MGMT__';
 const BANK_OWNER_ID = '319254336402358272';
 let COINS_PER_CHARS = 50; // 1 coin per this many characters
 let ADMIN_AUTO_STARS = 3; // stars credited when admin auto-activates a market
@@ -70,6 +72,8 @@ function initEconomyStore(dbPath) {
   ensureDollStreet();
   ensureMomijiCasino();
   ensureBigBusiness();
+  ensureTaysTobacco();
+  ensureTouhouMgmt();
   reloadSettings(); // Load configurable constants from DB overrides
 }
 
@@ -244,6 +248,20 @@ function ensureBigBusiness() {
   const existing = db.prepare('SELECT user_id FROM accounts WHERE user_id = ?').get(BIG_BUSINESS_USER_ID);
   if (!existing) {
     db.prepare('INSERT INTO accounts (user_id, username) VALUES (?, ?)').run(BIG_BUSINESS_USER_ID, 'Big Business Inc');
+  }
+}
+
+function ensureTaysTobacco() {
+  const existing = db.prepare('SELECT user_id FROM accounts WHERE user_id = ?').get(TAYS_TOBACCO_USER_ID);
+  if (!existing) {
+    db.prepare('INSERT INTO accounts (user_id, username) VALUES (?, ?)').run(TAYS_TOBACCO_USER_ID, "Tay's Tobacco");
+  }
+}
+
+function ensureTouhouMgmt() {
+  const existing = db.prepare('SELECT user_id FROM accounts WHERE user_id = ?').get(TOUHOU_MGMT_USER_ID);
+  if (!existing) {
+    db.prepare('INSERT INTO accounts (user_id, username) VALUES (?, ?)').run(TOUHOU_MGMT_USER_ID, 'Touhou Management Inc');
   }
 }
 
@@ -1269,6 +1287,8 @@ module.exports = {
   DOLL_STREET_USER_ID,
   MOMIJI_CASINO_USER_ID,
   BIG_BUSINESS_USER_ID,
+  TAYS_TOBACCO_USER_ID,
+  TOUHOU_MGMT_USER_ID,
   BANK_OWNER_ID,
   COINS_PER_CHARS,
   initEconomyStore,

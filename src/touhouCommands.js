@@ -54,6 +54,7 @@ const {
 
 const {
   CENTRAL_BANK_USER_ID,
+  TOUHOU_MGMT_USER_ID,
   getBalance,
   ensureAccount,
   adjustBalance,
@@ -206,6 +207,7 @@ async function handleAdopt(interaction) {
 
   // Deduct the cost from the user's economy balance
   adjustBalance(userId, -BASE_ADOPT_PRICE, `Adopted Touhou: ${touhouName}`);
+  adjustBalance(TOUHOU_MGMT_USER_ID, BASE_ADOPT_PRICE, `Touhou adoption fee: ${touhouName}`);
 
   const rarity = getRarity(result.touhou.trade_count || 0, touhouName);
   const attachment = makeAttachment(touhouName);
@@ -421,11 +423,11 @@ async function handleBuy(interaction) {
   const sellerReceives = result.price - tax;
   adjustBalance(buyerId, -result.price, `Bought Touhou: ${touhouName}`);
   adjustBalance(result.sellerId, sellerReceives, `Sold Touhou: ${touhouName} (after 10% tax)`);
-  adjustBalance(CENTRAL_BANK_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
+  adjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
 
   const rarity = getRarity(result.touhou.trade_count, touhouName);
   const attachment = makeAttachment(touhouName);
-  const content = `💰 <@${buyerId}> bought **${touhouName}** from <@${result.sellerId}> for **${result.price} SGC**! (${tax} SGC tax → Central Bank) ${rarity.emoji} ${rarity.tier}`;
+  const content = `💰 <@${buyerId}> bought **${touhouName}** from <@${result.sellerId}> for **${result.price} SGC**! (${tax} SGC tax → Touhou Management Inc) ${rarity.emoji} ${rarity.tier}`;
 
   if (attachment) {
     await interaction.reply({ content, files: [attachment] });

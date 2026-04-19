@@ -4,9 +4,9 @@ const { flushChatbotState, initializeChatbot, shutdownChatbotPersistence } = req
 const { handleCommandInteraction, handleMessageCreate } = require('./commands');
 const { config, getMissingConfigValues } = require('./config');
 const { handleControlPlaneInteraction, registerControlPlane } = require('./controlPlane');
-const { initEconomyStore, closeEconomyStore, getEconomyDb } = require('./sadgirlEconomyStore');
+const { initEconomyStore, closeEconomyStore, getEconomyDb, adjustBalance, getSystemState, setSystemState, TOUHOU_MGMT_USER_ID } = require('./sadgirlEconomyStore');
 const { startEconomyScheduler, stopEconomyScheduler } = require('./sadgirlEconomyScheduler');
-const { initTouhouStore, closeTouhouStore } = require('./touhouStore');
+const { initTouhouStore, closeTouhouStore, computeHistoricalOwings } = require('./touhouStore');
 const { setTouhouDir } = require('./touhouCommands');
 const { logger } = require('./logger');
 const { initNowPlaying } = require('./nowPlaying');
@@ -25,6 +25,7 @@ const { initPrivateStockStore } = require('./privateStockStore');
 const { startPrivateStockScheduler, stopPrivateStockScheduler } = require('./privateStockScheduler');
 const { initStockEvents, stopStockEvents } = require('./stockEvents');
 const { reloadSettings: reloadPrivateStockSettings } = require('./privateStockCommands');
+const { initCigaretteStore, closeCigaretteStore } = require('./cigaretteStore');
 
 const missingConfigValues = getMissingConfigValues();
 if (missingConfigValues.length > 0) {
@@ -89,6 +90,13 @@ async function shutdown(signal) {
     closeTouhouStore();
   } catch (error) {
     logger.warn('Failed to close Touhou market DB during shutdown.', error.message);
+  }
+
+  // Shutdown cigarette gachapon
+  try {
+    closeCigaretteStore();
+  } catch (error) {
+    logger.warn('Failed to close cigarette store DB during shutdown.', error.message);
   }
 
   // Stop VC rewards (pays out remaining hours)
@@ -186,6 +194,30 @@ client.once(Events.ClientReady, async (readyClient) => {
       setTouhouDir(touhouImgDir);
     } catch (error) {
       logger.error('Failed to initialize Touhou market.', error.message);
+    }
+
+    // Initialize cigarette gachapon
+    try {
+      initCigaretteStore(config.cigaretteDbFile, config.cigaretteDataCsv);
+    } catch (error) {
+      logger.error('Failed to initialize cigarette store.', error.message);
+    }
+
+    // One-time retroactive credit for Touhou Management Inc
+    try {
+      const migDone = getSystemState('touhou_mgmt_retroactive_v1');
+      if (!migDone) {
+        const owings = computeHistoricalOwings(25);
+        const total = owings.adoptTotal + owings.taxTotal;
+        if (total > 0) {
+          adjustBalance(TOUHOU_MGMT_USER_ID, total,
+            `Retroactive Touhou Management Inc credit (${owings.adoptTotal} adopt + ${owings.taxTotal} trade taxes)`);
+        }
+        setSystemState('touhou_mgmt_retroactive_v1', '1');
+        logger.info(`Touhou Mgmt retroactive credit applied: ${total} SGC`);
+      }
+    } catch (error) {
+      logger.warn('Touhou Management Inc retroactive migration failed.', error.message);
     }
 
     // Start voice-channel coin rewards (15 SGC / hour)

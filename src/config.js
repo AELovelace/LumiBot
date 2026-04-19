@@ -323,6 +323,8 @@ const config = Object.freeze({
   economyEnabled: parseBoolean(process.env.SADGIRLCOIN_ENABLED, true),
   touhouDbFile: process.env.TOUHOU_DB_FILE?.trim() || 'data/touhou-market.sqlite3',
   touhouDir: process.env.TOUHOU_DIR?.trim() || 'touhous',
+  cigaretteDbFile: process.env.CIGARETTE_DB_FILE?.trim() || 'data/cigarette-market.sqlite3',
+  cigaretteDataCsv: process.env.CIGARETTE_DATA_CSV?.trim() || 'cigarette_market_data_expanded.csv',
 });
 
 function getMissingConfigValues() {

@@ -578,6 +578,31 @@ function getMarketStats() {
 }
 
 /**
+ * Compute the total SGC amounts Touhou Management Inc should have received
+ * historically (based on the trade log):
+ *   - adoptTotal: one BASE_ADOPT_PRICE per adopt trade
+ *   - taxTotal:   floor(price * 0.10), min 1, per marketplace sale trade
+ * Used once for the retroactive migration on first startup.
+ */
+function computeHistoricalOwings(baseAdoptPrice = 25) {
+  const adopts = db.prepare(
+    "SELECT COUNT(*) as cnt FROM touhou_trades WHERE trade_type = 'adopt' AND from_user_id = '__MARKET__'"
+  ).get();
+
+  const sales = db.prepare(
+    "SELECT price FROM touhou_trades WHERE trade_type = 'sale'"
+  ).all();
+
+  const adoptTotal = (adopts?.cnt || 0) * baseAdoptPrice;
+  const taxTotal = sales.reduce(
+    (sum, row) => sum + Math.max(1, Math.floor((row.price || 0) * 0.10)),
+    0,
+  );
+
+  return { adoptTotal, taxTotal };
+}
+
+/**
  * Search Touhous by name pattern.
  */
 function searchTouhous(pattern) {
@@ -619,4 +644,5 @@ module.exports = {
   adminResetTrades,
   getMarketStats,
   searchTouhous,
+  computeHistoricalOwings,
 };

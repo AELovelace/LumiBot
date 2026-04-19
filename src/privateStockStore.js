@@ -523,14 +523,27 @@ function ensureSyntheticStockPool(realNames) {
       const preserveCustomName = metadata.customName === true && String(existing.business_name || '').trim().length > 0;
       const effectiveName = preserveCustomName ? existing.business_name : businessName;
 
+      // Always regenerate ticker from current name unless manually set
+      const preserveCustomTicker = metadata.customTicker === true;
+      let effectiveTicker = existing.ticker;
+      if (!preserveCustomTicker) {
+        const candidate = createTicker(effectiveName, currentTickers);
+        if (candidate !== existing.ticker) {
+          currentTickers.delete(existing.ticker);
+          effectiveTicker = candidate;
+        }
+        currentTickers.add(effectiveTicker);
+      }
+
       db.prepare(`
         UPDATE bb_stocks
         SET business_name = ?,
+            ticker = ?,
             entity_type = 'synthetic',
             base_performance = ?,
             updated_at = datetime('now')
         WHERE guild_id = ?
-      `).run(effectiveName, basePerformance, syntheticGuildId);
+      `).run(effectiveName, effectiveTicker, basePerformance, syntheticGuildId);
       return;
     }
 
