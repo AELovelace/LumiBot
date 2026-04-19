@@ -15,10 +15,12 @@ const { logger } = require('./logger');
 const DOLL_USER_ID = '319254336402358272';
 const MOMIJI_FILE = 'Momiji Inubashiri.png';
 const BASE_ADOPT_PRICE = 25;
+const DEFAULT_RARITY_SEED_FILE = path.resolve(process.cwd(), 'data', 'touhou-rarity-seed.json');
 
 let db = null;
 let touhouList = []; // cached list of all Touhou filenames
 let shortNameMap = {}; // short name -> full name (filename without ext)
+let raritySeedByName = {}; // canonical touhou name -> rarity seed metadata
 
 // ---------------------------------------------------------------------------
 // Name mapping
@@ -85,6 +87,7 @@ function getImageFile(canonicalName) {
 function initTouhouStore(dbPath, touhouDir) {
   const resolvedDb = path.resolve(dbPath);
   const resolvedDir = path.resolve(touhouDir);
+  raritySeedByName = loadRaritySeed();
   logger.info(`Touhou market DB: ${resolvedDb}`);
   db = new Database(resolvedDb);
   db.pragma('journal_mode = WAL');
@@ -114,6 +117,10 @@ function createSchema() {
       filename      TEXT NOT NULL,
       owner_id      TEXT DEFAULT NULL,
       trade_count   INTEGER NOT NULL DEFAULT 0,
+      base_rarity_score REAL NOT NULL DEFAULT 0,
+      popularity_score REAL NOT NULL DEFAULT 0,
+      comment_count INTEGER NOT NULL DEFAULT 0,
+      is_main_character INTEGER NOT NULL DEFAULT 0,
       adopted_at    TEXT DEFAULT NULL,
       last_traded   TEXT DEFAULT NULL
     );
@@ -142,6 +149,57 @@ function createSchema() {
     CREATE INDEX IF NOT EXISTS idx_trades_to     ON touhou_trades(to_user_id);
     CREATE INDEX IF NOT EXISTS idx_listings_seller ON touhou_listings(seller_id);
   `);
+
+  ensureColumn('touhous', 'base_rarity_score', 'REAL NOT NULL DEFAULT 0');
+  ensureColumn('touhous', 'popularity_score', 'REAL NOT NULL DEFAULT 0');
+  ensureColumn('touhous', 'comment_count', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('touhous', 'is_main_character', 'INTEGER NOT NULL DEFAULT 0');
+}
+
+function ensureColumn(tableName, columnName, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (!columns.some((column) => column.name === columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+}
+
+function normalizeSeedName(name) {
+  return (name || '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function loadRaritySeed() {
+  if (!fs.existsSync(DEFAULT_RARITY_SEED_FILE)) {
+    logger.info(`Touhou rarity seed file not found: ${DEFAULT_RARITY_SEED_FILE}`);
+    return {};
+  }
+
+  try {
+    const raw = fs.readFileSync(DEFAULT_RARITY_SEED_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const entries = parsed?.characters && typeof parsed.characters === 'object'
+      ? Object.entries(parsed.characters)
+      : [];
+
+    const result = {};
+    for (const [name, value] of entries) {
+      const key = normalizeSeedName(name);
+      result[key] = {
+        baseRarityScore: Number(value?.baseRarityScore) || 0,
+        popularityScore: Number(value?.popularityScore) || 0,
+        commentCount: Number(value?.commentCount) || 0,
+        isMainCharacter: value?.isMainCharacter ? 1 : 0,
+      };
+    }
+
+    logger.info(`Touhou rarity seed loaded: ${Object.keys(result).length} characters.`);
+    return result;
+  } catch (error) {
+    logger.warn(`Failed to load Touhou rarity seed: ${error.message}`);
+    return {};
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,13 +208,33 @@ function createSchema() {
 
 function seedMarket() {
   const insert = db.prepare(`
-    INSERT OR IGNORE INTO touhous (name, filename) VALUES (?, ?)
+    INSERT OR IGNORE INTO touhous (
+      name,
+      filename,
+      base_rarity_score,
+      popularity_score,
+      comment_count,
+      is_main_character
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const updateSeed = db.prepare(`
+    UPDATE touhous
+    SET base_rarity_score = ?, popularity_score = ?, comment_count = ?, is_main_character = ?
+    WHERE name = ?
   `);
 
   const tx = db.transaction(() => {
     for (const file of touhouList) {
       const name = path.parse(file).name;
-      insert.run(name, file);
+      const seed = raritySeedByName[name] || {
+        baseRarityScore: 0,
+        popularityScore: 0,
+        commentCount: 0,
+        isMainCharacter: 0,
+      };
+      insert.run(name, file, seed.baseRarityScore, seed.popularityScore, seed.commentCount, seed.isMainCharacter);
+      updateSeed.run(seed.baseRarityScore, seed.popularityScore, seed.commentCount, seed.isMainCharacter, name);
     }
   });
   tx();
@@ -191,12 +269,13 @@ function ensureMomijiReserved() {
  * Rarity tiers based on trade count.
  * Momiji Inubashiri has a fixed ultra-rare tier.
  */
-function getRarity(tradeCount, name) {
+function getRarity(tradeCount, name, baseRarityScore = 0) {
   if (name === 'Momiji Inubashiri') return { tier: 'Ultra-Plus Infinity Rare', emoji: '✦' };
-  if (tradeCount >= 20) return { tier: 'Legendary', emoji: '🌟' };
-  if (tradeCount >= 12) return { tier: 'Epic', emoji: '💜' };
-  if (tradeCount >= 6) return { tier: 'Rare', emoji: '🔷' };
-  if (tradeCount >= 2) return { tier: 'Uncommon', emoji: '🟢' };
+  const combinedScore = Number(tradeCount || 0) + Number(baseRarityScore || 0);
+  if (combinedScore >= 24) return { tier: 'Legendary', emoji: '🌟' };
+  if (combinedScore >= 14) return { tier: 'Epic', emoji: '💜' };
+  if (combinedScore >= 8) return { tier: 'Rare', emoji: '🔷' };
+  if (combinedScore >= 4) return { tier: 'Uncommon', emoji: '🟢' };
   return { tier: 'Common', emoji: '⚪' };
 }
 
@@ -204,8 +283,10 @@ function getRarity(tradeCount, name) {
  * Suggested price based on trade count.
  * Base 25, increases with each trade.
  */
-function getSuggestedPrice(tradeCount) {
-  return Math.floor(BASE_ADOPT_PRICE * (1 + tradeCount * 0.5));
+function getSuggestedPrice(tradeCount, baseRarityScore = 0) {
+  const tradeComponent = Number(tradeCount || 0) * 0.45;
+  const baseComponent = Number(baseRarityScore || 0) * 0.35;
+  return Math.floor(BASE_ADOPT_PRICE * (1 + tradeComponent + baseComponent));
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +298,7 @@ function getSuggestedPrice(tradeCount) {
  */
 function getAvailableTouhous(limit = 20, offset = 0) {
   return db.prepare(`
-    SELECT name, filename, trade_count
+    SELECT name, filename, trade_count, base_rarity_score, popularity_score, comment_count, is_main_character
     FROM touhous
     WHERE owner_id IS NULL
     ORDER BY name
@@ -264,7 +345,7 @@ function adoptTouhou(userId) {
  */
 function getUserTouhous(userId) {
   return db.prepare(`
-    SELECT name, filename, trade_count, adopted_at, last_traded
+    SELECT name, filename, trade_count, base_rarity_score, popularity_score, comment_count, is_main_character, adopted_at, last_traded
     FROM touhous
     WHERE owner_id = ?
     ORDER BY name
@@ -437,7 +518,7 @@ function delistTouhou(sellerId, touhouName) {
 function getListings() {
   return db.prepare(`
     SELECT l.touhou_name, l.seller_id, l.price, l.created_at,
-           t.trade_count, t.filename
+        t.trade_count, t.filename, t.base_rarity_score, t.popularity_score, t.comment_count, t.is_main_character
     FROM touhou_listings l
     JOIN touhous t ON t.name = l.touhou_name
     WHERE t.owner_id = l.seller_id
@@ -607,7 +688,7 @@ function computeHistoricalOwings(baseAdoptPrice = 25) {
  */
 function searchTouhous(pattern) {
   return db.prepare(`
-    SELECT name, filename, owner_id, trade_count
+    SELECT name, filename, owner_id, trade_count, base_rarity_score, popularity_score, comment_count, is_main_character
     FROM touhous
     WHERE name LIKE ?
     ORDER BY name

@@ -1155,6 +1155,7 @@ async function removePlayerFromTable(table, userId, { publicReason = null } = {}
   table.players.delete(userId);
 
   if (getHumanPlayers(table).length === 0) {
+    clearNextHandTimer(table);
     await closeTable(table, '(everyone left)');
     return;
   }

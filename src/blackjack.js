@@ -372,11 +372,19 @@ function setupCollector(table) {
         return;
       }
 
+      const duringHand = !table.resolving;
+      if (!duringHand && table.players.size === 1 && table.nextHandTimer) {
+        clearTimeout(table.nextHandTimer);
+        table.nextHandTimer = null;
+      }
+
       const lostBet = player.bet;
       table.players.delete(btn.user.id);
 
       await btn.reply({
-        content: `You left the table. Your bet of **${lostBet.toLocaleString()} SGC** is forfeited.`,
+        content: duringHand
+          ? `You left the table. Your bet of **${lostBet.toLocaleString()} SGC** is forfeited.`
+          : 'You left the blackjack table.',
         ephemeral: true,
       }).catch(() => {});
 
@@ -602,6 +610,11 @@ async function handleLeave(interaction) {
   const player = table.players.get(userId);
   const duringHand = !table.resolving;   // resolving=true means between hands
   const lostBet = player.bet;
+
+  if (!duringHand && table.players.size === 1 && table.nextHandTimer) {
+    clearTimeout(table.nextHandTimer);
+    table.nextHandTimer = null;
+  }
 
   table.players.delete(userId);
 

@@ -4,6 +4,7 @@ const { config, parsePlayInput } = require('./config');
 const { handleAutonomousMessage } = require('./chatbot');
 const { logger } = require('./logger');
 const { awardMessageCoins } = require('./sadgirlEconomyStore');
+const { getSmokeBoost } = require('./smokeBoost');
 const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
 const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
 const { buildCigaretteCommand, handleCigaretteCommand } = require('./cigaretteCommands');
@@ -118,15 +119,17 @@ function buildHelpText() {
     '`/lumi-touhou adopt` - Adopt a random Touhou (25 SGC).',
     '`/lumi-touhou collection` - View your Touhou collection.',
     '`/lumi-touhou send <name> <user>` - Gift a Touhou to someone.',
-    '`/lumi-touhou trade <yours> <user> <theirs>` - Swap Touhous.',
+    '`/lumi-touhou trade <yours> <user> <theirs>` - Request a Touhou swap (recipient must approve).',
     '`/lumi-touhou sell <name> <price>` - List a Touhou for sale.',
     '`/lumi-touhou buy <name>` - Buy a listed Touhou.',
     '`/lumi-touhou market` - Browse the Touhou market.',
     '`/lumi-touhou info <name>` - View Touhou details.',
     '`/lumi-cigarette gacha` - Pull one random cigarette (1 SGC).',
     '`/lumi-cigarette case` - View your cigarette case.',
-    '`/lumi-cigarette smoke <slot>` - Smoke a cigarette from your case (use `/lumi-cigarette case` to see slot numbers).',
-    '`/lumi-cigarette trade <yours> <user> <theirs>` - Trade cigarettes.',
+    '`/lumi-cigarette leaderboard` - Show top cigarette smokers.',
+    '`/lumi-cigarette smoke <slot>` - Smoke a cigarette from your case and get a rarity-based 1.25x–3x message/image/video character value boost for 5 minutes.',
+    '`/lumi-cigarette buff` - Check your active smoke boost multiplier and remaining time.',
+    '`/lumi-cigarette trade <yours> <user> <theirs|money>` - Request a swap/sale (recipient must approve).',
     '`/lumi-bank balance` - Check your SadGirlCoin balance and top 10.',
     '`/lumi-bank send <user> <amount>` - Send SGC to another member.',
     '`/lumi-bank raffle` - Buy a yearly raffle ticket (50 SGC).',
@@ -552,10 +555,15 @@ async function handleMessageCreate(message) {
         }
       }
 
+      const smokeBoost = getSmokeBoost(message.author.id);
+      if (smokeBoost.active) {
+        effectiveChars = Math.floor(effectiveChars * smokeBoost.multiplier);
+      }
+
       if (effectiveChars > 0) {
         const coins = awardMessageCoins(message.author.id, message.author.username, effectiveChars);
         if (coins > 0) {
-          logger.debug(`Awarded ${coins} SGC to ${message.author.username} (${effectiveChars} effective chars).`);
+          logger.debug(`Awarded ${coins} SGC to ${message.author.username} (${effectiveChars} effective chars${smokeBoost.active ? ', smoke boost active' : ''}).`);
         }
       }
     } catch (error) {
@@ -607,17 +615,20 @@ function fakeInteraction(message, optionsData = {}) {
 
     async reply(content) {
       const payload = typeof content === 'string' ? { content } : content;
+      const sendable = {
+        content: payload.content,
+        components: payload.components,
+        files: payload.files,
+        embeds: payload.embeds,
+      };
       // Ephemeral messages → send as a normal reply that auto-deletes after 8s
       if (payload.ephemeral) {
-        const m = await message.reply(payload.content);
+        const m = await message.reply(sendable);
         setTimeout(() => m.delete().catch(() => {}), 8000);
         replyMsg = m;
         return m;
       }
-      replyMsg = await message.channel.send({
-        content: payload.content,
-        components: payload.components,
-      });
+      replyMsg = await message.channel.send(sendable);
       return replyMsg;
     },
 
@@ -939,11 +950,44 @@ async function handlePrefixCommand(message) {
   }
 
   // ── !cigarette / !cigs / !cig ──
+  if (cmd === '!smokebuff' || cmd === '!sb') {
+    const boost = getSmokeBoost(message.author.id);
+    if (!boost.active) {
+      await message.reply('🚬 You have no active smoke boost. Use `!smoke <slot>` to activate one.');
+      return true;
+    }
+
+    const totalSeconds = Math.max(0, Math.ceil(boost.remainingMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const timeLeft = `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+
+    await message.reply(
+      `🚬 **Smoke Boost Active** — **${boost.multiplier}x** character value` +
+      `${boost.rarityTier ? ` (${boost.rarityTier})` : ''}\n` +
+      `⏳ Time remaining: **${timeLeft}**`
+    );
+    return true;
+  }
+
+  if (cmd === '!smoke') {
+    const slotStr = parts[1]?.trim();
+    const slot = parseInt(slotStr, 10);
+    if (!slotStr || isNaN(slot) || slot < 1) {
+      await message.reply('Usage: `!smoke <slot number>` (use `!cigarette case` to see slot numbers)');
+      return true;
+    }
+    await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'smoke', slot }));
+    return true;
+  }
+
   if (cmd === '!cigarette' || cmd === '!cigs' || cmd === '!cig') {
     const sub = (parts[1] ?? 'case').toLowerCase();
 
     if (sub === 'gacha' || sub === 'pull' || sub === 'dispense') {
       await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'gacha' }));
+    } else if (sub === 'leaderboard' || sub === 'top' || sub === 'lb') {
+      await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'leaderboard' }));
     } else if (sub === 'smoke') {
       const slotStr = parts[2]?.trim();
       const slot = parseInt(slotStr, 10);
@@ -955,22 +999,25 @@ async function handlePrefixCommand(message) {
     } else if (sub === 'trade') {
       const mentioned = message.mentions.users.first();
       if (!mentioned) {
-        await message.reply('Usage: `!cigarette trade <yours> @user <theirs>`');
+        await message.reply('Usage: `!cigarette trade <yours> @user <theirs>` OR `!cigarette trade <yours> @user <money>`');
         return true;
       }
       const mentionIndex = text.indexOf('<@');
       const mentionEnd = text.indexOf('>', mentionIndex) + 1;
       const yours = text.slice(text.indexOf(sub) + sub.length, mentionIndex).trim();
-      const theirs = text.slice(mentionEnd).trim();
-      if (!yours || !theirs) {
-        await message.reply('Usage: `!cigarette trade <yours> @user <theirs>`');
+      const target = text.slice(mentionEnd).trim();
+      if (!yours || !target) {
+        await message.reply('Usage: `!cigarette trade <yours> @user <theirs>` OR `!cigarette trade <yours> @user <money>`');
         return true;
       }
+      const moneyMatch = target.match(/^\$?(\d+)$/u);
+      const money = moneyMatch ? Number.parseInt(moneyMatch[1], 10) : null;
       await handleCigaretteCommand(fakeInteraction(message, {
         _subcommand: 'trade',
         yours,
         user: mentioned,
-        theirs,
+        theirs: money ? null : target,
+        money,
       }));
     } else {
       const mentioned = message.mentions.users.first();

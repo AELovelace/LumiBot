@@ -18,7 +18,8 @@ A Discord bot that joins the same server voice channel as the user who requested
 3. Put `yt-dlp.exe` in the workspace root, or set `YTDLP_PATH` to your yt-dlp binary.
 4. Optionally set `DEFAULT_STREAM_URL` to a public HTTP/HLS stream URL.
 5. Install dependencies with `npm install`.
-6. Start the bot with `npm start`.
+6. (Optional but recommended) Refresh Touhou rarity seed data with `npm run build:touhou-rarity`.
+7. Start the bot with `npm start`.
 	- For local RTX 3080 mode with `HammerAI/llama-3-lexi-uncensored`, use `npm run start:3080`.
 
 ## Discord bot settings

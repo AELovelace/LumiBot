@@ -4,6 +4,7 @@ const Database = require('better-sqlite3');
 const { logger } = require('./logger');
 
 const DISPENSE_PRICE = 1;
+const CASE_LIMIT = 40;
 
 let db = null;
 let maxRank = 1;
@@ -156,9 +157,27 @@ function createSchema() {
       created_at        TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS cigarette_sales (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      seller_id    TEXT NOT NULL,
+      buyer_id     TEXT NOT NULL,
+      cigarette_id INTEGER NOT NULL REFERENCES cigarettes(id),
+      price        INTEGER NOT NULL,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS cigarette_user_stats (
+      user_id        TEXT PRIMARY KEY,
+      smoked_total   INTEGER NOT NULL DEFAULT 0,
+      updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_user_cigs_user ON user_cigarettes(user_id);
     CREATE INDEX IF NOT EXISTS idx_cig_trades_from ON cigarette_trades(from_user_id);
     CREATE INDEX IF NOT EXISTS idx_cig_trades_to ON cigarette_trades(to_user_id);
+    CREATE INDEX IF NOT EXISTS idx_cig_sales_seller ON cigarette_sales(seller_id);
+    CREATE INDEX IF NOT EXISTS idx_cig_sales_buyer ON cigarette_sales(buyer_id);
+    CREATE INDEX IF NOT EXISTS idx_cig_user_stats_smoked ON cigarette_user_stats(smoked_total DESC);
   `);
 }
 
@@ -288,14 +307,47 @@ function dispenseCigarette(userId) {
     return { success: false, error: 'No cigarettes are loaded in the machine.' };
   }
 
+  const totalRow = db.prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS total
+    FROM user_cigarettes
+    WHERE user_id = ?
+  `).get(userId);
+  const totalCount = Number(totalRow?.total || 0);
+
+  const leastRareHeld = db.prepare(`
+    SELECT c.id, c.rank, c.display_name, uc.quantity
+    FROM user_cigarettes uc
+    JOIN cigarettes c ON c.id = uc.cigarette_id
+    WHERE uc.user_id = ? AND uc.quantity > 0
+    ORDER BY c.rank DESC, uc.quantity DESC, c.id DESC
+    LIMIT 1
+  `).get(userId);
+
+  let action = 'added';
+  let replaced = null;
+
   const tx = db.transaction(() => {
-    upsertUserQuantity(userId, drawn.id, 1, true);
+    if (totalCount < CASE_LIMIT) {
+      upsertUserQuantity(userId, drawn.id, 1, true);
+      action = 'added';
+    } else if (leastRareHeld && drawn.rank < leastRareHeld.rank) {
+      upsertUserQuantity(userId, leastRareHeld.id, -1, false);
+      upsertUserQuantity(userId, drawn.id, 1, true);
+      action = 'replaced';
+      replaced = leastRareHeld;
+    } else {
+      action = 'rejected_full';
+    }
+
     db.prepare('UPDATE cigarettes SET total_dispensed = total_dispensed + 1 WHERE id = ?').run(drawn.id);
   });
   tx();
 
   return {
     success: true,
+    action,
+    caseLimit: CASE_LIMIT,
+    replacedCigarette: replaced,
     cigarette: drawn,
     rarity: getRarityByRank(drawn.rank),
   };
@@ -307,7 +359,7 @@ function getUserCase(userId) {
     FROM user_cigarettes uc
     JOIN cigarettes c ON c.id = uc.cigarette_id
     WHERE uc.user_id = ? AND uc.quantity > 0
-    ORDER BY uc.quantity DESC, c.rank ASC
+    ORDER BY c.rank ASC, uc.quantity DESC, c.display_name ASC
   `).all(userId);
 }
 
@@ -328,6 +380,13 @@ function smokeCigarette(userId, input) {
   const tx = db.transaction(() => {
     upsertUserQuantity(userId, resolved.cigarette.id, -1, false);
     db.prepare('UPDATE cigarettes SET total_smoked = total_smoked + 1 WHERE id = ?').run(resolved.cigarette.id);
+    db.prepare(`
+      INSERT INTO cigarette_user_stats (user_id, smoked_total, updated_at)
+      VALUES (?, 1, datetime('now'))
+      ON CONFLICT(user_id) DO UPDATE SET
+        smoked_total = cigarette_user_stats.smoked_total + 1,
+        updated_at = datetime('now')
+    `).run(userId);
   });
   tx();
 
@@ -378,8 +437,53 @@ function tradeCigarettes(userAId, userAInput, userBId, userBInput) {
   };
 }
 
+function tradeCigaretteForMoney(sellerId, sellerInput, buyerId, price) {
+  const amount = Number.parseInt(price, 10);
+  if (!Number.isFinite(amount) || amount < 1) {
+    return { success: false, error: 'Price must be at least 1 SGC.' };
+  }
+
+  const cig = resolveCigarette(sellerInput);
+  if (!cig.success) return cig;
+
+  const own = db.prepare('SELECT quantity FROM user_cigarettes WHERE user_id = ? AND cigarette_id = ?').get(sellerId, cig.cigarette.id);
+  if (!own || own.quantity < 1) {
+    return { success: false, error: `You don't own **${cig.cigarette.display_name}**.` };
+  }
+
+  const tx = db.transaction(() => {
+    upsertUserQuantity(sellerId, cig.cigarette.id, -1, false);
+    upsertUserQuantity(buyerId, cig.cigarette.id, 1, false);
+
+    db.prepare(`
+      INSERT INTO cigarette_sales (seller_id, buyer_id, cigarette_id, price)
+      VALUES (?, ?, ?, ?)
+    `).run(sellerId, buyerId, cig.cigarette.id, amount);
+  });
+  tx();
+
+  return {
+    success: true,
+    cigarette: cig.cigarette,
+    rarity: getRarityByRank(cig.cigarette.rank),
+    price: amount,
+  };
+}
+
+function getTopSmokers(limit = 10) {
+  const maxRows = Math.max(1, Math.min(25, Number.parseInt(limit, 10) || 10));
+  return db.prepare(`
+    SELECT user_id, smoked_total
+    FROM cigarette_user_stats
+    WHERE smoked_total > 0
+    ORDER BY smoked_total DESC, user_id ASC
+    LIMIT ?
+  `).all(maxRows);
+}
+
 module.exports = {
   DISPENSE_PRICE,
+  CASE_LIMIT,
   initCigaretteStore,
   closeCigaretteStore,
   getRarityByRank,
@@ -387,5 +491,7 @@ module.exports = {
   dispenseCigarette,
   getUserCase,
   smokeCigarette,
+  getTopSmokers,
   tradeCigarettes,
+  tradeCigaretteForMoney,
 };

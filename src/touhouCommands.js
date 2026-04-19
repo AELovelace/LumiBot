@@ -20,7 +20,13 @@
  */
 
 const path = require('node:path');
-const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
+const {
+  SlashCommandBuilder,
+  AttachmentBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require('discord.js');
 const { logger } = require('./logger');
 
 const ECONOMY_ADMIN_ROLE_ID = '901304988083572756';
@@ -209,7 +215,7 @@ async function handleAdopt(interaction) {
   adjustBalance(userId, -BASE_ADOPT_PRICE, `Adopted Touhou: ${touhouName}`);
   adjustBalance(TOUHOU_MGMT_USER_ID, BASE_ADOPT_PRICE, `Touhou adoption fee: ${touhouName}`);
 
-  const rarity = getRarity(result.touhou.trade_count || 0, touhouName);
+  const rarity = getRarity(result.touhou.trade_count || 0, touhouName, result.touhou.base_rarity_score || 0);
   const attachment = makeAttachment(touhouName);
   const content = `🎉 You adopted **${touhouName}**! ${rarity.emoji} ${rarity.tier}\nCost: **${BASE_ADOPT_PRICE} SGC**`;
 
@@ -231,9 +237,9 @@ async function handleCollection(interaction) {
   }
 
   const lines = touhous.map((t) => {
-    const rarity = getRarity(t.trade_count, t.name);
-    const price = getSuggestedPrice(t.trade_count);
-    return `${rarity.emoji} **${t.name}** — ${rarity.tier} (${t.trade_count} trades, ~${price} SGC)`;
+    const rarity = getRarity(t.trade_count, t.name, t.base_rarity_score || 0);
+    const price = getSuggestedPrice(t.trade_count, t.base_rarity_score || 0);
+    return `${rarity.emoji} **${t.name}** — ${rarity.tier} (${t.trade_count} trades, base ${t.base_rarity_score || 0}, ~${price} SGC)`;
   });
 
   // Build per-touhou file list (may be null for missing images)
@@ -292,7 +298,7 @@ async function handleSend(interaction) {
     return;
   }
 
-  const rarity = getRarity(result.touhou.trade_count, touhouName);
+  const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0);
   await interaction.reply(`🎁 <@${userId}> gifted **${touhouName}** to <@${recipient.id}>! ${rarity.emoji} ${rarity.tier} (${result.touhou.trade_count} trades)`);
 }
 
@@ -319,18 +325,80 @@ async function handleTrade(interaction) {
     return;
   }
 
-  const result = swapTouhous(userA.id, touhouAName, userB.id, touhouBName);
-  if (!result.success) {
-    await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+  if (userB.id === userA.id) {
+    await interaction.reply({ content: '❌ You can\'t trade with yourself.', ephemeral: true });
     return;
   }
 
-  const rarityA = getRarity(getTouhou(touhouAName).trade_count, touhouAName);
-  const rarityB = getRarity(getTouhou(touhouBName).trade_count, touhouBName);
-  await interaction.reply(
-    `🔄 **Trade complete!**\n` +
-    `<@${userA.id}> gave **${touhouAName}** ${rarityA.emoji} ↔ <@${userB.id}> gave **${touhouBName}** ${rarityB.emoji}`
-  );
+  const token = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const yesId = `th_trade_yes_${token}`;
+  const noId = `th_trade_no_${token}`;
+  const components = [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(yesId).setLabel('Yes').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(noId).setLabel('No').setStyle(ButtonStyle.Danger),
+    ),
+  ];
+
+  await interaction.reply({
+    content:
+      `🤝 **Trade request**\n` +
+      `<@${userA.id}> offers **${touhouAName}** for **${touhouBName}** from <@${userB.id}>.\n` +
+      `<@${userB.id}> — approve this trade?`,
+    components,
+  });
+
+  const tradeMessage = await interaction.fetchReply();
+  const collector = tradeMessage.createMessageComponentCollector({
+    filter: (btn) => btn.customId === yesId || btn.customId === noId,
+    time: 60_000,
+  });
+
+  let resolved = false;
+
+  collector.on('collect', async (btn) => {
+    if (btn.user.id !== userB.id) {
+      await btn.reply({ content: 'Only the trade recipient can approve or deny this trade.', ephemeral: true });
+      return;
+    }
+
+    if (resolved) {
+      await btn.reply({ content: 'This trade request is already resolved.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    resolved = true;
+
+    if (btn.customId === noId) {
+      await btn.update({ content: `❌ Trade denied by <@${userB.id}>.`, components: [] });
+      collector.stop('denied');
+      return;
+    }
+
+    const result = swapTouhous(userA.id, touhouAName, userB.id, touhouBName);
+    if (!result.success) {
+      await btn.update({ content: `❌ Trade failed: ${result.error}`, components: [] });
+      collector.stop('failed');
+      return;
+    }
+
+    const touhouA = getTouhou(touhouAName);
+    const touhouB = getTouhou(touhouBName);
+    const rarityA = getRarity(touhouA.trade_count, touhouAName, touhouA.base_rarity_score || 0);
+    const rarityB = getRarity(touhouB.trade_count, touhouBName, touhouB.base_rarity_score || 0);
+    await btn.update({
+      content:
+        `🔄 **Trade complete!**\n` +
+        `<@${userA.id}> gave **${touhouAName}** ${rarityA.emoji} ↔ <@${userB.id}> gave **${touhouBName}** ${rarityB.emoji}`,
+      components: [],
+    });
+    collector.stop('approved');
+  });
+
+  collector.on('end', async (_collected, reason) => {
+    if (!resolved && reason === 'time') {
+      await tradeMessage.edit({ content: `⌛ Trade request timed out. No trade occurred.`, components: [] }).catch(() => {});
+    }
+  });
 }
 
 async function handleSell(interaction) {
@@ -351,8 +419,8 @@ async function handleSell(interaction) {
   }
 
   const touhou = getTouhou(touhouName);
-  const rarity = getRarity(touhou.trade_count, touhouName);
-  const suggested = getSuggestedPrice(touhou.trade_count);
+  const rarity = getRarity(touhou.trade_count, touhouName, touhou.base_rarity_score || 0);
+  const suggested = getSuggestedPrice(touhou.trade_count, touhou.base_rarity_score || 0);
   await interaction.reply(
     `🏷️ **${touhouName}** listed for sale at **${price} SGC**! ${rarity.emoji} ${rarity.tier}\n` +
     `_Suggested price based on rarity: ~${suggested} SGC_`
@@ -425,7 +493,7 @@ async function handleBuy(interaction) {
   adjustBalance(result.sellerId, sellerReceives, `Sold Touhou: ${touhouName} (after 10% tax)`);
   adjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
 
-  const rarity = getRarity(result.touhou.trade_count, touhouName);
+  const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0);
   const attachment = makeAttachment(touhouName);
   const content = `💰 <@${buyerId}> bought **${touhouName}** from <@${result.sellerId}> for **${result.price} SGC**! (${tax} SGC tax → Touhou Management Inc) ${rarity.emoji} ${rarity.tier}`;
 
@@ -449,7 +517,7 @@ async function handleMarket(interaction) {
     lines.push('_All Touhous are owned!_');
   } else {
     for (const t of available) {
-      const rarity = getRarity(t.trade_count, t.name);
+      const rarity = getRarity(t.trade_count, t.name, t.base_rarity_score || 0);
       lines.push(`${rarity.emoji} **${t.name}** — ${BASE_ADOPT_PRICE} SGC`);
     }
     if (availCount > 15) {
@@ -465,8 +533,8 @@ async function handleMarket(interaction) {
     lines.push('_No Touhous listed for sale right now._');
   } else {
     for (const l of listings) {
-      const rarity = getRarity(l.trade_count, l.touhou_name);
-      const suggested = getSuggestedPrice(l.trade_count);
+      const rarity = getRarity(l.trade_count, l.touhou_name, l.base_rarity_score || 0);
+      const suggested = getSuggestedPrice(l.trade_count, l.base_rarity_score || 0);
       lines.push(`${rarity.emoji} **${l.touhou_name}** — **${l.price} SGC** by <@${l.seller_id}> (suggested: ~${suggested} SGC)`);
     }
   }
@@ -489,14 +557,15 @@ async function handleInfo(interaction) {
     return;
   }
 
-  const rarity = getRarity(touhou.trade_count, touhouName);
-  const suggested = getSuggestedPrice(touhou.trade_count);
+  const rarity = getRarity(touhou.trade_count, touhouName, touhou.base_rarity_score || 0);
+  const suggested = getSuggestedPrice(touhou.trade_count, touhou.base_rarity_score || 0);
   const history = getTradeHistory(touhouName, 5);
 
   const lines = [
     `**${touhouName}** ${rarity.emoji} ${rarity.tier}`,
     `Owner: ${touhou.owner_id ? `<@${touhou.owner_id}>` : '_Available for adoption_'}`,
-    `Trades: **${touhou.trade_count}** | Suggested price: **~${suggested} SGC**`,
+    `Trades: **${touhou.trade_count}** | Base rarity score: **${touhou.base_rarity_score || 0}** | Suggested price: **~${suggested} SGC**`,
+    `Popularity score: **${touhou.popularity_score || 0}** | Fandom comments: **${touhou.comment_count || 0}**${touhou.is_main_character ? ' | Main character boost: **Yes**' : ''}`,
     touhou.adopted_at ? `Adopted: ${touhou.adopted_at}` : null,
     touhou.last_traded ? `Last traded: ${touhou.last_traded}` : null,
   ].filter(Boolean);
@@ -529,9 +598,9 @@ async function handleSearch(interaction) {
   }
 
   const lines = results.map((t) => {
-    const rarity = getRarity(t.trade_count, t.name);
+    const rarity = getRarity(t.trade_count, t.name, t.base_rarity_score || 0);
     const owner = t.owner_id ? `<@${t.owner_id}>` : '_Available_';
-    return `${rarity.emoji} **${t.name}** — ${owner} (${t.trade_count} trades)`;
+    return `${rarity.emoji} **${t.name}** — ${owner} (${t.trade_count} trades, base ${t.base_rarity_score || 0})`;
   });
 
   await interaction.reply({ content: `🔍 **Search results for "${query}":**\n\n${lines.join('\n')}`, ephemeral: true });
