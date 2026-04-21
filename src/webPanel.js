@@ -57,10 +57,25 @@ const {
   SCHEMA,
 } = require('./panelSettings');
 
+const {
+  validateAuthConfig,
+  handleLoginRoute,
+  handleCallbackRoute,
+  handleLogoutRoute,
+  renderLoginPage,
+  requireAuth,
+  buildUserBadgeHtml,
+} = require('./webPanelAuth');
+
 const WEB_PANEL_PORT = Number(process.env.WEB_PANEL_PORT) || 7777;
 const WEB_PANEL_HOST = process.env.WEB_PANEL_HOST || '0.0.0.0';
 const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || 'http://127.0.0.1:8765';
 let server = null;
+
+// Set to the authenticated session object for the duration of each synchronous
+// render call so buildPageHtml can inject the user badge without changing
+// every render function's signature.
+let _currentSession = null;
 
 /**
  * Call every game/economy module's reloadSettings() so changes made through
@@ -92,6 +107,7 @@ function escapeHtml(str) {
 }
 
 function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
+  const session = _currentSession;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -619,6 +635,7 @@ function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
     <a href="/users">Users</a>
     <a href="/memory">Memory</a>
     <a href="/vc">VC Tracker</a>
+    ${buildUserBadgeHtml(session)}
   </nav>
   ${bodyContent}
   <footer>sadgirlsclub.wtf // economy control panel // local access only</footer>
@@ -1960,6 +1977,36 @@ async function handleRequest(req, res) {
   const method = req.method;
 
   try {
+    // ── Auth routes (always public) ───────────────────────────────────
+    if (pathname === '/auth/discord/login') {
+      handleLoginRoute(req, res);
+      return;
+    }
+    if (pathname === '/auth/discord/callback') {
+      await handleCallbackRoute(req, res, parsedUrl);
+      return;
+    }
+    if (pathname === '/auth/logout' && method === 'POST') {
+      handleLogoutRoute(req, res);
+      return;
+    }
+
+    // ── Auth gate ─────────────────────────────────────────────────────
+    const session = requireAuth(req);
+    if (!session) {
+      if (pathname.startsWith('/api/')) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderLoginPage());
+      }
+      return;
+    }
+
+    // Make the session available to synchronous render helpers via module scope.
+    _currentSession = session;
+
     // ── Memory API proxy ──────────────────────────────────────────────
     if (pathname.startsWith('/api/memory/')) {
       const subPath = pathname.replace('/api/memory', '');
@@ -2489,6 +2536,8 @@ async function handleRequest(req, res) {
     logger.error('Web panel request error.', error.message);
     res.writeHead(500);
     res.end(buildPageHtml(`<h2>> 500</h2><p style="color:#ff4444;">Internal error: ${escapeHtml(error.message)}</p>`));
+  } finally {
+    _currentSession = null;
   }
 }
 
@@ -2497,6 +2546,12 @@ async function handleRequest(req, res) {
 // ---------------------------------------------------------------------------
 
 function startWebPanel() {
+  // Validate Discord OAuth config and warn about missing/weak values.
+  const authWarnings = validateAuthConfig();
+  for (const warning of authWarnings) {
+    logger.warn(`[auth] ${warning}`);
+  }
+
   server = http.createServer(handleRequest);
 
   server.listen(WEB_PANEL_PORT, WEB_PANEL_HOST, () => {

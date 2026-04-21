@@ -43,6 +43,11 @@ let MAX_PLAYERS = 3;
 let IDLE_TIMEOUT_MS = 60_000;       // 60s no clicks → auto-stand
 let BETWEEN_HANDS_MS = 6_000;       // pause between hands
 
+// Fairness tuning: when dealer keeps sweeping, force occasional riskier draws.
+const DEALER_ANTI_SWEEP_BASE_CHANCE = 0.20;
+const DEALER_ANTI_SWEEP_STREAK_BONUS = 0.12;
+const DEALER_ANTI_SWEEP_MAX_CHANCE = 0.75;
+
 // ---------------------------------------------------------------------------
 // Shoe management — per-channel, persists across hands for counting
 // ---------------------------------------------------------------------------
@@ -128,11 +133,12 @@ function renderHand(cards, hideSecond = false) {
 function playerStatusText(player) {
   if (player.result) return player.result;
   switch (player.status) {
-    case 'playing':   return 'Hit or Stay?';
-    case 'standing':  return 'Standing';
-    case 'bust':      return 'BUST';
-    case 'blackjack': return 'Blackjack!';
-    default:          return '';
+    case 'playing':     return 'Hit or Stay?';
+    case 'standing':    return 'Standing';
+    case 'bust':        return 'BUST';
+    case 'blackjack':  return 'Blackjack!';
+    case 'surrendered': return 'Surrendered';
+    default:            return '';
   }
 }
 
@@ -154,8 +160,8 @@ function renderTable(table, hideDealer = true) {
   return lines.join('\n');
 }
 
-function buildButtons(disabled = false) {
-  return new ActionRowBuilder().addComponents(
+function buildButtons(disabled = false, canSurrender = false) {
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('bj_hit')
       .setLabel('Hit')
@@ -169,12 +175,19 @@ function buildButtons(disabled = false) {
       .setStyle(ButtonStyle.Danger)
       .setDisabled(disabled),
     new ButtonBuilder()
+      .setCustomId('bj_surrender')
+      .setLabel('Surrender')
+      .setEmoji('🏳️')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled || !canSurrender),
+    new ButtonBuilder()
       .setCustomId('bj_leave')
       .setLabel('Leave')
       .setEmoji('❌')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled),
   );
+  return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +214,67 @@ function hasActivePlayers(table) {
 function allPlayersDone(table) {
   if (table.players.size === 0) return false;
   return [...table.players.values()]
-    .every((p) => ['standing', 'bust', 'blackjack'].includes(p.status));
+    .every((p) => ['standing', 'bust', 'blackjack', 'surrendered'].includes(p.status));
+}
+
+/** True if a player can still surrender (only allowed on the first two cards). */
+function canPlayerSurrender(player) {
+  return player.status === 'playing' && player.hand.length === 2;
+}
+
+function doesDealerBeatPlayer(player, dealerValue, dealerBlackjack) {
+  if (player.status === 'surrendered' || player.status === 'bust') return true;
+
+  const playerValue = handValue(player.hand);
+  if (player.status === 'blackjack') {
+    return dealerBlackjack;
+  }
+
+  if (dealerValue > 21) return false;
+  if (playerValue > dealerValue) return false;
+  if (playerValue === dealerValue) return false;
+  return true;
+}
+
+function maybeApplyDealerAntiSweep(table, dealerValue, dealerBlackjack) {
+  if (dealerValue > 21 || dealerBlackjack) {
+    return { dealerValue, dealerBlackjack, nerfApplied: false };
+  }
+
+  const players = [...table.players.values()];
+  if (players.length === 0) {
+    return { dealerValue, dealerBlackjack, nerfApplied: false };
+  }
+
+  const dealerSweeping = players.every((player) => doesDealerBeatPlayer(player, dealerValue, dealerBlackjack));
+  if (!dealerSweeping) {
+    return { dealerValue, dealerBlackjack, nerfApplied: false };
+  }
+
+  const streak = table.dealerSweepStreak ?? 0;
+  const nerfChance = Math.min(
+    DEALER_ANTI_SWEEP_MAX_CHANCE,
+    DEALER_ANTI_SWEEP_BASE_CHANCE + (streak * DEALER_ANTI_SWEEP_STREAK_BONUS),
+  );
+
+  if (Math.random() >= nerfChance) {
+    return { dealerValue, dealerBlackjack, nerfApplied: false };
+  }
+
+  table.dealerHand.push(drawCard(table.channelId));
+  const adjustedDealerValue = handValue(table.dealerHand);
+  const adjustedDealerBlackjack = isNaturalBlackjack(table.dealerHand);
+
+  logger.info(
+    `Blackjack fairness: anti-sweep triggered in channel ${table.channelId} `
+    + `(streak=${streak}, chance=${nerfChance.toFixed(2)}, dealer=${dealerValue}->${adjustedDealerValue})`,
+  );
+
+  return {
+    dealerValue: adjustedDealerValue,
+    dealerBlackjack: adjustedDealerBlackjack,
+    nerfApplied: true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +307,7 @@ async function dealNewHand(table) {
     player.bet = bet;
     player.status = isNaturalBlackjack(player.hand) ? 'blackjack' : 'playing';
     player.result = null;
+    player.surrendered = false;
   }
 
   // No players left → tear down
@@ -255,16 +329,13 @@ async function dealNewHand(table) {
   table.dealerHand = [drawCard(table.channelId), drawCard(table.channelId)];
   table.resolving = false;
 
-  let header = '🃏 **Blackjack Table** — New hand dealt!';
-  if (kicked.length) {
-    header += `\n*${kicked.join(', ')} removed (insufficient balance)*`;
-  }
-
-  const content = `${header}\n\`\`\`\n${renderTable(table, true)}\n\`\`\``;
+  const anyPlaying = hasActivePlayers(table);
+  const anySurrenderable = [...table.players.values()].some(canPlayerSurrender);
+  const content = `🃏 **Blackjack Table** — New hand dealt!${kicked.length ? `\n*${kicked.join(', ')} removed (insufficient balance)*` : ''}\n\`\`\`\n${renderTable(table, true)}\n\`\`\``;
   try {
     await table.gameMessage.edit({
       content,
-      components: [buildButtons(!hasActivePlayers(table))],
+      components: [buildButtons(!anyPlaying, anySurrenderable)],
     });
   } catch (err) {
     logger.error('Blackjack: failed to update for new hand', err.message);
@@ -291,17 +362,31 @@ async function resolveTable(table) {
     table.dealerHand.push(drawCard(table.channelId));
   }
 
-  const dVal = handValue(table.dealerHand);
-  const dealerBJ = isNaturalBlackjack(table.dealerHand);
+  let dVal = handValue(table.dealerHand);
+  let dealerBJ = isNaturalBlackjack(table.dealerHand);
+
+  const fairness = maybeApplyDealerAntiSweep(table, dVal, dealerBJ);
+  if (fairness.nerfApplied) {
+    dVal = fairness.dealerValue;
+    dealerBJ = fairness.dealerBlackjack;
+  }
 
   // Calculate payouts per player
+  let dealerDefeatedEveryone = table.players.size > 0;
+  let hadCompetitivePlayer = false;
+
   for (const player of table.players.values()) {
     const pVal = handValue(player.hand);
     let payout = 0;
 
-    if (player.status === 'bust') {
+    if (player.status === 'surrendered') {
+      // Surrender: return half the bet (already deducted in full at start of hand)
+      payout = Math.floor(player.bet / 2);
+      player.result = `SURRENDER — recovered ${payout.toLocaleString()} SGC (half back)`;
+    } else if (player.status === 'bust') {
       player.result = `BUST — lost ${player.bet} SGC`;
     } else if (player.status === 'blackjack') {
+      hadCompetitivePlayer = true;
       if (dealerBJ) {
         payout = player.bet;
         player.result = 'BJ Push — bet returned';
@@ -310,20 +395,39 @@ async function resolveTable(table) {
         player.result = `BLACKJACK! +${payout.toLocaleString()} SGC`;
       }
     } else if (dVal > 21) {
+      hadCompetitivePlayer = true;
       payout = player.bet * 2;
       player.result = `WIN (dealer bust) +${payout.toLocaleString()} SGC`;
     } else if (pVal > dVal) {
+      hadCompetitivePlayer = true;
       payout = player.bet * 2;
       player.result = `WIN +${payout.toLocaleString()} SGC`;
     } else if (pVal === dVal) {
+      hadCompetitivePlayer = true;
       payout = player.bet;
       player.result = 'Push — bet returned';
+      dealerDefeatedEveryone = false;
     } else {
+      hadCompetitivePlayer = true;
       player.result = `LOSE — lost ${player.bet} SGC`;
+    }
+
+    if (player.status === 'blackjack' && !dealerBJ) {
+      dealerDefeatedEveryone = false;
+    } else if (player.status !== 'bust' && player.status !== 'surrendered' && dVal > 21) {
+      dealerDefeatedEveryone = false;
+    } else if (player.status !== 'bust' && player.status !== 'surrendered' && pVal > dVal) {
+      dealerDefeatedEveryone = false;
     }
 
     if (payout > 0) payCasinoPayout(player.userId, payout, 'blackjack');
     logger.info(`Blackjack: ${player.username} bet=${player.bet} hand=${pVal} dealer=${dVal} payout=${payout}`);
+  }
+
+  if (dealerDefeatedEveryone && hadCompetitivePlayer) {
+    table.dealerSweepStreak = (table.dealerSweepStreak ?? 0) + 1;
+  } else {
+    table.dealerSweepStreak = 0;
   }
 
   getShoe(table.channelId).handsPlayed += 1;
@@ -344,9 +448,10 @@ async function resolveTable(table) {
 /** Update the live game message (called after join, hit, stay, leave). */
 async function updateTableMessage(table) {
   const anyPlaying = hasActivePlayers(table);
+  const anySurrenderable = [...table.players.values()].some(canPlayerSurrender);
   const content = `🃏 **Blackjack Table**\n\`\`\`\n${renderTable(table, true)}\n\`\`\``;
   try {
-    await table.gameMessage.edit({ content, components: [buildButtons(!anyPlaying)] });
+    await table.gameMessage.edit({ content, components: [buildButtons(!anyPlaying, anySurrenderable)] });
   } catch (err) {
     logger.error('Blackjack: failed to update message', err.message);
   }
@@ -358,12 +463,38 @@ async function updateTableMessage(table) {
 
 function setupCollector(table) {
   const collector = table.gameMessage.createMessageComponentCollector({
-    filter: (i) => ['bj_hit', 'bj_stay', 'bj_leave'].includes(i.customId),
+    filter: (i) => ['bj_hit', 'bj_stay', 'bj_surrender', 'bj_leave'].includes(i.customId),
     idle: IDLE_TIMEOUT_MS,
   });
   table.collector = collector;
 
   collector.on('collect', async (btn) => {
+    // ── Surrender button ──
+    if (btn.customId === 'bj_surrender') {
+      const player = table.players.get(btn.user.id);
+      if (!player || !canPlayerSurrender(player)) {
+        await btn.reply({ content: 'You can only surrender on your first two cards.', ephemeral: true }).catch(() => {});
+        return;
+      }
+      if (table.resolving) {
+        await btn.deferUpdate().catch(() => {});
+        return;
+      }
+
+      player.status = 'surrendered';
+
+      if (allPlayersDone(table)) {
+        await btn.deferUpdate().catch(() => {});
+        await resolveTable(table);
+      } else {
+        const anyPlaying = hasActivePlayers(table);
+        const anySurrenderable = [...table.players.values()].some(canPlayerSurrender);
+        const content = `🃏 **Blackjack Table**\n\`\`\`\n${renderTable(table, true)}\n\`\`\``;
+        await btn.update({ content, components: [buildButtons(!anyPlaying, anySurrenderable)] });
+      }
+      return;
+    }
+
     // ── Leave button ──
     if (btn.customId === 'bj_leave') {
       const player = table.players.get(btn.user.id);
@@ -439,8 +570,9 @@ function setupCollector(table) {
         await resolveTable(table);
       } else {
         const anyPlaying = hasActivePlayers(table);
+        const anySurrenderable = [...table.players.values()].some(canPlayerSurrender);
         const content = `🃏 **Blackjack Table**\n\`\`\`\n${renderTable(table, true)}\n\`\`\``;
-        await btn.update({ content, components: [buildButtons(!anyPlaying)] });
+        await btn.update({ content, components: [buildButtons(!anyPlaying, anySurrenderable)] });
       }
     } catch (err) {
       logger.error('Blackjack button error:', err.message);
@@ -551,6 +683,7 @@ async function handlePlay(interaction) {
     nextBet: bet,   // remembered for auto-deal next round
     status: isNaturalBlackjack(hand) ? 'blackjack' : 'playing',
     result: null,
+    surrendered: false,
   };
 
   if (!table) {
@@ -564,13 +697,15 @@ async function handlePlay(interaction) {
       collector: null,
       resolving: false,
       nextHandTimer: null,
+      dealerSweepStreak: 0,
     };
     table.players.set(userId, playerState);
     tables.set(channelId, table);
 
     const anyPlaying = hasActivePlayers(table);
+    const anySurrenderable = [...table.players.values()].some(canPlayerSurrender);
     const content = `🃏 **Blackjack Table**\n\`\`\`\n${renderTable(table, true)}\n\`\`\``;
-    await interaction.reply({ content, components: [buildButtons(!anyPlaying)] });
+    await interaction.reply({ content, components: [buildButtons(!anyPlaying, anySurrenderable)] });
     table.gameMessage = await interaction.fetchReply();
 
     setupCollector(table);
@@ -589,6 +724,7 @@ async function handlePlay(interaction) {
     if (table.collector) {
       table.collector.resetTimer({ idle: IDLE_TIMEOUT_MS });
     }
+
   }
 
   // If all players done immediately (all natural BJs), resolve

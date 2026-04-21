@@ -671,10 +671,6 @@ function buildPrompt({
       'System: Use the memory context below if relevant to the user\'s message:',
       ragContext,
     );
-  } else if (memoryClues && memoryClues.length > 0) {
-    sections.push(
-      'System: Use long-term memory clues only when relevant and do not claim certainty if memory is weak.',
-    );
   }
 
   sections.push(
@@ -684,8 +680,10 @@ function buildPrompt({
     renderedHistory ? `Recent chat context:\n${renderedHistory}` : 'Recent chat context: none',
   );
 
-  if (!ragContext || !ragContext.trim()) {
-    sections.push(renderMemoryClues(memoryClues));
+  // Always include memory clues if available (supplement to RAG or fallback)
+  const memoryCluesSection = renderMemoryClues(memoryClues);
+  if (memoryCluesSection && memoryCluesSection.includes(': ')) {
+    sections.push(memoryCluesSection);
   }
 
   if (searchResults) {

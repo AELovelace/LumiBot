@@ -325,6 +325,16 @@ const config = Object.freeze({
   touhouDir: process.env.TOUHOU_DIR?.trim() || 'touhous',
   cigaretteDbFile: process.env.CIGARETTE_DB_FILE?.trim() || 'data/cigarette-market.sqlite3',
   cigaretteDataCsv: process.env.CIGARETTE_DATA_CSV?.trim() || 'cigarette_market_data_expanded.csv',
+  // Discord OAuth2 for web panel login
+  discordOAuthClientId: process.env.DISCORD_OAUTH_CLIENT_ID?.trim() || '',
+  discordOAuthClientSecret: process.env.DISCORD_OAUTH_CLIENT_SECRET?.trim() || '',
+  discordOAuthRedirectUri: process.env.DISCORD_OAUTH_REDIRECT_URI?.trim() || '',
+  // Panel auth guild — separate from ALLOWED_GUILD_ID used by the bot
+  discordPanelGuildId: process.env.DISCORD_PANEL_GUILD_ID?.trim() || '895446230967148544',
+  // Web panel session
+  webPanelSessionSecret: process.env.WEB_PANEL_SESSION_SECRET?.trim() || '',
+  webPanelSessionTtlMs: parsePositiveInt(process.env.WEB_PANEL_SESSION_TTL_MS, 7_200_000),
+  webPanelSecureCookies: parseBoolean(process.env.WEB_PANEL_SECURE_COOKIES, false),
 });
 
 function getMissingConfigValues() {

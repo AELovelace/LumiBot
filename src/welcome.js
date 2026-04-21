@@ -54,7 +54,10 @@ async function generateWelcomeMessage(member) {
 }
 
 async function handleGuildMemberAdd(member) {
+  reloadSettings();
+
   if (!WELCOME_CHANNEL_ID) {
+    logger.warn('Welcome message skipped: runtime.welcomeChannelId/WELCOME_CHANNEL_ID is not configured.');
     return;
   }
 

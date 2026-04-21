@@ -23,6 +23,9 @@ let FALLBACK_ARCHIVE_CHANNEL_ID = '1494931183455436870';
 
 const {
   BANK_OWNER_ID,
+  DOLL_STREET_USER_ID,
+  TAYS_TOBACCO_USER_ID,
+  TOUHOU_MGMT_USER_ID,
   getBalance,
   getCentralBankBalance,
   getDollStreetBalance,
@@ -164,7 +167,11 @@ async function handleBankBalance(interaction) {
   const bankBalance = getCentralBankBalance();
   const dollStreetBalance = getDollStreetBalance();
   const casinoBalance = getMomijiCasinoBalance();
-  const top10 = getTopHolders(10);
+  const taysBalance = getBalance(TAYS_TOBACCO_USER_ID);
+  const touhouMgmtBalance = getBalance(TOUHOU_MGMT_USER_ID);
+  const SYSTEM_IDS = new Set([DOLL_STREET_USER_ID, TAYS_TOBACCO_USER_ID, TOUHOU_MGMT_USER_ID]);
+  const top10Raw = getTopHolders(15);
+  const top10 = top10Raw.filter(h => !SYSTEM_IDS.has(h.user_id)).slice(0, 10);
   const lottoFlag = isLottoDay();
 
   const medals = ['🥇', '🥈', '🥉'];
@@ -181,6 +188,8 @@ async function handleBankBalance(interaction) {
     `🏦 **Central Bank Reserve:** ${bankBalance.toLocaleString()} SGC`,
     `📈 **Doll Street (LumiStocks):** ${dollStreetBalance.toLocaleString()} SGC`,
     `🎰 **Momiji Casino:** ${casinoBalance.toLocaleString()} SGC`,
+    `🎴 **Touhou Management Inc:** ${touhouMgmtBalance.toLocaleString()} SGC`,
+    `🚬 **Tay's Tobacco:** ${taysBalance.toLocaleString()} SGC`,
     lottoFlag ? '⚠️ _Lotto Day is active — transfers have a 50% fee!_' : '',
     '',
     '**Top 10 Holders:**',

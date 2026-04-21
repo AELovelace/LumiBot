@@ -151,32 +151,27 @@ async function handleCase(interaction) {
   const owner = targetUser.id === interaction.user.id ? 'Your' : `${targetUser.username}'s`;
   const maxLen = 1900;
   const firstHeader = `🧰 **${owner} Cigarette Case** (${items.length} unique):\n\n`;
-  const continuedHeader = `🧰 **${owner} Cigarette Case** (continued):\n\n`;
+  const firstBudget = maxLen - firstHeader.length - capacityFooter.length;
 
   const chunks = [];
   let current = [];
   let isFirstChunk = true;
 
   for (const line of lines) {
-    const header = isFirstChunk ? firstHeader : continuedHeader;
-    const budget = maxLen - header.length - (isFirstChunk ? capacityFooter.length : 0);
+    const budget = isFirstChunk ? firstBudget : maxLen;
     const lineWithSepLen = (current.length === 0 ? 0 : 1) + line.length;
     const currentLen = current.join('\n').length;
 
     if (currentLen + lineWithSepLen > budget) {
       if (current.length === 0) {
-        const hardCapped = line.slice(0, Math.max(20, budget - 3));
-        chunks.push([`${hardCapped}...`]);
+        chunks.push([line.slice(0, Math.max(20, budget - 3)) + '...']);
       } else {
         chunks.push(current);
         current = [];
         isFirstChunk = false;
-
-        const nextHeader = isFirstChunk ? firstHeader : continuedHeader;
-        const nextBudget = maxLen - nextHeader.length - (isFirstChunk ? capacityFooter.length : 0);
+        const nextBudget = maxLen;
         if (line.length > nextBudget) {
-          const hardCapped = line.slice(0, Math.max(20, nextBudget - 3));
-          chunks.push([`${hardCapped}...`]);
+          chunks.push([line.slice(0, Math.max(20, nextBudget - 3)) + '...']);
         } else {
           current.push(line);
         }
@@ -198,7 +193,7 @@ async function handleCase(interaction) {
   await interaction.reply(`${firstHeader}${chunks[0].join('\n')}${capacityFooter}`);
 
   for (let i = 1; i < chunks.length; i++) {
-    await interaction.followUp(`${continuedHeader}${chunks[i].join('\n')}`);
+    await interaction.followUp(chunks[i].join('\n'));
   }
 }
 
