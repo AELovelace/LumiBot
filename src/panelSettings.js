@@ -123,6 +123,9 @@ const SCHEMA = {
   'horseracing.raceTickMs':      { default: 600,   type: 'number', label: 'Race Tick (ms)',        desc: 'Animation frame interval',                 category: 'Horse Racing' },
   'horseracing.bettingWindowMs': { default: 30000, type: 'number', label: 'Betting Window (ms)',   desc: 'Time between races for betting',            category: 'Horse Racing' },
   'horseracing.defaultBet':      { default: 5,     type: 'number', label: 'Default Bet',           desc: 'Starting bet amount (SGC)',                 category: 'Horse Racing' },
+
+  // ── Touhou ───────────────────────────────────────────────────────────────
+  'touhou.battleIdleTimeoutMs':  { default: 90000, type: 'number', label: 'Battle Idle Timeout (ms)', desc: 'Inactivity timeout for Touhou PvE battles', category: 'Touhou' },
 };
 
 // ---------------------------------------------------------------------------

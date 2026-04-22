@@ -85,7 +85,7 @@ let _currentSession = null;
 function liveReloadAllSettings() {
   const mods = [
     './slots', './pachinko', './blackjack', './texasholdem', './horseracing',
-    './vcRewards', './sadgirlEconomyScheduler', './sadgirlEconomyCommands', './sadgirlEconomyStore', './privateStockCommands', './bigBusiness', './welcome', './nowPlaying', './chatbot', './braveSearch',
+    './touhouBattle', './vcRewards', './sadgirlEconomyScheduler', './sadgirlEconomyCommands', './sadgirlEconomyStore', './privateStockCommands', './bigBusiness', './welcome', './nowPlaying', './chatbot', './braveSearch',
   ];
   for (const mod of mods) {
     try {

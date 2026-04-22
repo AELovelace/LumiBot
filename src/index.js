@@ -8,6 +8,7 @@ const { initEconomyStore, closeEconomyStore, getEconomyDb, adjustBalance, getSys
 const { startEconomyScheduler, stopEconomyScheduler } = require('./sadgirlEconomyScheduler');
 const { initTouhouStore, closeTouhouStore, computeHistoricalOwings } = require('./touhouStore');
 const { setTouhouDir } = require('./touhouCommands');
+const { setMenuTouhouDir } = require('./touhouMenu');
 const { logger } = require('./logger');
 const { initNowPlaying } = require('./nowPlaying');
 const { stopAllSessions } = require('./voice');
@@ -178,6 +179,7 @@ client.once(Events.ClientReady, async (readyClient) => {
         const { reloadSettings: reloadBlackjack } = require('./blackjack');
         const { reloadSettings: reloadHoldem } = require('./texasholdem');
         const { reloadSettings: reloadHorseRacing } = require('./horseracing');
+        const { reloadSettings: reloadTouhouBattle } = require('./touhouBattle');
         const { reloadSettings: reloadVcSettings } = require('./vcRewards');
         const { reloadSettings: reloadScheduler } = require('./sadgirlEconomyScheduler');
         const { reloadSettings: reloadCommands } = require('./sadgirlEconomyCommands');
@@ -186,6 +188,7 @@ client.once(Events.ClientReady, async (readyClient) => {
         reloadBlackjack();
         reloadHoldem();
         reloadHorseRacing();
+        reloadTouhouBattle();
         reloadVcSettings();
         reloadScheduler();
         reloadCommands();
@@ -205,6 +208,7 @@ client.once(Events.ClientReady, async (readyClient) => {
       const touhouImgDir = config.touhouDir;
       initTouhouStore(touhouDbPath, touhouImgDir);
       setTouhouDir(touhouImgDir);
+      setMenuTouhouDir(touhouImgDir);
     } catch (error) {
       logger.error('Failed to initialize Touhou market.', error.message);
     }

@@ -27,6 +27,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
+const { handleTouhouMenu } = require('./touhouMenu');
 const { logger } = require('./logger');
 
 const ECONOMY_ADMIN_ROLE_ID = '901304988083572756';
@@ -106,6 +107,9 @@ function buildTouhouCommand() {
   return new SlashCommandBuilder()
     .setName('lumi-touhou')
     .setDescription('Touhou collection — adopt, trade, and collect Touhou characters!')
+    .addSubcommand((sub) => sub
+      .setName('menu')
+      .setDescription('Open the interactive Touhou menu — adopt, battle, market & heal via buttons.'))
     .addSubcommand((sub) => sub
       .setName('adopt')
       .setDescription(`Adopt a random Touhou from the market (${BASE_ADOPT_PRICE} SGC).`))
@@ -288,6 +292,7 @@ async function handleTouhouCommand(interaction) {
   const sub = interaction.options.getSubcommand();
 
   switch (sub) {
+    case 'menu': return handleTouhouMenu(interaction);
     case 'adopt': return handleAdopt(interaction);
     case 'collection': return handleCollection(interaction);
     case 'send': return handleSend(interaction);

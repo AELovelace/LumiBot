@@ -7,6 +7,7 @@ const { awardMessageCoins } = require('./sadgirlEconomyStore');
 const { getSmokeBoost } = require('./smokeBoost');
 const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
 const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
+const { handleTouhouMenu, handleTouhouMenuComponent } = require('./touhouMenu');
 const { buildCigaretteCommand, handleCigaretteCommand } = require('./cigaretteCommands');
 const { buildPachinkoCommand, handlePachinkoCommand } = require('./pachinko');
 const { buildBlackjackCommand, handleBlackjackCommand } = require('./blackjack');
@@ -509,6 +510,9 @@ const commandHandlers = new Map([
 ]);
 
 async function handleCommandInteraction(interaction) {
+  if (await handleTouhouMenuComponent(interaction)) {
+    return;
+  }
   if (await handleStockButtonInteraction(interaction)) {
     return;
   }
@@ -858,6 +862,12 @@ async function handlePrefixCommand(message) {
   }
 
   // ── !touhou / !2hu + top-level aliases ──
+  // Bare !lumi-touhou → interactive menu
+  if (cmd === '!lumi-touhou' && !parts[1]) {
+    await handleTouhouMenu(fakeInteraction(message, {}));
+    return true;
+  }
+
   if (cmd === '!collection' || cmd === '!adopt' || cmd === '!battle') {
     if (cmd === '!collection') {
       const mentioned = message.mentions.users.first();
@@ -892,7 +902,13 @@ async function handlePrefixCommand(message) {
   }
 
   if (cmd === '!touhou' || cmd === '!2hu') {
-    const sub = (parts[1] ?? 'collection').toLowerCase();
+    // Bare !touhou / !2hu with no subcommand → open interactive menu
+    if (!parts[1]) {
+      await handleTouhouMenu(fakeInteraction(message, {}));
+      return true;
+    }
+
+    const sub = parts[1].toLowerCase();
 
     if (sub === 'adopt') {
       const fake = fakeInteraction(message, { _subcommand: 'adopt' });
@@ -1044,6 +1060,7 @@ async function handlePrefixCommand(message) {
       await handleTouhouCommand(fake);
     } else {
       // Default: show own collection, or if user typed a name, show that user's collection
+      // Unknown subcommand → fall back to collection
       const mentioned = message.mentions.users.first();
       const fake = fakeInteraction(message, { _subcommand: 'collection', user: mentioned || null });
       await handleTouhouCommand(fake);

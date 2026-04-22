@@ -29,12 +29,14 @@ const {
   searchTouhous,
   POTION_HEAL_RATIO,
 } = require('./touhouStore');
+const { getSetting } = require('./panelSettings');
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const BATTLE_TIMEOUT_MS = 90_000;
+// End battles after inactivity, not absolute wall-clock duration.
+let BATTLE_IDLE_TIMEOUT_MS = 90_000;
 const HP_BAR_LENGTH = 10;
 const LOG_LINES = 6;
 const RARITY_TIERS = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
@@ -64,6 +66,20 @@ const battlesByUser = new Map(); // userId -> BattleState
 
 // Faint reminder timers (best-effort DMs when cooldown expires)
 const faintReminders = new Map(); // `${userId}::${touhouName}` -> Timeout
+
+function reloadSettings() {
+  try {
+    const raw = Number(getSetting('touhou.battleIdleTimeoutMs'));
+    if (Number.isFinite(raw)) {
+      // Keep this within sane limits: 10s to 10m
+      BATTLE_IDLE_TIMEOUT_MS = Math.max(10_000, Math.min(600_000, Math.floor(raw)));
+    }
+  } catch {
+    // Panel settings DB may not be ready at early boot.
+  }
+}
+
+reloadSettings();
 
 // ---------------------------------------------------------------------------
 // Math helpers
@@ -228,7 +244,7 @@ function buildEmbed(state) {
   if (playerImg) embed.setThumbnail(`attachment://${playerImg}`);
   if (evilImg) embed.setImage(`attachment://${evilImg}`);
   const potionText = `Potions: ${state.potionCount}`;
-  embed.setFooter({ text: state.over ? `Battle ended. ${potionText}` : `Choose your move — 90s timeout. ${potionText}` });
+  embed.setFooter({ text: state.over ? `Battle ended. ${potionText}` : `Choose your move — 90s inactivity timeout. ${potionText}` });
 
   return embed;
 }
@@ -374,8 +390,7 @@ async function startBattle({
 function setupCollector(state) {
   const collector = state.message.createMessageComponentCollector({
     filter: (btn) => btn.customId.endsWith(`_${state.token}`),
-    time: BATTLE_TIMEOUT_MS,
-    idle: BATTLE_TIMEOUT_MS,
+    idle: BATTLE_IDLE_TIMEOUT_MS,
   });
 
   state.collector = collector;
@@ -629,4 +644,5 @@ async function applyDefeat(state, outcome) {
 module.exports = {
   startBattle,
   cancelFaintReminder,
+  reloadSettings,
 };
