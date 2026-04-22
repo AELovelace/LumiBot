@@ -648,4 +648,9 @@ function reloadSettings() {
   } catch { /* DB not ready */ }
 }
 
-module.exports = { buildHorseRaceCommand, handleHorseRaceCommand, reloadSettings };
+const { config } = require('./config');
+if (config.gameWorkersEnabled && config.gameWorkersHorseracing) {
+  module.exports = require('./horseracingAdapter');
+} else {
+  module.exports = { buildHorseRaceCommand, handleHorseRaceCommand, reloadSettings };
+}

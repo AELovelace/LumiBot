@@ -347,6 +347,7 @@ const config = Object.freeze({
   gameWorkersBlackjack: parseBoolean(process.env.GAME_WORKERS_BLACKJACK, false),
   gameWorkersPachinko: parseBoolean(process.env.GAME_WORKERS_PACHINKO, false),
   gameWorkersSlots: parseBoolean(process.env.GAME_WORKERS_SLOTS, false),
+  gameWorkersHorseracing: parseBoolean(process.env.GAME_WORKERS_HORSERACING, false),
 });
 
 function getMissingConfigValues() {

@@ -314,12 +314,19 @@ client.once(Events.ClientReady, async (readyClient) => {
           poolSize,
         });
       }
+      if (config.gameWorkersHorseracing) {
+        workerManager.registerEngine('horseracing', {
+          scriptPath: path.resolve(__dirname, 'workers', 'engines', 'horseracing', 'worker.js'),
+          poolSize,
+        });
+      }
       workerManager.start();
       logger.info(`Game worker pool enabled (size=${poolSize}, engines=${[
         'echo',
         config.gameWorkersBlackjack ? 'blackjack' : null,
         config.gameWorkersPachinko ? 'pachinko' : null,
         config.gameWorkersSlots ? 'slots' : null,
+        config.gameWorkersHorseracing ? 'horseracing' : null,
       ].filter(Boolean).join(', ')}).`);
 
       if (config.gameWorkersBlackjack) {
@@ -350,6 +357,15 @@ client.once(Events.ClientReady, async (readyClient) => {
           logger.info('Worker-backed Slots engine activated.');
         } catch (err) {
           logger.warn('Failed to seed slots worker settings.', err.message);
+        }
+      }
+      if (config.gameWorkersHorseracing) {
+        try {
+          const hrAdapter = require('./horseracingAdapter');
+          hrAdapter.reloadSettings();
+          logger.info('Worker-backed Horseracing engine activated.');
+        } catch (err) {
+          logger.warn('Failed to seed horseracing worker settings.', err.message);
         }
       }
     } catch (error) {
