@@ -320,6 +320,12 @@ client.once(Events.ClientReady, async (readyClient) => {
           poolSize,
         });
       }
+      if (config.gameWorkersHoldem) {
+        workerManager.registerEngine('holdem', {
+          scriptPath: path.resolve(__dirname, 'workers', 'engines', 'holdem', 'worker.js'),
+          poolSize,
+        });
+      }
       workerManager.start();
       logger.info(`Game worker pool enabled (size=${poolSize}, engines=${[
         'echo',
@@ -327,6 +333,7 @@ client.once(Events.ClientReady, async (readyClient) => {
         config.gameWorkersPachinko ? 'pachinko' : null,
         config.gameWorkersSlots ? 'slots' : null,
         config.gameWorkersHorseracing ? 'horseracing' : null,
+        config.gameWorkersHoldem ? 'holdem' : null,
       ].filter(Boolean).join(', ')}).`);
 
       if (config.gameWorkersBlackjack) {
@@ -366,6 +373,15 @@ client.once(Events.ClientReady, async (readyClient) => {
           logger.info('Worker-backed Horseracing engine activated.');
         } catch (err) {
           logger.warn('Failed to seed horseracing worker settings.', err.message);
+        }
+      }
+      if (config.gameWorkersHoldem) {
+        try {
+          const thAdapter = require('./holdemAdapter');
+          thAdapter.reloadSettings();
+          logger.info("Worker-backed Texas Hold'em engine activated.");
+        } catch (err) {
+          logger.warn('Failed to seed holdem worker settings.', err.message);
         }
       }
     } catch (error) {

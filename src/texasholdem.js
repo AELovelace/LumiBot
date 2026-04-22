@@ -1453,8 +1453,15 @@ function reloadSettings() {
   } catch { /* DB not ready */ }
 }
 
-module.exports = {
+const _holdemFallbackExports = {
   buildHoldemCommand,
   handleHoldemCommand,
   reloadSettings,
 };
+
+const { config: _holdemConfig } = require('./config');
+if (_holdemConfig.gameWorkersEnabled && _holdemConfig.gameWorkersHoldem) {
+  module.exports = require('./holdemAdapter');
+} else {
+  module.exports = _holdemFallbackExports;
+}
