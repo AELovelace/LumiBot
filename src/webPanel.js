@@ -47,6 +47,7 @@ const {
   ensureAccount,
 } = require('./sadgirlEconomyStore');
 const { activeVoiceUsers, formatVcTime, getVcLeaderboard, getVcRewardProgress } = require('./vcRewards');
+const { getAllPatrons, getPatreonStats, getTierInfo } = require('./patreonRewards');
 const {
   getAllSettings,
   getSettingsByCategories,
@@ -635,6 +636,7 @@ function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
     <a href="/users">Users</a>
     <a href="/memory">Memory</a>
     <a href="/vc">VC Tracker</a>
+    <a href="/patrons">Patrons</a>
     ${buildUserBadgeHtml(session)}
   </nav>
   ${bodyContent}
@@ -1221,6 +1223,94 @@ function renderVcLeaderboard() {
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Patreon Rewards Tracker
+// ---------------------------------------------------------------------------
+
+function renderPatrons() {
+  const stats = getPatreonStats();
+  const patrons = getAllPatrons();
+
+  let tierCardsHtml = '';
+  for (const t of stats.perTier) {
+    tierCardsHtml += `
+      <span class="stat">
+        <span class="stat-label">${escapeHtml(t.label)}</span><br>
+        <span class="stat-value">${t.count} patron${t.count === 1 ? '' : 's'}</span>
+      </span>`;
+  }
+
+  let rowsHtml = '';
+  if (patrons.length === 0) {
+    rowsHtml = '<tr><td colspan="7" style="color:#666;text-align:center;padding:12px;">No patrons recorded yet.</td></tr>';
+  } else {
+    for (const p of patrons) {
+      const tier = getTierInfo(p.tier_role_id);
+      const tierLabel = tier ? tier.label : (p.tier_role_id ? `Unknown (${p.tier_role_id})` : '— inactive —');
+      const signupBadge = p.signup_bonus_paid
+        ? `<span class="badge badge-enabled" style="font-size:10px;">PAID</span>`
+        : `<span class="badge badge-disabled" style="font-size:10px;">PENDING</span>`;
+      const last = p.last_payout_period
+        ? `${escapeHtml(p.last_payout_period)}<br><span style="color:#666;font-size:10px;">${escapeHtml(p.last_payout_at || '')}</span>`
+        : '<span style="color:#666;">never</span>';
+      const signupAt = p.signup_bonus_at ? escapeHtml(p.signup_bonus_at) : '—';
+      rowsHtml += `
+        <tr>
+          <td>${escapeHtml(p.username || p.user_id)}</td>
+          <td><span style="color:#666;font-size:11px;">${escapeHtml(p.user_id)}</span></td>
+          <td>${escapeHtml(tierLabel)}</td>
+          <td style="text-align:center;">${signupBadge}<br><span style="color:#666;font-size:10px;">${signupAt}</span></td>
+          <td style="text-align:right;"><strong>${p.total_months_paid}</strong></td>
+          <td>${last}</td>
+          <td style="color:#666;font-size:11px;">${escapeHtml(p.first_seen_at || '')}</td>
+        </tr>`;
+    }
+  }
+
+  return buildPageHtml(`
+    <h2>> Patreon Supporters</h2>
+    <div class="card">
+      <span class="stat">
+        <span class="stat-label">Tracked Patrons</span><br>
+        <span class="stat-value">${stats.totalPatrons}</span>
+      </span>
+      <span class="stat">
+        <span class="stat-label">Currently Active</span><br>
+        <span class="stat-value">${stats.activePatrons}</span>
+      </span>
+      <span class="stat">
+        <span class="stat-label">Total SGC Paid</span><br>
+        <span class="stat-value">${stats.totalPaid.toLocaleString()}</span>
+      </span>
+      ${tierCardsHtml}
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 12px;">💖 Patron Roster</h3>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #333;">
+            <th style="text-align:left;padding:4px;">User</th>
+            <th style="text-align:left;padding:4px;">ID</th>
+            <th style="text-align:left;padding:4px;">Tier</th>
+            <th style="text-align:center;padding:4px;">Signup Bonus</th>
+            <th style="text-align:right;padding:4px;">Months Paid</th>
+            <th style="text-align:left;padding:4px;">Last Payout</th>
+            <th style="text-align:left;padding:4px;">First Seen</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <p style="color:#888;font-size:12px;">
+        Monthly stipends are paid on the 1st of each month (UTC). New patrons receive a one-time
+        signup bonus equal to their tier amount. Missed payouts are applied retroactively on the
+        next sweep (hourly + on bot startup).
+      </p>
+    </div>
+  `, 'Patrons');
 }
 
 // ---------------------------------------------------------------------------
@@ -2405,6 +2495,12 @@ async function handleRequest(req, res) {
     // VC tracker
     if (pathname === '/vc' && method === 'GET') {
       res.end(renderVcTracker());
+      return;
+    }
+
+    // Patreon supporters
+    if (pathname === '/patrons' && method === 'GET') {
+      res.end(renderPatrons());
       return;
     }
 

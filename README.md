@@ -19,7 +19,8 @@ A Discord bot that joins the same server voice channel as the user who requested
 4. Optionally set `DEFAULT_STREAM_URL` to a public HTTP/HLS stream URL.
 5. Install dependencies with `npm install`.
 6. (Optional but recommended) Refresh Touhou rarity seed data with `npm run build:touhou-rarity`.
-7. Start the bot with `npm start`.
+7. (Optional but recommended) Refresh Touhou battle attacks seed with `npm run build:touhou-attacks` (requires the rarity seed; ~3 minutes for ~180 characters).
+8. Start the bot with `npm start`.
 	- For local RTX 3080 mode with `HammerAI/llama-3-lexi-uncensored`, use `npm run start:3080`.
 
 ## Discord bot settings
@@ -58,6 +59,29 @@ Player-facing SadGirlCoin docs:
 
 - [docs/SADGIRLCOIN_USER_README.md](docs/SADGIRLCOIN_USER_README.md) - Bank, LumiStocks, Pachinko, Blackjack, and Horse Racing command guide with slash commands and simplified `!` commands
 - [docs/SADGIRLCOIN_DISCORD_ANNOUNCEMENT.md](docs/SADGIRLCOIN_DISCORD_ANNOUNCEMENT.md) - Casual Discord-style announcement version of the SadGirlCoin command guide
+
+## Touhou Battle System
+
+A Pokemon-style PvE battle system layered on top of the Touhou collection.
+
+- Touhou market data is now **server-scoped**: each Discord server has its own adoption pool, listings, ownership, and battle progression.
+- Touhou commands are server-only (DMs are rejected).
+- Each touhou has a **level (1–50)**, EXP, and 3 attacks (extracted from their Spell Cards on the Touhou Wiki).
+- Adopt up to **6 touhous** (a "party"). The 7th adoption is rejected — sell or send one first.
+- `/lumi-touhou listings [page]` — list all currently for-sale Touhous in this server, paged.
+- `/lumi-touhou buy item:Health Potion amount:<n>` — buy consumable Health Potions for **20 SGC** each (revenue goes to TOUHOU_MGMT), cap **10**.
+- `/lumi-touhou battle <name> <rarity|gamble>` — fight a wild touhou of your chosen rarity tier (or `gamble` for a random one). Battle UI is a single in-place embed with HP bars, attack/defend/run/potion buttons, and your touhou shown next to a randomly-picked opponent image.
+- In battle, a Health Potion heals **50% max HP** (no overheal), consumes one item, and consumes your turn.
+- Win → EXP + SGC (scaled by opponent level + rarity, +20% on `gamble`).
+- Lose / run-failed → your touhou faints for **10 minutes**.
+- `/lumi-touhou heal <name>` — free if the cooldown has elapsed; pay **50 SGC** (sent to TOUHOU_MGMT) to heal immediately.
+- Auto-heal: when a fainted touhou's cooldown expires you'll receive a DM and the next battle/info call clears the faint state.
+- `/lumi-touhou party` — show your party with levels, status, and potion inventory.
+- `/lumi-touhou buyback <name>` — sell a touhou back to the market for **2/3** of its level-aware suggested price (level is reset on buyback; preserved on player-to-player trades).
+- Levels boost a touhou's effective rarity tier (`floor(level/5)` extra rarity points) and its market price.
+- Battle payouts are solvency-aware: SGC is paid from the TOUHOU_MGMT account when it can afford it (≥ 1000 SGC floor + payout), otherwise minted to keep the economy moving.
+
+Prefix equivalents: `!touhou battle <name> <rarity>`, `!touhou listings [page]`, `!touhou buy potion [amount]`, `!touhou heal <name> [pay]`, `!touhou party`, `!touhou buyback <name>`, plus aliases `!collection`, `!adopt`, and `!battle`.
 
 ## Starboard
 

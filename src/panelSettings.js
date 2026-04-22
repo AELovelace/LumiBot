@@ -106,8 +106,8 @@ const SCHEMA = {
   'pachinko.rowDelay':  { default: 500, type: 'number', label: 'Row Delay (ms)',   desc: 'Milliseconds between animated rows',   category: 'Pachinko' },
 
   // ── Blackjack ────────────────────────────────────────────────────────────
-  'blackjack.numDecks':           { default: 2,     type: 'number', label: 'Number of Decks',      desc: 'Decks in the shoe',                          category: 'Blackjack' },
-  'blackjack.handsBeforeShuffle': { default: 5,     type: 'number', label: 'Hands Before Shuffle',  desc: 'Hands played before reshuffling the shoe',   category: 'Blackjack' },
+  'blackjack.numDecks':           { default: 6,     type: 'number', label: 'Number of Decks',      desc: 'Decks in the shoe',                          category: 'Blackjack' },
+  'blackjack.handsBeforeShuffle': { default: 12,    type: 'number', label: 'Hands Before Shuffle',  desc: 'Hands played before reshuffling the shoe',   category: 'Blackjack' },
   'blackjack.maxPlayers':         { default: 3,     type: 'number', label: 'Max Players',           desc: 'Maximum players per blackjack table',        category: 'Blackjack' },
   'blackjack.idleTimeoutMs':      { default: 60000, type: 'number', label: 'Idle Timeout (ms)',     desc: 'Auto-stand after this much inactivity',      category: 'Blackjack' },
   'blackjack.betweenHandsMs':     { default: 6000,  type: 'number', label: 'Between Hands (ms)',    desc: 'Pause between hands (ms)',                   category: 'Blackjack' },

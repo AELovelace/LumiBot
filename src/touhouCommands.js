@@ -35,6 +35,10 @@ const BANK_OWNER_ID = '319254336402358272';
 const {
   DOLL_USER_ID,
   BASE_ADOPT_PRICE,
+  PARTY_LIMIT,
+  FAINT_DURATION_MS,
+  POTION_PRICE,
+  POTION_CAP,
   resolveName,
   getImageFile,
   getRarity,
@@ -49,13 +53,24 @@ const {
   listForSale,
   delistTouhou,
   getListings,
+  getListingsPage,
+  getListingsCount,
   buyListing,
+  getListingPrice,
   getTradeHistory,
   adminAssign,
   adminRelease,
   adminResetTrades,
   getMarketStats,
   searchTouhous,
+  sellbackToMarket,
+  getAttacks,
+  getOrCreateBattleStats,
+  expToNextLevel,
+  healTouhou,
+  getPotionCount,
+  addPotions,
+  consumePotion,
 } = require('./touhouStore');
 
 const {
@@ -65,6 +80,12 @@ const {
   ensureAccount,
   adjustBalance,
 } = require('./sadgirlEconomyStore');
+
+const { startBattle, cancelFaintReminder } = require('./touhouBattle');
+
+const TOUHOU_TRADER_LIQUIDITY_FLOOR = 1000;
+const HEAL_COST = 50;
+const LISTINGS_PER_PAGE = 15;
 
 let touhouDir = '';
 
@@ -114,11 +135,33 @@ function buildTouhouCommand() {
       .addStringOption((opt) => opt.setName('name').setDescription('Touhou name').setRequired(true)))
     .addSubcommand((sub) => sub
       .setName('buy')
-      .setDescription('Buy a listed Touhou from another user.')
-      .addStringOption((opt) => opt.setName('name').setDescription('Touhou name').setRequired(true)))
+      .setDescription('Buy a listed Touhou, or buy potion items.')
+      .addStringOption((opt) => opt
+        .setName('name')
+        .setDescription('Touhou name (for character purchases)')
+        .setRequired(false))
+      .addStringOption((opt) => opt
+        .setName('item')
+        .setDescription('Consumable item to buy')
+        .setRequired(false)
+        .addChoices({ name: 'Health Potion', value: 'potion' }))
+      .addIntegerOption((opt) => opt
+        .setName('amount')
+        .setDescription(`Amount to buy (1-${POTION_CAP})`)
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(POTION_CAP)))
     .addSubcommand((sub) => sub
       .setName('market')
       .setDescription('Browse available Touhous and active listings.'))
+    .addSubcommand((sub) => sub
+      .setName('listings')
+      .setDescription('List Touhous currently for sale in this server.')
+      .addIntegerOption((opt) => opt
+        .setName('page')
+        .setDescription('Page number')
+        .setRequired(false)
+        .setMinValue(1)))
     .addSubcommand((sub) => sub
       .setName('info')
       .setDescription('View details and trade history for a Touhou.')
@@ -130,6 +173,34 @@ function buildTouhouCommand() {
     .addSubcommand((sub) => sub
       .setName('stats')
       .setDescription('View global Touhou market statistics.'))
+    .addSubcommand((sub) => sub
+      .setName('buyback')
+      .setDescription(`Sell a Touhou back to the market for ~2/3 of its suggested price.`)
+      .addStringOption((opt) => opt.setName('name').setDescription('Touhou name').setRequired(true)))
+    .addSubcommand((sub) => sub
+      .setName('battle')
+      .setDescription('Battle an evil Touhou (PvE).')
+      .addStringOption((opt) => opt.setName('name').setDescription('Your Touhou').setRequired(true))
+      .addStringOption((opt) => opt
+        .setName('rarity')
+        .setDescription('Choose a rarity to fight, or "gamble" for a random opponent (+20% rewards).')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Common', value: 'Common' },
+          { name: 'Uncommon', value: 'Uncommon' },
+          { name: 'Rare', value: 'Rare' },
+          { name: 'Epic', value: 'Epic' },
+          { name: 'Legendary', value: 'Legendary' },
+          { name: 'Gamble (random rarity, +20% rewards)', value: 'gamble' },
+        )))
+    .addSubcommand((sub) => sub
+      .setName('heal')
+      .setDescription('Heal a fainted Touhou. Free after the 10-min cooldown, or 50 SGC instant with pay:true.')
+      .addStringOption((opt) => opt.setName('name').setDescription('Touhou name').setRequired(true))
+      .addBooleanOption((opt) => opt.setName('pay').setDescription('Pay 50 SGC for instant heal').setRequired(false)))
+    .addSubcommand((sub) => sub
+      .setName('party')
+      .setDescription('Show your battle party with levels, EXP, and faint timers.'))
     .addSubcommand((sub) => sub
       .setName('assign')
       .setDescription('(Admin) Force-assign a Touhou to a user.')
@@ -161,11 +232,59 @@ function makeAttachment(touhouName) {
   }
 }
 
+/**
+ * Get a touhou's level for a specific owner. Returns 0 if no battle row yet.
+ * Does NOT create a row — safe for read-only display paths.
+ */
+function getOwnedLevel(guildId, touhouName, ownerId) {
+  if (!ownerId) return 0;
+  const row = getOrCreateBattleStats(guildId, touhouName, ownerId);
+  return row?.level || 0;
+}
+
+/**
+ * Solvency-aware payout from Touhou Trader to a player.
+ * Always credits the player. Only debits TOUHOU_MGMT if its balance is at or above
+ * the liquidity floor; otherwise the amount is "minted" so the trader can never
+ * go illiquid.
+ */
+function payTouhouTraderPayout(userId, amount, note) {
+  if (amount <= 0) return;
+  const traderBalance = getBalance(TOUHOU_MGMT_USER_ID);
+  adjustBalance(userId, amount, note);
+  if (traderBalance >= TOUHOU_TRADER_LIQUIDITY_FLOOR + amount) {
+    adjustBalance(TOUHOU_MGMT_USER_ID, -amount, note);
+  } else {
+    logger.info(`Touhou Trader below liquidity floor (balance=${traderBalance}, payout=${amount}); minting payout.`);
+  }
+}
+
+function formatRemaining(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+function requireGuild(interaction) {
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    return null;
+  }
+  return guildId;
+}
+
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
 async function handleTouhouCommand(interaction) {
+  const guildId = requireGuild(interaction);
+  if (!guildId) {
+    await interaction.reply({ content: '❌ Touhou commands can only be used inside a server.', ephemeral: true });
+    return;
+  }
+
   const sub = interaction.options.getSubcommand();
 
   switch (sub) {
@@ -177,9 +296,14 @@ async function handleTouhouCommand(interaction) {
     case 'delist': return handleDelist(interaction);
     case 'buy': return handleBuy(interaction);
     case 'market': return handleMarket(interaction);
+    case 'listings': return handleListings(interaction);
     case 'info': return handleInfo(interaction);
     case 'search': return handleSearch(interaction);
     case 'stats': return handleStats(interaction);
+    case 'buyback': return handleBuyback(interaction);
+    case 'battle': return handleBattle(interaction);
+    case 'heal': return handleHeal(interaction);
+    case 'party': return handleParty(interaction);
     case 'assign': return handleAssign(interaction);
     case 'release': return handleRelease(interaction);
     case 'reset-trades': return handleResetTrades(interaction);
@@ -193,6 +317,7 @@ async function handleTouhouCommand(interaction) {
 // ---------------------------------------------------------------------------
 
 async function handleAdopt(interaction) {
+  const guildId = interaction.guildId;
   const userId = interaction.user.id;
   const username = interaction.user.username;
 
@@ -203,7 +328,7 @@ async function handleAdopt(interaction) {
     return;
   }
 
-  const result = adoptTouhou(userId);
+  const result = adoptTouhou(guildId, userId);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
@@ -227,8 +352,9 @@ async function handleAdopt(interaction) {
 }
 
 async function handleCollection(interaction) {
+  const guildId = interaction.guildId;
   const targetUser = interaction.options.getUser('user', false) || interaction.user;
-  const touhous = getUserTouhous(targetUser.id);
+  const touhous = getUserTouhous(guildId, targetUser.id);
 
   if (touhous.length === 0) {
     const label = targetUser.id === interaction.user.id ? 'You don\'t' : `**${targetUser.username}** doesn't`;
@@ -237,9 +363,15 @@ async function handleCollection(interaction) {
   }
 
   const lines = touhous.map((t) => {
-    const rarity = getRarity(t.trade_count, t.name, t.base_rarity_score || 0);
-    const price = getSuggestedPrice(t.trade_count, t.base_rarity_score || 0);
-    return `${rarity.emoji} **${t.name}** — ${rarity.tier} (${t.trade_count} trades, base ${t.base_rarity_score || 0}, ~${price} SGC)`;
+    const stats = getOrCreateBattleStats(guildId, t.name, targetUser.id);
+    const level = stats?.level || 1;
+    const rarity = getRarity(t.trade_count, t.name, t.base_rarity_score || 0, level);
+    const price = getSuggestedPrice(t.trade_count, t.base_rarity_score || 0, level);
+    let status = '';
+    if (stats?.fainted_until && stats.fainted_until > Date.now()) {
+      status = ` 💤 fainted (${formatRemaining(stats.fainted_until - Date.now())})`;
+    }
+    return `${rarity.emoji} **${t.name}** — ${rarity.tier} • Lv ${level}${status} (${t.trade_count} trades, ~${price} SGC)`;
   });
 
   // Build per-touhou file list (may be null for missing images)
@@ -277,6 +409,7 @@ async function handleCollection(interaction) {
 }
 
 async function handleSend(interaction) {
+  const guildId = interaction.guildId;
   const userId = interaction.user.id;
   const nameInput = interaction.options.getString('name', true);
   const recipient = interaction.options.getUser('user', true);
@@ -292,17 +425,19 @@ async function handleSend(interaction) {
     return;
   }
 
-  const result = sendTouhou(userId, recipient.id, touhouName);
+  const result = sendTouhou(guildId, userId, recipient.id, touhouName);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
   }
 
-  const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0);
-  await interaction.reply(`🎁 <@${userId}> gifted **${touhouName}** to <@${recipient.id}>! ${rarity.emoji} ${rarity.tier} (${result.touhou.trade_count} trades)`);
+  const lvl = getOwnedLevel(guildId, touhouName, recipient.id);
+  const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0, lvl);
+  await interaction.reply(`🎁 <@${userId}> gifted **${touhouName}** to <@${recipient.id}>! ${rarity.emoji} ${rarity.tier} • Lv ${lvl} (${result.touhou.trade_count} trades)`);
 }
 
 async function handleTrade(interaction) {
+  const guildId = interaction.guildId;
   const userA = interaction.user;
   const nameAInput = interaction.options.getString('yours', true);
   const userB = interaction.options.getUser('user', true);
@@ -374,21 +509,23 @@ async function handleTrade(interaction) {
       return;
     }
 
-    const result = swapTouhous(userA.id, touhouAName, userB.id, touhouBName);
+    const result = swapTouhous(guildId, userA.id, touhouAName, userB.id, touhouBName);
     if (!result.success) {
       await btn.update({ content: `❌ Trade failed: ${result.error}`, components: [] });
       collector.stop('failed');
       return;
     }
 
-    const touhouA = getTouhou(touhouAName);
-    const touhouB = getTouhou(touhouBName);
-    const rarityA = getRarity(touhouA.trade_count, touhouAName, touhouA.base_rarity_score || 0);
-    const rarityB = getRarity(touhouB.trade_count, touhouBName, touhouB.base_rarity_score || 0);
+    const touhouA = getTouhou(guildId, touhouAName);
+    const touhouB = getTouhou(guildId, touhouBName);
+    const lvlA = getOwnedLevel(guildId, touhouAName, userB.id);
+    const lvlB = getOwnedLevel(guildId, touhouBName, userA.id);
+    const rarityA = getRarity(touhouA.trade_count, touhouAName, touhouA.base_rarity_score || 0, lvlA);
+    const rarityB = getRarity(touhouB.trade_count, touhouBName, touhouB.base_rarity_score || 0, lvlB);
     await btn.update({
       content:
         `🔄 **Trade complete!**\n` +
-        `<@${userA.id}> gave **${touhouAName}** ${rarityA.emoji} ↔ <@${userB.id}> gave **${touhouBName}** ${rarityB.emoji}`,
+        `<@${userA.id}> gave **${touhouAName}** ${rarityA.emoji} (Lv ${lvlA}) ↔ <@${userB.id}> gave **${touhouBName}** ${rarityB.emoji} (Lv ${lvlB})`,
       components: [],
     });
     collector.stop('approved');
@@ -402,6 +539,7 @@ async function handleTrade(interaction) {
 }
 
 async function handleSell(interaction) {
+  const guildId = interaction.guildId;
   const userId = interaction.user.id;
   const nameInput = interaction.options.getString('name', true);
   const price = interaction.options.getInteger('price', true);
@@ -412,22 +550,24 @@ async function handleSell(interaction) {
     return;
   }
 
-  const result = listForSale(userId, touhouName, price);
+  const result = listForSale(guildId, userId, touhouName, price);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
   }
 
-  const touhou = getTouhou(touhouName);
-  const rarity = getRarity(touhou.trade_count, touhouName, touhou.base_rarity_score || 0);
-  const suggested = getSuggestedPrice(touhou.trade_count, touhou.base_rarity_score || 0);
+  const touhou = getTouhou(guildId, touhouName);
+  const level = getOwnedLevel(guildId, touhouName, userId);
+  const rarity = getRarity(touhou.trade_count, touhouName, touhou.base_rarity_score || 0, level);
+  const suggested = getSuggestedPrice(touhou.trade_count, touhou.base_rarity_score || 0, level);
   await interaction.reply(
-    `🏷️ **${touhouName}** listed for sale at **${price} SGC**! ${rarity.emoji} ${rarity.tier}\n` +
-    `_Suggested price based on rarity: ~${suggested} SGC_`
+    `🏷️ **${touhouName}** listed for sale at **${price} SGC**! ${rarity.emoji} ${rarity.tier} • Lv ${level}\n` +
+    `_Suggested price: ~${suggested} SGC_`
   );
 }
 
 async function handleDelist(interaction) {
+  const guildId = interaction.guildId;
   const userId = interaction.user.id;
   const nameInput = interaction.options.getString('name', true);
   const touhouName = resolveName(nameInput);
@@ -437,7 +577,7 @@ async function handleDelist(interaction) {
     return;
   }
 
-  const result = delistTouhou(userId, touhouName);
+  const result = delistTouhou(guildId, userId, touhouName);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
@@ -447,9 +587,58 @@ async function handleDelist(interaction) {
 }
 
 async function handleBuy(interaction) {
+  const guildId = interaction.guildId;
   const buyerId = interaction.user.id;
   const buyerName = interaction.user.username;
-  const nameInput = interaction.options.getString('name', true);
+  const item = interaction.options.getString('item', false);
+  const amount = interaction.options.getInteger('amount', false) || 1;
+  const nameInput = interaction.options.getString('name', false);
+
+  ensureAccount(buyerId, buyerName);
+
+  if (item === 'potion') {
+    if (amount < 1 || amount > POTION_CAP) {
+      await interaction.reply({ content: `❌ Amount must be between 1 and ${POTION_CAP}.`, ephemeral: true });
+      return;
+    }
+
+    const inventoryBefore = getPotionCount(guildId, buyerId);
+    if (inventoryBefore >= POTION_CAP) {
+      await interaction.reply({ content: `❌ You already have the potion cap (${POTION_CAP}/${POTION_CAP}).`, ephemeral: true });
+      return;
+    }
+
+    const addable = Math.min(amount, POTION_CAP - inventoryBefore);
+    const totalCost = addable * POTION_PRICE;
+    const balanceNow = getBalance(buyerId);
+    if (balanceNow < totalCost) {
+      await interaction.reply({ content: `❌ You need **${totalCost} SGC** to buy ${addable} potion(s), but only have **${balanceNow} SGC**.`, ephemeral: true });
+      return;
+    }
+
+    const addResult = addPotions(guildId, buyerId, addable);
+    if (!addResult.success || addResult.added <= 0) {
+      await interaction.reply({ content: `❌ Potion purchase failed: inventory cap reached (${POTION_CAP}).`, ephemeral: true });
+      return;
+    }
+
+    const finalCost = addResult.added * POTION_PRICE;
+    adjustBalance(buyerId, -finalCost, `Bought ${addResult.added} Health Potion(s)`);
+    adjustBalance(TOUHOU_MGMT_USER_ID, finalCost, `Touhou potion sale (${addResult.added})`);
+
+    await interaction.reply({
+      content: `🧪 Purchased **${addResult.added}** Health Potion(s) for **${finalCost} SGC**.
+Inventory: **${addResult.newCount}/${POTION_CAP}** (price: ${POTION_PRICE} each).`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (!nameInput) {
+    await interaction.reply({ content: '❌ Provide a Touhou name, or set item to Health Potion.', ephemeral: true });
+    return;
+  }
+
   const touhouName = resolveName(nameInput);
 
   if (!touhouName) {
@@ -457,19 +646,17 @@ async function handleBuy(interaction) {
     return;
   }
 
-  ensureAccount(buyerId, buyerName);
   const balance = getBalance(buyerId);
 
   // Peek at listing price before consuming it
-  const touhou = getTouhou(touhouName);
+  const touhou = getTouhou(guildId, touhouName);
   if (!touhou) {
     await interaction.reply({ content: `❌ That Touhou doesn't exist.`, ephemeral: true });
     return;
   }
 
   // Pre-check balance against listing price
-  const { getListingPrice } = require('./touhouStore');
-  const listingPrice = getListingPrice(touhouName);
+  const listingPrice = getListingPrice(guildId, touhouName);
   if (listingPrice === null) {
     await interaction.reply({ content: `❌ **${touhouName}** is not listed for sale.`, ephemeral: true });
     return;
@@ -480,7 +667,7 @@ async function handleBuy(interaction) {
     return;
   }
 
-  const result = buyListing(buyerId, touhouName);
+  const result = buyListing(guildId, buyerId, touhouName);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
@@ -493,9 +680,10 @@ async function handleBuy(interaction) {
   adjustBalance(result.sellerId, sellerReceives, `Sold Touhou: ${touhouName} (after 10% tax)`);
   adjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
 
-  const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0);
+  const buyerLevel = getOwnedLevel(guildId, touhouName, buyerId);
+  const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0, buyerLevel);
   const attachment = makeAttachment(touhouName);
-  const content = `💰 <@${buyerId}> bought **${touhouName}** from <@${result.sellerId}> for **${result.price} SGC**! (${tax} SGC tax → Touhou Management Inc) ${rarity.emoji} ${rarity.tier}`;
+  const content = `💰 <@${buyerId}> bought **${touhouName}** from <@${result.sellerId}> for **${result.price} SGC**! (${tax} SGC tax → Touhou Management Inc) ${rarity.emoji} ${rarity.tier} • Lv ${buyerLevel}`;
 
   if (attachment) {
     await interaction.reply({ content, files: [attachment] });
@@ -505,9 +693,10 @@ async function handleBuy(interaction) {
 }
 
 async function handleMarket(interaction) {
-  const availCount = getAvailableCount();
-  const available = getAvailableTouhous(15);
-  const listings = getListings();
+  const guildId = interaction.guildId;
+  const availCount = getAvailableCount(guildId);
+  const available = getAvailableTouhous(guildId, 15);
+  const listings = getListings(guildId);
 
   const lines = ['🏪 **Touhou Market**\n'];
 
@@ -533,16 +722,44 @@ async function handleMarket(interaction) {
     lines.push('_No Touhous listed for sale right now._');
   } else {
     for (const l of listings) {
-      const rarity = getRarity(l.trade_count, l.touhou_name, l.base_rarity_score || 0);
-      const suggested = getSuggestedPrice(l.trade_count, l.base_rarity_score || 0);
-      lines.push(`${rarity.emoji} **${l.touhou_name}** — **${l.price} SGC** by <@${l.seller_id}> (suggested: ~${suggested} SGC)`);
+      const sellerLevel = getOwnedLevel(guildId, l.touhou_name, l.seller_id);
+      const rarity = getRarity(l.trade_count, l.touhou_name, l.base_rarity_score || 0, sellerLevel);
+      const suggested = getSuggestedPrice(l.trade_count, l.base_rarity_score || 0, sellerLevel);
+      lines.push(`${rarity.emoji} **${l.touhou_name}** — **${l.price} SGC** by <@${l.seller_id}> (Lv ${sellerLevel}, suggested: ~${suggested} SGC)`);
     }
   }
 
   await interaction.reply({ content: lines.join('\n'), ephemeral: true });
 }
 
+async function handleListings(interaction) {
+  const guildId = interaction.guildId;
+  const page = Math.max(1, interaction.options.getInteger('page', false) || 1);
+  const total = getListingsCount(guildId);
+  const totalPages = Math.max(1, Math.ceil(total / LISTINGS_PER_PAGE));
+  if (page > totalPages) {
+    await interaction.reply({ content: `❌ Page ${page} is out of range. There are ${totalPages} page(s).`, ephemeral: true });
+    return;
+  }
+
+  const offset = (page - 1) * LISTINGS_PER_PAGE;
+  const listings = getListingsPage(guildId, LISTINGS_PER_PAGE, offset);
+  if (listings.length === 0) {
+    await interaction.reply({ content: '🛒 No Touhous are currently listed for sale in this server.', ephemeral: true });
+    return;
+  }
+
+  const lines = [`🛒 **Touhou Listings** (page ${page}/${totalPages}, ${total} total):`, ''];
+  for (const l of listings) {
+    const sellerLevel = getOwnedLevel(guildId, l.touhou_name, l.seller_id);
+    const rarity = getRarity(l.trade_count, l.touhou_name, l.base_rarity_score || 0, sellerLevel);
+    lines.push(`${rarity.emoji} **${l.touhou_name}** — **${l.price} SGC** by <@${l.seller_id}> (Lv ${sellerLevel})`);
+  }
+  await interaction.reply({ content: lines.join('\n'), ephemeral: true });
+}
+
 async function handleInfo(interaction) {
+  const guildId = interaction.guildId;
   const nameInput = interaction.options.getString('name', true);
   const touhouName = resolveName(nameInput);
 
@@ -551,24 +768,37 @@ async function handleInfo(interaction) {
     return;
   }
 
-  const touhou = getTouhou(touhouName);
+  const touhou = getTouhou(guildId, touhouName);
   if (!touhou) {
     await interaction.reply({ content: `❌ That Touhou doesn't exist.`, ephemeral: true });
     return;
   }
 
-  const rarity = getRarity(touhou.trade_count, touhouName, touhou.base_rarity_score || 0);
-  const suggested = getSuggestedPrice(touhou.trade_count, touhou.base_rarity_score || 0);
-  const history = getTradeHistory(touhouName, 5);
+  const ownerLevel = getOwnedLevel(guildId, touhouName, touhou.owner_id);
+  const rarity = getRarity(touhou.trade_count, touhouName, touhou.base_rarity_score || 0, ownerLevel);
+  const suggested = getSuggestedPrice(touhou.trade_count, touhou.base_rarity_score || 0, ownerLevel);
+  const history = getTradeHistory(guildId, touhouName, 5);
+  const attacks = getAttacks(touhouName);
+
+  const stats = touhou.owner_id ? getOrCreateBattleStats(guildId, touhouName, touhou.owner_id) : null;
+  const fainted = stats?.fainted_until && stats.fainted_until > Date.now();
 
   const lines = [
-    `**${touhouName}** ${rarity.emoji} ${rarity.tier}`,
+    `**${touhouName}** ${rarity.emoji} ${rarity.tier}${ownerLevel ? ` • Lv ${ownerLevel}` : ''}`,
     `Owner: ${touhou.owner_id ? `<@${touhou.owner_id}>` : '_Available for adoption_'}`,
     `Trades: **${touhou.trade_count}** | Base rarity score: **${touhou.base_rarity_score || 0}** | Suggested price: **~${suggested} SGC**`,
     `Popularity score: **${touhou.popularity_score || 0}** | Fandom comments: **${touhou.comment_count || 0}**${touhou.is_main_character ? ' | Main character boost: **Yes**' : ''}`,
+    stats ? `Battle: **${stats.wins}W / ${stats.losses}L** | EXP: **${stats.exp}/${expToNextLevel(stats.level)}**${fainted ? ` | 💤 fainted (${formatRemaining(stats.fainted_until - Date.now())})` : ''}` : null,
     touhou.adopted_at ? `Adopted: ${touhou.adopted_at}` : null,
     touhou.last_traded ? `Last traded: ${touhou.last_traded}` : null,
   ].filter(Boolean);
+
+  if (attacks.length > 0) {
+    lines.push('', '**Attacks:**');
+    for (const a of attacks) {
+      lines.push(`• **${a.name}** — ${a.type} • ${a.basePower} pwr / ${a.accuracy}% acc`);
+    }
+  }
 
   if (history.length > 0) {
     lines.push('', '**Recent trade history:**');
@@ -589,8 +819,9 @@ async function handleInfo(interaction) {
 }
 
 async function handleSearch(interaction) {
+  const guildId = interaction.guildId;
   const query = interaction.options.getString('query', true);
-  const results = searchTouhous(query);
+  const results = searchTouhous(guildId, query);
 
   if (results.length === 0) {
     await interaction.reply({ content: `❌ No Touhous found matching **${query}**.`, ephemeral: true });
@@ -607,7 +838,8 @@ async function handleSearch(interaction) {
 }
 
 async function handleStats(interaction) {
-  const stats = getMarketStats();
+  const guildId = interaction.guildId;
+  const stats = getMarketStats(guildId);
 
   const topTraded = stats.topTraded.map((t) => {
     const rarity = getRarity(t.trade_count, t.name);
@@ -638,10 +870,198 @@ async function handleStats(interaction) {
 }
 
 // ---------------------------------------------------------------------------
+// Buyback / Battle / Heal / Party handlers
+// ---------------------------------------------------------------------------
+
+async function handleBuyback(interaction) {
+  const guildId = interaction.guildId;
+  const userId = interaction.user.id;
+  const username = interaction.user.username;
+  const nameInput = interaction.options.getString('name', true);
+  const touhouName = resolveName(nameInput);
+
+  if (!touhouName) {
+    await interaction.reply({ content: `❌ Couldn't find a Touhou named **${nameInput}**.`, ephemeral: true });
+    return;
+  }
+
+  ensureAccount(userId, username);
+
+  const result = sellbackToMarket(guildId, userId, touhouName);
+  if (!result.success) {
+    await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+    return;
+  }
+
+  payTouhouTraderPayout(userId, result.payout, `Touhou buyback: ${touhouName}`);
+
+  await interaction.reply(
+    `💸 You sold **${touhouName}** back to the market for **${result.payout} SGC**.\n` +
+    `_Rarity preserved; level reset. The Touhou is back in the adoption pool._`
+  );
+}
+
+async function handleBattle(interaction) {
+  const guildId = interaction.guildId;
+  const userId = interaction.user.id;
+  const username = interaction.user.username;
+  const nameInput = interaction.options.getString('name', true);
+  const rarityChoice = interaction.options.getString('rarity', true);
+  const touhouName = resolveName(nameInput);
+
+  if (!touhouName) {
+    await interaction.reply({ content: `❌ Couldn't find a Touhou named **${nameInput}**.`, ephemeral: true });
+    return;
+  }
+
+  ensureAccount(userId, username);
+
+  const touhou = getTouhou(guildId, touhouName);
+  if (!touhou) {
+    await interaction.reply({ content: `❌ That Touhou doesn't exist.`, ephemeral: true });
+    return;
+  }
+  if (touhou.owner_id !== userId) {
+    await interaction.reply({ content: `❌ You don't own **${touhouName}**.`, ephemeral: true });
+    return;
+  }
+
+  const stats = getOrCreateBattleStats(guildId, touhouName, userId);
+  if (stats.fainted_until && stats.fainted_until > Date.now()) {
+    const remaining = formatRemaining(stats.fainted_until - Date.now());
+    await interaction.reply({
+      content: `💤 **${touhouName}** is fainted. Auto-heals in ${remaining}, or use \`/lumi-touhou heal name:${touhouName} pay:true\` to instantly heal for ${HEAL_COST} SGC.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const attacks = getAttacks(touhouName);
+  if (attacks.length === 0) {
+    await interaction.reply({
+      content: `❌ **${touhouName}** has no attacks seeded yet. Run \`npm run build:touhou-attacks\` and restart the bot.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await startBattle({
+    interaction,
+    guildId,
+    playerTouhou: touhou,
+    playerStats: stats,
+    playerAttacks: attacks,
+    rarityChoice,
+    touhouDir,
+    payTouhouTraderPayout,
+    getPotionCount,
+    consumePotion,
+  });
+}
+
+async function handleHeal(interaction) {
+  const guildId = interaction.guildId;
+  const userId = interaction.user.id;
+  const username = interaction.user.username;
+  const nameInput = interaction.options.getString('name', true);
+  const pay = interaction.options.getBoolean ? interaction.options.getBoolean('pay') : null;
+  const touhouName = resolveName(nameInput);
+
+  if (!touhouName) {
+    await interaction.reply({ content: `❌ Couldn't find a Touhou named **${nameInput}**.`, ephemeral: true });
+    return;
+  }
+
+  ensureAccount(userId, username);
+
+  const touhou = getTouhou(guildId, touhouName);
+  if (!touhou || touhou.owner_id !== userId) {
+    await interaction.reply({ content: `❌ You don't own **${touhouName}**.`, ephemeral: true });
+    return;
+  }
+
+  const stats = getOrCreateBattleStats(guildId, touhouName, userId);
+  if (!stats.fainted_until) {
+    await interaction.reply({ content: `✅ **${touhouName}** is already healthy and ready to battle!`, ephemeral: true });
+    return;
+  }
+
+  // Cooldown already expired → free auto-heal
+  if (stats.fainted_until <= Date.now()) {
+    healTouhou(guildId, touhouName, userId);
+    cancelFaintReminder(guildId, userId, touhouName);
+    await interaction.reply({ content: `✨ **${touhouName}** has recovered and is ready to battle again!`, ephemeral: true });
+    return;
+  }
+
+  // Still on cooldown
+  if (!pay) {
+    const remaining = formatRemaining(stats.fainted_until - Date.now());
+    await interaction.reply({
+      content: `💤 **${touhouName}** is still recovering. Auto-heals in **${remaining}**, or pay **${HEAL_COST} SGC** for instant heal:\n\`/lumi-touhou heal name:${touhouName} pay:true\``,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Pay-to-heal
+  const balance = getBalance(userId);
+  if (balance < HEAL_COST) {
+    await interaction.reply({ content: `❌ You need **${HEAL_COST} SGC** to instant-heal but only have **${balance} SGC**.`, ephemeral: true });
+    return;
+  }
+
+  adjustBalance(userId, -HEAL_COST, `Touhou instant-heal: ${touhouName}`);
+  adjustBalance(TOUHOU_MGMT_USER_ID, HEAL_COST, `Touhou instant-heal fee: ${touhouName}`);
+  healTouhou(guildId, touhouName, userId);
+  cancelFaintReminder(guildId, userId, touhouName);
+
+  await interaction.reply(`✨ Instant-healed **${touhouName}** for **${HEAL_COST} SGC**! Ready to battle.`);
+}
+
+async function handleParty(interaction) {
+  const guildId = interaction.guildId;
+  const userId = interaction.user.id;
+  const username = interaction.user.username;
+
+  ensureAccount(userId, username);
+
+  const touhous = getUserTouhous(guildId, userId);
+  if (touhous.length === 0) {
+    await interaction.reply({ content: `You don't have any Touhous yet. Use \`/lumi-touhou adopt\` to get one!`, ephemeral: true });
+    return;
+  }
+
+  const potionCount = getPotionCount(guildId, userId);
+  const lines = [`🛡️ **Your Battle Party** (${touhous.length}/${PARTY_LIMIT}) • Potions: **${potionCount}/${POTION_CAP}**`, ''];
+
+  for (const t of touhous) {
+    const stats = getOrCreateBattleStats(guildId, t.name, userId);
+    const level = stats?.level || 1;
+    const rarity = getRarity(t.trade_count, t.name, t.base_rarity_score || 0, level);
+    const expNext = expToNextLevel(level);
+    const fainted = stats.fainted_until && stats.fainted_until > Date.now();
+    const status = fainted ? ` 💤 fainted (${formatRemaining(stats.fainted_until - Date.now())})` : '';
+    const attacks = getAttacks(t.name);
+    const attackList = attacks.length > 0
+      ? attacks.map((a) => `${a.name}`).join(' / ')
+      : '_no attacks yet_';
+
+    lines.push(
+      `${rarity.emoji} **${t.name}** — ${rarity.tier} • Lv **${level}** (EXP ${stats.exp}/${expNext}) • ${stats.wins}W/${stats.losses}L${status}`,
+      `   ⚔️ ${attackList}`,
+    );
+  }
+
+  await interaction.reply({ content: lines.join('\n'), ephemeral: true });
+}
+
+// ---------------------------------------------------------------------------
 // Admin handlers
 // ---------------------------------------------------------------------------
 
 async function handleAssign(interaction) {
+  const guildId = interaction.guildId;
   if (!isTouhouAdmin(interaction)) {
     await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
     return;
@@ -656,7 +1076,7 @@ async function handleAssign(interaction) {
     return;
   }
 
-  const result = adminAssign(touhouName, user.id);
+  const result = adminAssign(guildId, touhouName, user.id);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
@@ -666,6 +1086,7 @@ async function handleAssign(interaction) {
 }
 
 async function handleRelease(interaction) {
+  const guildId = interaction.guildId;
   if (!isTouhouAdmin(interaction)) {
     await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
     return;
@@ -679,7 +1100,7 @@ async function handleRelease(interaction) {
     return;
   }
 
-  const result = adminRelease(touhouName);
+  const result = adminRelease(guildId, touhouName);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;
@@ -689,6 +1110,7 @@ async function handleRelease(interaction) {
 }
 
 async function handleResetTrades(interaction) {
+  const guildId = interaction.guildId;
   if (!isTouhouAdmin(interaction)) {
     await interaction.reply({ content: '❌ Admin only.', ephemeral: true });
     return;
@@ -702,7 +1124,7 @@ async function handleResetTrades(interaction) {
     return;
   }
 
-  const result = adminResetTrades(touhouName);
+  const result = adminResetTrades(guildId, touhouName);
   if (!result.success) {
     await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
     return;

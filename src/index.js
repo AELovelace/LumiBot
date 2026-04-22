@@ -26,6 +26,12 @@ const { startPrivateStockScheduler, stopPrivateStockScheduler } = require('./pri
 const { initStockEvents, stopStockEvents } = require('./stockEvents');
 const { reloadSettings: reloadPrivateStockSettings } = require('./privateStockCommands');
 const { initCigaretteStore, closeCigaretteStore } = require('./cigaretteStore');
+const {
+  startPatreonRewards,
+  stopPatreonRewards,
+  handleGuildMemberAdd: handlePatreonMemberAdd,
+  handleGuildMemberUpdate: handlePatreonMemberUpdate,
+} = require('./patreonRewards');
 
 const missingConfigValues = getMissingConfigValues();
 if (missingConfigValues.length > 0) {
@@ -129,6 +135,13 @@ async function shutdown(signal) {
     stopWebPanel();
   } catch (error) {
     logger.warn('Failed to stop web panel during shutdown.', error.message);
+  }
+
+  // Stop Patreon rewards
+  try {
+    stopPatreonRewards();
+  } catch (error) {
+    logger.warn('Failed to stop Patreon rewards during shutdown.', error.message);
   }
 
   // Shutdown SadGirlCoin economy
@@ -249,6 +262,13 @@ client.once(Events.ClientReady, async (readyClient) => {
     } catch (error) {
       logger.error('Failed to start web control panel.', error.message);
     }
+
+    // Start Patreon supporter rewards (monthly stipends + signup bonuses)
+    try {
+      await startPatreonRewards(readyClient);
+    } catch (error) {
+      logger.error('Failed to start Patreon rewards.', error.message);
+    }
   }
 
   await registerControlPlane(readyClient);
@@ -281,6 +301,11 @@ client.on(Events.MessageReactionRemove, (reaction, user) => {
 
 client.on(Events.GuildMemberAdd, (member) => {
   void handleGuildMemberAdd(member);
+  try { handlePatreonMemberAdd(member); } catch (err) { logger.warn('Patreon member-add handler failed.', err.message); }
+});
+
+client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+  try { handlePatreonMemberUpdate(oldMember, newMember); } catch (err) { logger.warn('Patreon member-update handler failed.', err.message); }
 });
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {

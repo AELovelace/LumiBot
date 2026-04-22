@@ -36,17 +36,19 @@ const { getSetting } = require('./panelSettings');
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-let NUM_DECKS = 2;
-let HANDS_BEFORE_SHUFFLE = 5;
-const MIN_CARDS_BEFORE_SHUFFLE = 15;
+let NUM_DECKS = 6;
+let HANDS_BEFORE_SHUFFLE = 12;
+const MIN_CARDS_BEFORE_SHUFFLE = 30;
 let MAX_PLAYERS = 3;
 let IDLE_TIMEOUT_MS = 60_000;       // 60s no clicks → auto-stand
 let BETWEEN_HANDS_MS = 6_000;       // pause between hands
 
 // Fairness tuning: when dealer keeps sweeping, force occasional riskier draws.
-const DEALER_ANTI_SWEEP_BASE_CHANCE = 0.20;
-const DEALER_ANTI_SWEEP_STREAK_BONUS = 0.12;
-const DEALER_ANTI_SWEEP_MAX_CHANCE = 0.75;
+// Kept light so card-counters still see a real shoe — most fairness now comes
+// from the larger 6-deck shoe and longer reshuffle penetration.
+const DEALER_ANTI_SWEEP_BASE_CHANCE = 0.10;
+const DEALER_ANTI_SWEEP_STREAK_BONUS = 0.10;
+const DEALER_ANTI_SWEEP_MAX_CHANCE = 0.55;
 
 // ---------------------------------------------------------------------------
 // Shoe management — per-channel, persists across hands for counting
@@ -160,7 +162,7 @@ function renderTable(table, hideDealer = true) {
   return lines.join('\n');
 }
 
-function buildButtons(disabled = false, canSurrender = false) {
+function buildButtons(disabled = false, canSurrender = false, disableLeave = false) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('bj_hit')
@@ -185,7 +187,7 @@ function buildButtons(disabled = false, canSurrender = false) {
       .setLabel('Leave')
       .setEmoji('❌')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(disabled),
+      .setDisabled(disableLeave),
   );
   return row;
 }
@@ -436,10 +438,16 @@ async function resolveTable(table) {
   const content = `🃏 **Blackjack — Results** *(next hand in ${BETWEEN_HANDS_MS / 1000}s…)*\n\`\`\`\n${renderTable(table, false)}\n\`\`\``;
   try {
     if (table.collector) table.collector.stop('resolved');
-    await table.gameMessage.edit({ content, components: [buildButtons(true)] });
+    // Disable Hit/Stay/Surrender but keep Leave clickable so players can quit
+    // between hands without waiting for the next deal.
+    await table.gameMessage.edit({ content, components: [buildButtons(true, false, false)] });
   } catch (err) {
     logger.error('Blackjack: failed to update final message', err.message);
   }
+
+  // Spin up a temporary leave-only collector so the Leave button keeps
+  // working during the between-hands pause.
+  setupBetweenHandsCollector(table);
 
   // Schedule next hand
   table.nextHandTimer = setTimeout(() => dealNewHand(table), BETWEEN_HANDS_MS);
@@ -461,7 +469,60 @@ async function updateTableMessage(table) {
 // Button collector
 // ---------------------------------------------------------------------------
 
+/**
+ * Lightweight Leave-only collector that runs during the between-hands pause.
+ * Lets a player exit the table without waiting for the next deal.
+ */
+function setupBetweenHandsCollector(table) {
+  if (table.pauseCollector) {
+    try { table.pauseCollector.stop('replaced'); } catch { /* ignore */ }
+    table.pauseCollector = null;
+  }
+
+  const pauseCollector = table.gameMessage.createMessageComponentCollector({
+    filter: (i) => i.customId === 'bj_leave',
+    time: BETWEEN_HANDS_MS + 1000,
+  });
+  table.pauseCollector = pauseCollector;
+
+  pauseCollector.on('collect', async (btn) => {
+    const player = table.players.get(btn.user.id);
+    if (!player) {
+      await btn.reply({ content: "You're not at this table.", ephemeral: true }).catch(() => {});
+      return;
+    }
+
+    table.players.delete(btn.user.id);
+
+    await btn.reply({
+      content: 'You left the blackjack table.',
+      ephemeral: true,
+    }).catch(() => {});
+
+    if (table.players.size === 0) {
+      if (table.nextHandTimer) {
+        clearTimeout(table.nextHandTimer);
+        table.nextHandTimer = null;
+      }
+      tables.delete(table.channelId);
+      try {
+        await table.gameMessage.edit({
+          content: '🃏 **Blackjack Table — Everyone left.**',
+          components: [buildButtons(true, false, true)],
+        });
+      } catch { /* ignore */ }
+      pauseCollector.stop('allLeft');
+    }
+  });
+}
+
 function setupCollector(table) {
+  // Tear down any pause collector now that the new hand is starting.
+  if (table.pauseCollector) {
+    try { table.pauseCollector.stop('newHand'); } catch { /* ignore */ }
+    table.pauseCollector = null;
+  }
+
   const collector = table.gameMessage.createMessageComponentCollector({
     filter: (i) => ['bj_hit', 'bj_stay', 'bj_surrender', 'bj_leave'].includes(i.customId),
     idle: IDLE_TIMEOUT_MS,

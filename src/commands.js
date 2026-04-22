@@ -122,7 +122,9 @@ function buildHelpText() {
     '`/lumi-touhou trade <yours> <user> <theirs>` - Request a Touhou swap (recipient must approve).',
     '`/lumi-touhou sell <name> <price>` - List a Touhou for sale.',
     '`/lumi-touhou buy <name>` - Buy a listed Touhou.',
+    '`/lumi-touhou buy item:Health Potion amount:<n>` - Buy battle potions (20 SGC each).',
     '`/lumi-touhou market` - Browse the Touhou market.',
+    '`/lumi-touhou listings [page]` - List all Touhous currently for sale in this server.',
     '`/lumi-touhou info <name>` - View Touhou details.',
     '`/lumi-cigarette gacha` - Pull one random cigarette (1 SGC).',
     '`/lumi-cigarette case` - View your cigarette case.',
@@ -611,6 +613,7 @@ function fakeInteraction(message, optionsData = {}) {
       getNumber(name) { return optionsData[name] ?? null; },
       getString(name) { return optionsData[name] ?? null; },
       getUser(name) { return optionsData[name] ?? null; },
+      getBoolean(name) { return optionsData[name] ?? null; },
     },
 
     async reply(content) {
@@ -854,7 +857,40 @@ async function handlePrefixCommand(message) {
     return true;
   }
 
-  // ── !touhou / !2hu ──
+  // ── !touhou / !2hu + top-level aliases ──
+  if (cmd === '!collection' || cmd === '!adopt' || cmd === '!battle') {
+    if (cmd === '!collection') {
+      const mentioned = message.mentions.users.first();
+      await handleTouhouCommand(fakeInteraction(message, { _subcommand: 'collection', user: mentioned || null }));
+      return true;
+    }
+    if (cmd === '!adopt') {
+      await handleTouhouCommand(fakeInteraction(message, { _subcommand: 'adopt' }));
+      return true;
+    }
+    if (cmd === '!battle') {
+      const rest = parts.slice(1);
+      if (rest.length < 2) {
+        await message.reply('Usage: `!battle <name> <Common|Uncommon|Rare|Epic|Legendary|gamble>`');
+        return true;
+      }
+      const last = rest[rest.length - 1].toLowerCase();
+      const validRarities = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary', gamble: 'gamble' };
+      const rarity = validRarities[last];
+      if (!rarity) {
+        await message.reply('Last arg must be one of: Common, Uncommon, Rare, Epic, Legendary, gamble.');
+        return true;
+      }
+      const name = rest.slice(0, -1).join(' ');
+      if (!name) {
+        await message.reply('Usage: `!battle <name> <rarity|gamble>`');
+        return true;
+      }
+      await handleTouhouCommand(fakeInteraction(message, { _subcommand: 'battle', name, rarity }));
+      return true;
+    }
+  }
+
   if (cmd === '!touhou' || cmd === '!2hu') {
     const sub = (parts[1] ?? 'collection').toLowerCase();
 
@@ -911,15 +947,33 @@ async function handlePrefixCommand(message) {
       const fake = fakeInteraction(message, { _subcommand: 'delist', name });
       await handleTouhouCommand(fake);
     } else if (sub === 'buy') {
-      const name = parts.slice(2).join(' ');
-      if (!name) {
-        await message.reply('Usage: `!touhou buy <name>`');
+      const rest = parts.slice(2);
+      if (rest.length === 0) {
+        await message.reply('Usage: `!touhou buy <name>` or `!touhou buy potion [amount]`');
         return true;
       }
+
+      if (rest[0].toLowerCase() === 'potion') {
+        const amount = rest[1] ? parseInt(rest[1], 10) : 1;
+        if (!Number.isInteger(amount) || amount < 1) {
+          await message.reply('Usage: `!touhou buy potion [amount]`');
+          return true;
+        }
+        const fake = fakeInteraction(message, { _subcommand: 'buy', item: 'potion', amount });
+        await handleTouhouCommand(fake);
+        return true;
+      }
+
+      const name = rest.join(' ');
       const fake = fakeInteraction(message, { _subcommand: 'buy', name });
       await handleTouhouCommand(fake);
     } else if (sub === 'market') {
       const fake = fakeInteraction(message, { _subcommand: 'market' });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'listings') {
+      const rawPage = parts[2] ? parseInt(parts[2], 10) : 1;
+      const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+      const fake = fakeInteraction(message, { _subcommand: 'listings', page });
       await handleTouhouCommand(fake);
     } else if (sub === 'info') {
       const name = parts.slice(2).join(' ');
@@ -939,6 +993,54 @@ async function handlePrefixCommand(message) {
       await handleTouhouCommand(fake);
     } else if (sub === 'stats') {
       const fake = fakeInteraction(message, { _subcommand: 'stats' });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'buyback') {
+      const name = parts.slice(2).join(' ');
+      if (!name) {
+        await message.reply('Usage: `!touhou buyback <name>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'buyback', name });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'battle') {
+      // !touhou battle <name...> <rarity-or-gamble>
+      const rest = parts.slice(2);
+      if (rest.length < 2) {
+        await message.reply('Usage: `!touhou battle <name> <Common|Uncommon|Rare|Epic|Legendary|gamble>`');
+        return true;
+      }
+      const last = rest[rest.length - 1].toLowerCase();
+      const validRarities = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary', gamble: 'gamble' };
+      const rarity = validRarities[last];
+      if (!rarity) {
+        await message.reply('Last arg must be one of: Common, Uncommon, Rare, Epic, Legendary, gamble.');
+        return true;
+      }
+      const name = rest.slice(0, -1).join(' ');
+      if (!name) {
+        await message.reply('Usage: `!touhou battle <name> <rarity|gamble>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'battle', name, rarity });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'heal') {
+      // !touhou heal <name...> [pay]
+      const rest = parts.slice(2);
+      let pay = false;
+      let nameParts = rest;
+      if (rest.length > 0 && rest[rest.length - 1].toLowerCase() === 'pay') {
+        pay = true;
+        nameParts = rest.slice(0, -1);
+      }
+      const name = nameParts.join(' ');
+      if (!name) {
+        await message.reply('Usage: `!touhou heal <name> [pay]`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'heal', name, pay });
+      await handleTouhouCommand(fake);
+    } else if (sub === 'party') {
+      const fake = fakeInteraction(message, { _subcommand: 'party' });
       await handleTouhouCommand(fake);
     } else {
       // Default: show own collection, or if user typed a name, show that user's collection
