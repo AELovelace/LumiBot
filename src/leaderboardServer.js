@@ -70,12 +70,12 @@ function clientIp(req) {
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
   'referrer-policy': 'no-referrer',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
   // Tight CSP — page only uses an inline <style> block, no scripts, no images.
+  // Allow embedding in iframes from any domain via frame-ancestors '*'
   'content-security-policy':
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors '*'",
 };
 
 function applySecurityHeaders(res) {

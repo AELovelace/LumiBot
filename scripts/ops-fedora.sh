@@ -10,6 +10,8 @@ APP_USER="${APP_USER:-sadgirlplayer}"
 NPM_BIN="${NPM_BIN:-/usr/bin/npm}"
 GIT_BIN="${GIT_BIN:-/usr/bin/git}"
 SQLITE3_BIN="${SQLITE3_BIN:-/usr/bin/sqlite3}"
+UPDATE_REMOTE="${UPDATE_REMOTE:-origin}"
+UPDATE_BRANCH="${UPDATE_BRANCH:-}"
 
 SERVICE_PREFIX="${SERVICE_PREFIX:-sadgirlplayer}"
 BOT_SERVICE="${SERVICE_PREFIX}-bot.service"
@@ -40,7 +42,8 @@ Commands:
   status   Show service state and recent listeners for deployed ports.
 
 Environment overrides:
-  INSTALL_DIR, ENV_DIR, BACKUP_ROOT, PYTHON_VENV_DIR, NPM_BIN, GIT_BIN, SQLITE3_BIN, SERVICE_PREFIX
+  INSTALL_DIR, ENV_DIR, BACKUP_ROOT, PYTHON_VENV_DIR, APP_USER, NPM_BIN, GIT_BIN,
+  SQLITE3_BIN, SERVICE_PREFIX, UPDATE_REMOTE, UPDATE_BRANCH
 EOF
 }
 
@@ -59,6 +62,29 @@ require_paths() {
 
 run_as_app_user() {
   runuser -u "${APP_USER}" -- bash -lc "$1"
+}
+
+resolve_update_branch() {
+  local detected
+
+  if [[ -n "${UPDATE_BRANCH}" ]]; then
+    echo "${UPDATE_BRANCH}"
+    return
+  fi
+
+  detected="$(run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' symbolic-ref --quiet --short HEAD" 2>/dev/null || true)"
+  if [[ -n "${detected}" ]]; then
+    echo "${detected}"
+    return
+  fi
+
+  detected="$(run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' symbolic-ref --quiet --short refs/remotes/${UPDATE_REMOTE}/HEAD" 2>/dev/null || true)"
+  if [[ -n "${detected}" ]]; then
+    echo "${detected##${UPDATE_REMOTE}/}"
+    return
+  fi
+
+  echo "main"
 }
 
 start_services() {
@@ -140,7 +166,7 @@ create_backup() {
   fi
 
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
-    run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' rev-parse HEAD" > "${WORK_DIR}/git-revision.txt"
+    run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' rev-parse HEAD" > "${WORK_DIR}/git-revision.txt" 2>/dev/null || true
     run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' status --short" > "${WORK_DIR}/git-status.txt"
   fi
 
@@ -150,13 +176,27 @@ create_backup() {
 }
 
 run_update() {
+  local branch
+
   create_backup
 
   [[ -d "${INSTALL_DIR}/.git" ]] || fail "${INSTALL_DIR} is not a git checkout; cannot run update."
 
+  branch="$(resolve_update_branch)"
+
   log 'Fetching and fast-forwarding repository.'
-  run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' fetch --all --prune"
-  run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' pull --ff-only"
+  run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' fetch '${UPDATE_REMOTE}' --prune"
+
+  if ! run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' rev-parse --verify HEAD >/dev/null 2>&1"; then
+    log "No local HEAD found. Bootstrapping branch ${branch} from ${UPDATE_REMOTE}/${branch}."
+    run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' checkout -B '${branch}' '${UPDATE_REMOTE}/${branch}'"
+  fi
+
+  if ! run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1"; then
+    run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' branch --set-upstream-to='${UPDATE_REMOTE}/${branch}' '${branch}'" || true
+  fi
+
+  run_as_app_user "cd '${INSTALL_DIR}' && '${GIT_BIN}' pull --ff-only '${UPDATE_REMOTE}' '${branch}'"
 
   log 'Installing Node dependencies.'
   run_as_app_user "cd '${INSTALL_DIR}' && '${NPM_BIN}' ci"
