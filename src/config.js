@@ -349,6 +349,11 @@ const config = Object.freeze({
   gameWorkersSlots: parseBoolean(process.env.GAME_WORKERS_SLOTS, false),
   gameWorkersHorseracing: parseBoolean(process.env.GAME_WORKERS_HORSERACING, false),
   gameWorkersHoldem: parseBoolean(process.env.GAME_WORKERS_HOLDEM, false),
+  // Public leaderboard HTTP module (separate port, intended for nginx reverse proxy).
+  leaderboardServerEnabled: parseBoolean(process.env.LEADERBOARD_SERVER_ENABLED, true),
+  leaderboardServerPort: parsePositiveInt(process.env.LEADERBOARD_SERVER_PORT, 7070),
+  leaderboardServerHost: process.env.LEADERBOARD_SERVER_HOST?.trim() || '0.0.0.0',
+  leaderboardServerOutputFile: process.env.LEADERBOARD_SERVER_OUTPUT_FILE?.trim() || 'data/leaderboard.html',
 });
 
 function getMissingConfigValues() {

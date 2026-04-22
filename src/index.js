@@ -22,6 +22,7 @@ const { handleVoiceStateUpdate, startVcRewards, stopVcRewards } = require('./vcR
 const { initBigBusiness, stopBigBusiness } = require('./bigBusiness');
 const { initGuildConfig } = require('./guildConfig');
 const { startWebPanel, stopWebPanel } = require('./webPanel');
+const { startLeaderboardServer, stopLeaderboardServer } = require('./leaderboardServer');
 const { initPrivateStockStore } = require('./privateStockStore');
 const { startPrivateStockScheduler, stopPrivateStockScheduler } = require('./privateStockScheduler');
 const { initStockEvents, stopStockEvents } = require('./stockEvents');
@@ -136,6 +137,7 @@ async function shutdown(signal) {
   // Stop web control panel
   try {
     stopWebPanel();
+    stopLeaderboardServer();
   } catch (error) {
     logger.warn('Failed to stop web panel during shutdown.', error.message);
   }
@@ -275,6 +277,19 @@ client.once(Events.ClientReady, async (readyClient) => {
       startWebPanel();
     } catch (error) {
       logger.error('Failed to start web control panel.', error.message);
+    }
+
+    // Start public leaderboard HTTP server (intended for nginx reverse proxy).
+    if (config.leaderboardServerEnabled) {
+      try {
+        startLeaderboardServer({
+          port: config.leaderboardServerPort,
+          host: config.leaderboardServerHost,
+          outputFile: config.leaderboardServerOutputFile,
+        });
+      } catch (error) {
+        logger.error('Failed to start public leaderboard server.', error.message);
+      }
     }
 
     // Start Patreon supporter rewards (monthly stipends + signup bonuses)
