@@ -612,4 +612,9 @@ function reloadSettings() {
   } catch { /* DB not ready */ }
 }
 
-module.exports = { buildSlotsCommand, handleSlotsCommand, reloadSettings };
+const { config } = require('./config');
+if (config.gameWorkersEnabled && config.gameWorkersSlots) {
+  module.exports = require('./slotsAdapter');
+} else {
+  module.exports = { buildSlotsCommand, handleSlotsCommand, reloadSettings };
+}

@@ -308,11 +308,18 @@ client.once(Events.ClientReady, async (readyClient) => {
           poolSize,
         });
       }
+      if (config.gameWorkersSlots) {
+        workerManager.registerEngine('slots', {
+          scriptPath: path.resolve(__dirname, 'workers', 'engines', 'slots', 'worker.js'),
+          poolSize,
+        });
+      }
       workerManager.start();
       logger.info(`Game worker pool enabled (size=${poolSize}, engines=${[
         'echo',
         config.gameWorkersBlackjack ? 'blackjack' : null,
         config.gameWorkersPachinko ? 'pachinko' : null,
+        config.gameWorkersSlots ? 'slots' : null,
       ].filter(Boolean).join(', ')}).`);
 
       if (config.gameWorkersBlackjack) {
@@ -334,6 +341,15 @@ client.once(Events.ClientReady, async (readyClient) => {
           logger.info('Worker-backed Pachinko engine activated.');
         } catch (err) {
           logger.warn('Failed to seed pachinko worker settings.', err.message);
+        }
+      }
+      if (config.gameWorkersSlots) {
+        try {
+          const slAdapter = require('./slotsAdapter');
+          slAdapter.reloadSettings();
+          logger.info('Worker-backed Slots engine activated.');
+        } catch (err) {
+          logger.warn('Failed to seed slots worker settings.', err.message);
         }
       }
     } catch (error) {

@@ -346,6 +346,7 @@ const config = Object.freeze({
   // out one game at a time and roll back instantly via .env.
   gameWorkersBlackjack: parseBoolean(process.env.GAME_WORKERS_BLACKJACK, false),
   gameWorkersPachinko: parseBoolean(process.env.GAME_WORKERS_PACHINKO, false),
+  gameWorkersSlots: parseBoolean(process.env.GAME_WORKERS_SLOTS, false),
 });
 
 function getMissingConfigValues() {
