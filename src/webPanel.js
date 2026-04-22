@@ -1959,13 +1959,30 @@ function parseJsonBody(req) {
 }
 
 /**
+ * Get the real host from X-Forwarded-Host or fall back to req.headers.host.
+ * This makes the app proxy-aware when behind nginx or similar reverse proxy.
+ */
+function getRealHost(req) {
+  return req.headers['x-forwarded-host']?.split(',')[0].trim() || req.headers.host || 'localhost';
+}
+
+/**
+ * Get the real protocol from X-Forwarded-Proto or default to http.
+ */
+function getRealProto(req) {
+  return req.headers['x-forwarded-proto'] || 'http';
+}
+
+/**
  * Proxy a request to the Python memory service.
  */
 function proxyToMemoryService(subPath, req, res) {
   return new Promise((resolve, reject) => {
     const targetUrl = new URL(subPath, MEMORY_SERVICE_URL);
     // Forward query string
-    const reqUrl = new URL(req.url, `http://${req.headers.host}`);
+    const realHost = getRealHost(req);
+    const realProto = getRealProto(req);
+    const reqUrl = new URL(req.url, `${realProto}://${realHost}`);
     targetUrl.search = reqUrl.search;
 
     const options = {
@@ -2064,7 +2081,9 @@ function resetSettingsForCategories(categoryNames) {
 // ---------------------------------------------------------------------------
 
 async function handleRequest(req, res) {
-  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+  const realHost = getRealHost(req);
+  const realProto = getRealProto(req);
+  const parsedUrl = new URL(req.url, `${realProto}://${realHost}`);
   const pathname = parsedUrl.pathname;
   const method = req.method;
 

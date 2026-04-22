@@ -164,7 +164,6 @@ sync_repository() {
 
   log "Syncing repository into ${INSTALL_DIR}."
   rsync -a --delete \
-    --exclude '.git/' \
     --exclude 'node_modules/' \
     --exclude '.venv/' \
     --exclude '.venv-fedora/' \

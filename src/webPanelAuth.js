@@ -582,7 +582,7 @@ function validateSameOrigin(req) {
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
     return { ok: true };
   }
-  const host = req.headers.host;
+  const host = getRealHost(req);
   if (!host) return { ok: false, reason: 'missing host header' };
 
   const origin = req.headers.origin;
