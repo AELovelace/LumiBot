@@ -72,6 +72,12 @@ const {
 
 const WEB_PANEL_PORT = Number(process.env.WEB_PANEL_PORT) || 7777;
 const WEB_PANEL_HOST = process.env.WEB_PANEL_HOST || '0.0.0.0';
+// Optional base path prefix when the panel is mounted under a sub-path via a
+// reverse proxy (e.g. /dollpanel/admin). Set WEB_PANEL_BASE_PATH=/dollpanel/admin
+// in the environment. Must NOT have a trailing slash.
+const WEB_PANEL_BASE_PATH = (process.env.WEB_PANEL_BASE_PATH || '').replace(/\/+$/u, '');
+// Prepend the base path to an absolute internal path.
+function p(path) { return `${WEB_PANEL_BASE_PATH}${path}`; }
 const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || 'http://127.0.0.1:8765';
 let server = null;
 
@@ -629,16 +635,16 @@ function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
     <div class="subtitle">SadGirlCoin Economy Management // bind: ${escapeHtml(WEB_PANEL_HOST)}</div>
   </header>
   <nav>
-    <a href="/">Dashboard</a>
-    <a href="/guilds">Guilds</a>
-    <a href="/stocks">Stocks</a>
-    <a href="/economy">Economy</a>
-    <a href="/runtime">Runtime</a>
-    <a href="/casino">Casino</a>
-    <a href="/users">Users</a>
-    <a href="/memory">Memory</a>
-    <a href="/vc">VC Tracker</a>
-    <a href="/patrons">Patrons</a>
+    <a href="${p('/')}">Dashboard</a>
+    <a href="${p('/guilds')}">Guilds</a>
+    <a href="${p('/stocks')}">Stocks</a>
+    <a href="${p('/economy')}">Economy</a>
+    <a href="${p('/runtime')}">Runtime</a>
+    <a href="${p('/casino')}">Casino</a>
+    <a href="${p('/users')}">Users</a>
+    <a href="${p('/memory')}">Memory</a>
+    <a href="${p('/vc')}">VC Tracker</a>
+    <a href="${p('/patrons')}">Patrons</a>
     ${buildUserBadgeHtml(session)}
   </nav>
   ${bodyContent}
@@ -681,7 +687,7 @@ function renderDashboard() {
           </span>
         </div>
         <div style="margin-top:12px;">
-          <a href="/guilds/${escapeHtml(cfg.guildId)}" class="btn btn-sm">Edit</a>
+          <a href="${p(`/guilds/${escapeHtml(cfg.guildId)}`)}" class="btn btn-sm">Edit</a>
         </div>
       </div>`;
   }
@@ -748,7 +754,7 @@ function renderStocks(flash = null) {
     const summary = getStockSummary(stock.id);
     return `
       <tr>
-        <td><a href="/stocks/${stock.id}" style="color:#ff69b4;text-decoration:none;">${escapeHtml(stock.ticker)}</a></td>
+        <td><a href="${p(`/stocks/${stock.id}`)}" style="color:#ff69b4;text-decoration:none;">${escapeHtml(stock.ticker)}</a></td>
         <td>${escapeHtml(stock.business_name)}</td>
         <td>${escapeHtml(stock.entity_type === 'synthetic' ? 'Synthetic' : 'Guild')}</td>
         <td>${stock.is_listed ? '<span class="badge badge-enabled">LISTED</span>' : '<span class="badge badge-disabled">DELISTED</span>'}</td>
@@ -790,7 +796,7 @@ function renderStockDetail(stockId, flash = null) {
   return buildPageHtml(`
     ${flashHtml}
     <h2>> Stock: ${escapeHtml(stock.business_name)} (${escapeHtml(stock.ticker)})</h2>
-    <a href="/stocks" class="btn btn-sm" style="margin-bottom:16px;display:inline-block;">&laquo; Back to Stocks</a>
+    <a href="${p('/stocks')}" class="btn btn-sm" style="margin-bottom:16px;display:inline-block;">&laquo; Back to Stocks</a>
 
     <div class="card">
       <span class="stat">
@@ -817,7 +823,7 @@ function renderStockDetail(stockId, flash = null) {
 
     <h3>Edit Stock Name</h3>
     <div class="card">
-      <form method="POST" action="/stocks/${stock.id}/name">
+      <form method="POST" action="${p(`/stocks/${stock.id}/name`)}">
         <div class="form-row">
           <div>
             <label>Display Name</label>
@@ -835,7 +841,7 @@ function renderStockDetail(stockId, flash = null) {
 
     <h3>Edit Ticker</h3>
     <div class="card">
-      <form method="POST" action="/stocks/${stock.id}/ticker">
+      <form method="POST" action="${p(`/stocks/${stock.id}/ticker`)}">
         <div class="form-row">
           <div>
             <label>Ticker Symbol</label>
@@ -872,7 +878,7 @@ function renderGuildList() {
       <td>${escapeHtml(cfg.bigBusinessName)}</td>
       <td style="color:#44ff88;">${balance.toLocaleString()}</td>
       <td><span class="badge ${cfg.enabled ? 'badge-enabled' : 'badge-disabled'}">${cfg.enabled ? 'ON' : 'OFF'}</span></td>
-      <td><a href="/guilds/${escapeHtml(cfg.guildId)}" class="btn btn-sm">Edit</a></td>
+      <td><a href="${p(`/guilds/${escapeHtml(cfg.guildId)}`)}" class="btn btn-sm">Edit</a></td>
     </tr>`;
   }
 
@@ -882,7 +888,7 @@ function renderGuildList() {
       <tr><th>Name</th><th>Guild ID</th><th>Business</th><th>Balance</th><th>Status</th><th></th></tr>
       ${rows || '<tr><td colspan="6" style="color:#666;">No guilds configured.</td></tr>'}
     </table>
-    <a href="/guilds/new" class="btn btn-success">+ Add Guild</a>
+    <a href="${p('/guilds/new')}" class="btn btn-success">+ Add Guild</a>
   `);
 }
 
@@ -976,7 +982,7 @@ function renderGuildEdit(guildId, flash = null) {
     ${flashHtml}
     <h2>> Edit Guild: ${escapeHtml(cfg.guildName)}</h2>
     <div class="card">
-      <form method="POST" action="/guilds/${escapeHtml(cfg.guildId)}">
+      <form method="POST" action="${p(`/guilds/${escapeHtml(cfg.guildId)}`)}">
         <div class="form-row">
           <div>
             <label>Guild Name</label>
@@ -1049,7 +1055,7 @@ function renderGuildEdit(guildId, flash = null) {
         </div>
         <button type="submit" class="btn btn-success" style="margin-top:8px;">Save Changes</button>
       </form>
-      <form method="POST" action="/guilds/${escapeHtml(cfg.guildId)}/delete" style="margin-top:12px;">
+      <form method="POST" action="${p(`/guilds/${escapeHtml(cfg.guildId)}/delete`)}" style="margin-top:12px;">
         <button type="submit" class="btn btn-danger" onclick="return confirm('Remove this guild config?')">Remove Guild</button>
       </form>
     </div>
@@ -1065,7 +1071,7 @@ function renderGuildNew(flash = null, prefill = {}) {
     ${flashHtml}
     <h2>> Add New Guild</h2>
     <div class="card">
-      <form method="POST" action="/guilds/new">
+      <form method="POST" action="${p('/guilds/new')}">
         <div class="form-row">
           <div>
             <label>Guild ID *</label>
@@ -1400,11 +1406,11 @@ function renderEconomy(flash = null) {
     ${flashHtml}
     <h2>> Economy Settings</h2>
     <div class="flash flash-info">Changes are saved to the database. Settings take effect on next bot restart or new game session.</div>
-    <form method="POST" action="/economy">
+    <form method="POST" action="${p('/economy')}">
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save Economy Settings</button>
-        <a href="/economy/reset" class="btn btn-danger" onclick="return confirm('Reset ALL economy settings to defaults?')">Reset to Defaults</a>
+        <a href="${p('/economy/reset')}" class="btn btn-danger" onclick="return confirm('Reset ALL economy settings to defaults?')">Reset to Defaults</a>
       </div>
     </form>
   `);
@@ -1448,11 +1454,11 @@ function renderRuntime(flash = null) {
     ${flashHtml}
     <h2>> Runtime Settings</h2>
     <div class="flash flash-info">These settings are intended for live runtime control and are hot-reloaded by the panel where supported.</div>
-    <form method="POST" action="/runtime">
+    <form method="POST" action="${p('/runtime')}">
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save Runtime Settings</button>
-        <a href="/runtime/reset" class="btn btn-danger" onclick="return confirm('Reset ALL runtime settings to defaults?')">Reset to Defaults</a>
+        <a href="${p('/runtime/reset')}" class="btn btn-danger" onclick="return confirm('Reset ALL runtime settings to defaults?')">Reset to Defaults</a>
       </div>
     </form>
   `);
@@ -1500,11 +1506,11 @@ function renderCasino(flash = null) {
     ${flashHtml}
     <h2>> Momiji Casino Settings</h2>
     <div class="flash flash-info">Changes are saved to the database. Settings take effect on next bot restart or new game session.</div>
-    <form method="POST" action="/casino">
+    <form method="POST" action="${p('/casino')}">
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save Casino Settings</button>
-        <a href="/casino/reset" class="btn btn-danger" onclick="return confirm('Reset ALL casino settings to defaults?')">Reset to Defaults</a>
+        <a href="${p('/casino/reset')}" class="btn btn-danger" onclick="return confirm('Reset ALL casino settings to defaults?')">Reset to Defaults</a>
       </div>
     </form>
   `);
@@ -1536,7 +1542,7 @@ function renderUsers(query = '', page = 1) {
     const isSystem = acct.user_id.startsWith('__');
     const nameColor = isSystem ? '#9b59b6' : '#ff69b4';
     rows += `<tr>
-      <td><a href="/users/${encodeURIComponent(acct.user_id)}" style="color:${nameColor};text-decoration:none;">${escapeHtml(acct.username || acct.user_id)}</a></td>
+      <td><a href="${p(`/users/${encodeURIComponent(acct.user_id)}`)}" style="color:${nameColor};text-decoration:none;">${escapeHtml(acct.username || acct.user_id)}</a></td>
       <td style="font-size:11px;color:#666;">${escapeHtml(acct.user_id)}</td>
       <td style="color:#44ff88;font-family:'VT323',monospace;font-size:18px;">${(acct.balance || 0).toLocaleString()}</td>
       <td style="color:#6495ed;">${(acct.total_earned || 0).toLocaleString()}</td>
@@ -1550,11 +1556,11 @@ function renderUsers(query = '', page = 1) {
     const qParam = query ? `&q=${encodeURIComponent(query)}` : '';
     paginationHtml = '<div class="pagination">';
     if (page > 1) {
-      paginationHtml += `<a href="/users?page=${page - 1}${qParam}" class="btn btn-sm">&laquo; Prev</a>`;
+      paginationHtml += `<a href="${p(`/users?page=${page - 1}${qParam}`)}" class="btn btn-sm">&laquo; Prev</a>`;
     }
     paginationHtml += `<span class="badge badge-enabled" style="padding:6px 12px;">Page ${page} / ${totalPages}</span>`;
     if (page < totalPages) {
-      paginationHtml += `<a href="/users?page=${page + 1}${qParam}" class="btn btn-sm">Next &raquo;</a>`;
+      paginationHtml += `<a href="${p(`/users?page=${page + 1}${qParam}`)}" class="btn btn-sm">Next &raquo;</a>`;
     }
     paginationHtml += '</div>';
   }
@@ -1567,11 +1573,11 @@ function renderUsers(query = '', page = 1) {
         <span class="stat-value">${total.toLocaleString()}</span>
       </span>
     </div>
-    <form method="GET" action="/users">
+    <form method="GET" action="${p('/users')}">
       <div class="search-bar">
         <input type="text" name="q" value="${escapeHtml(query)}" placeholder="Search by username or user ID...">
         <button type="submit" class="btn">Search</button>
-        ${query ? '<a href="/users" class="btn btn-warn">Clear</a>' : ''}
+        ${query ? `<a href="${p('/users')}" class="btn btn-warn">Clear</a>` : ''}
       </div>
     </form>
     <table>
@@ -1632,7 +1638,7 @@ function renderUserDetail(userId, flash = null) {
   return buildPageHtml(`
     ${flashHtml}
     <h2>> User: ${escapeHtml(acct.username || acct.user_id)}</h2>
-    <a href="/users" class="btn btn-sm" style="margin-bottom:16px;display:inline-block;">&laquo; Back to Users</a>
+    <a href="${p('/users')}" class="btn btn-sm" style="margin-bottom:16px;display:inline-block;">&laquo; Back to Users</a>
     <div class="card">
       <div class="form-row">
         <div>
@@ -1676,7 +1682,7 @@ function renderUserDetail(userId, flash = null) {
 
     <h3>Adjust Balance</h3>
     <div class="card">
-      <form method="POST" action="/users/${encodeURIComponent(acct.user_id)}/adjust">
+      <form method="POST" action="${p(`/users/${encodeURIComponent(acct.user_id)}/adjust`)}">
         <div class="form-row-3">
           <div>
             <label>Amount (positive to add, negative to remove)</label>
@@ -2084,7 +2090,11 @@ async function handleRequest(req, res) {
   const realHost = getRealHost(req);
   const realProto = getRealProto(req);
   const parsedUrl = new URL(req.url, `${realProto}://${realHost}`);
-  const pathname = parsedUrl.pathname;
+  // Strip the base path prefix so all route matching works against bare paths.
+  const rawPathname = parsedUrl.pathname;
+  const pathname = WEB_PANEL_BASE_PATH && rawPathname.startsWith(WEB_PANEL_BASE_PATH)
+    ? rawPathname.slice(WEB_PANEL_BASE_PATH.length) || '/'
+    : rawPathname;
   const method = req.method;
 
   // Security headers (defense-in-depth — applied to every response).
@@ -2449,7 +2459,7 @@ async function handleRequest(req, res) {
         enabled: body.enabled !== 'false',
       });
 
-      res.writeHead(302, { Location: `/guilds/${body.guildId}` });
+      res.writeHead(302, { Location: p(`/guilds/${body.guildId}`) });
       res.end();
       return;
     }
@@ -2458,7 +2468,7 @@ async function handleRequest(req, res) {
     const deleteMatch = pathname.match(/^\/guilds\/(\d+)\/delete$/u);
     if (deleteMatch && method === 'POST') {
       removeGuildConfig(deleteMatch[1]);
-      res.writeHead(302, { Location: '/guilds' });
+      res.writeHead(302, { Location: p('/guilds') });
       res.end();
       return;
     }
@@ -2524,7 +2534,7 @@ async function handleRequest(req, res) {
         removeGuildConfig(originalGuildId);
       }
 
-      res.writeHead(302, { Location: `/guilds/${guildId}` });
+      res.writeHead(302, { Location: p(`/guilds/${guildId}`) });
       res.end();
       return;
     }
@@ -2566,7 +2576,7 @@ async function handleRequest(req, res) {
       const cats = ['Runtime Channels', 'Chatbot', 'Search', 'Big Business', 'VC Rewards'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
-      res.writeHead(302, { Location: '/runtime' });
+      res.writeHead(302, { Location: p('/runtime') });
       res.end();
       return;
     }
@@ -2584,7 +2594,7 @@ async function handleRequest(req, res) {
       const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
-      res.writeHead(302, { Location: '/economy' });
+      res.writeHead(302, { Location: p('/economy') });
       res.end();
       return;
     }
@@ -2608,7 +2618,7 @@ async function handleRequest(req, res) {
       const cats = ['Slots', 'Pachinko', 'Blackjack', "Texas Hold'em", 'Horse Racing'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
-      res.writeHead(302, { Location: '/casino' });
+      res.writeHead(302, { Location: p('/casino') });
       res.end();
       return;
     }
