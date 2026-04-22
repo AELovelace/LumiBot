@@ -73,9 +73,9 @@ const SECURITY_HEADERS = {
   'referrer-policy': 'no-referrer',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
   // Tight CSP — page only uses an inline <style> block, no scripts, no images.
-  // Allow embedding in iframes from any domain via frame-ancestors '*'
+  // Allow embedding in iframes from any domain by omitting frame-ancestors restriction.
   'content-security-policy':
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors '*'",
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
 };
 
 function applySecurityHeaders(res) {
