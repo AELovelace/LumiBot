@@ -213,8 +213,13 @@ function reloadSettings() {
   } catch { /* DB not ready */ }
 }
 
-module.exports = {
-  buildPachinkoCommand,
-  handlePachinkoCommand,
-  reloadSettings,
-};
+const { config } = require('./config');
+if (config.gameWorkersEnabled && config.gameWorkersPachinko) {
+  module.exports = require('./pachinkoAdapter');
+} else {
+  module.exports = {
+    buildPachinkoCommand,
+    handlePachinkoCommand,
+    reloadSettings,
+  };
+}

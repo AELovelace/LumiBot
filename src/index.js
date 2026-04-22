@@ -33,6 +33,8 @@ const {
   handleGuildMemberAdd: handlePatreonMemberAdd,
   handleGuildMemberUpdate: handlePatreonMemberUpdate,
 } = require('./patreonRewards');
+const path = require('node:path');
+const { manager: workerManager } = require('./workers/workerManager');
 
 const missingConfigValues = getMissingConfigValues();
 if (missingConfigValues.length > 0) {
@@ -151,6 +153,14 @@ async function shutdown(signal) {
     closeEconomyStore();
   } catch (error) {
     logger.warn('Failed to close SadGirlCoin economy DB during shutdown.', error.message);
+  }
+
+  // Tear down game worker pool last so any in-flight game ops can finish
+  // their final replies before the workers terminate.
+  try {
+    await workerManager.shutdown();
+  } catch (error) {
+    logger.warn('Failed to shut down game worker pool.', error.message);
   }
 
   client.destroy();
@@ -273,6 +283,64 @@ client.once(Events.ClientReady, async (readyClient) => {
     } catch (error) {
       logger.error('Failed to start Patreon rewards.', error.message);
     }
+  }
+
+  // Phase 1 of multi-threaded game runtime. The worker pool is gated by
+  // a config flag so this rollout is opt-in. Engines are registered here
+  // and started together; game adapters (added in later phases) reach
+  // the manager via require('./workers/workerManager').
+  if (config.gameWorkersEnabled) {
+    try {
+      const poolSize = Math.max(1, Math.min(config.gameWorkerPoolSize, 8));
+      workerManager.registerEngine('echo', {
+        scriptPath: path.resolve(__dirname, 'workers', 'engines', 'echo', 'worker.js'),
+        poolSize,
+      });
+      if (config.gameWorkersBlackjack) {
+        workerManager.registerEngine('blackjack', {
+          scriptPath: path.resolve(__dirname, 'workers', 'engines', 'blackjack', 'worker.js'),
+          poolSize,
+        });
+      }
+      if (config.gameWorkersPachinko) {
+        workerManager.registerEngine('pachinko', {
+          scriptPath: path.resolve(__dirname, 'workers', 'engines', 'pachinko', 'worker.js'),
+          poolSize,
+        });
+      }
+      workerManager.start();
+      logger.info(`Game worker pool enabled (size=${poolSize}, engines=${[
+        'echo',
+        config.gameWorkersBlackjack ? 'blackjack' : null,
+        config.gameWorkersPachinko ? 'pachinko' : null,
+      ].filter(Boolean).join(', ')}).`);
+
+      if (config.gameWorkersBlackjack) {
+        // Push the latest panel-side blackjack settings into the worker
+        // now that workers are live (the earlier reloadBlackjack() call
+        // ran before manager.start() and was a no-op).
+        try {
+          const bjAdapter = require('./blackjackAdapter');
+          bjAdapter.reloadSettings();
+          logger.info('Worker-backed Blackjack engine activated.');
+        } catch (err) {
+          logger.warn('Failed to seed blackjack worker settings.', err.message);
+        }
+      }
+      if (config.gameWorkersPachinko) {
+        try {
+          const pkAdapter = require('./pachinkoAdapter');
+          pkAdapter.reloadSettings();
+          logger.info('Worker-backed Pachinko engine activated.');
+        } catch (err) {
+          logger.warn('Failed to seed pachinko worker settings.', err.message);
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to start game worker pool.', error.message);
+    }
+  } else {
+    logger.info('Game worker pool disabled (set GAME_WORKERS_ENABLED=true to enable).');
   }
 
   await registerControlPlane(readyClient);

@@ -335,6 +335,17 @@ const config = Object.freeze({
   webPanelSessionSecret: process.env.WEB_PANEL_SESSION_SECRET?.trim() || '',
   webPanelSessionTtlMs: parsePositiveInt(process.env.WEB_PANEL_SESSION_TTL_MS, 7_200_000),
   webPanelSecureCookies: parseBoolean(process.env.WEB_PANEL_SECURE_COOKIES, false),
+  // Game worker threads — Phase 1 of the multi-threaded refactor. When
+  // enabled the bot spawns a pool of worker threads for game engines
+  // and exposes the worker manager to game adapters. Per-engine pools
+  // are configured separately as engines are migrated.
+  gameWorkersEnabled: parseBoolean(process.env.GAME_WORKERS_ENABLED, false),
+  gameWorkerPoolSize: parsePositiveInt(process.env.GAME_WORKER_POOL_SIZE, 2),
+  // Per-engine opt-in flags. A game only uses the worker path when the
+  // global flag AND its per-engine flag are both true. This lets us roll
+  // out one game at a time and roll back instantly via .env.
+  gameWorkersBlackjack: parseBoolean(process.env.GAME_WORKERS_BLACKJACK, false),
+  gameWorkersPachinko: parseBoolean(process.env.GAME_WORKERS_PACHINKO, false),
 });
 
 function getMissingConfigValues() {

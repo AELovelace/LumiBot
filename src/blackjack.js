@@ -882,4 +882,13 @@ function reloadSettings() {
   } catch { /* DB not ready */ }
 }
 
-module.exports = { buildBlackjackCommand, handleBlackjackCommand, reloadSettings };
+// When the worker-backed path is enabled the entire module surface is
+// swapped to the adapter so callers (commands.js, index.js) get the
+// worker implementation transparently. The in-process logic above
+// remains as the fallback when GAME_WORKERS_BLACKJACK=false.
+const { config: _bjConfig } = require('./config');
+if (_bjConfig.gameWorkersEnabled && _bjConfig.gameWorkersBlackjack) {
+  module.exports = require('./blackjackAdapter');
+} else {
+  module.exports = { buildBlackjackCommand, handleBlackjackCommand, reloadSettings };
+}
