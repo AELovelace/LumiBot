@@ -3,7 +3,7 @@
 /**
  * Smoke test for the public leaderboard HTTP server.
  *
- * Starts the server on an ephemeral high port, hits /, /api/leaderboard.json,
+ * Starts the server on an ephemeral high port, hits / and /healthz,
  * /healthz, and verifies the rendered HTML mirror file is written.
  */
 
@@ -46,20 +46,15 @@ async function main() {
 
   const root = await get('/');
   if (root.status !== 200) throw new Error(`/ status ${root.status}`);
-  if (!/SadGirlCoin/.test(root.body)) throw new Error('/ html missing SadGirlCoin title');
-  if (!/Top 50 Holders/.test(root.body)) throw new Error('/ html missing top holders section');
-  if (!/Patreon Supporters/.test(root.body)) throw new Error('/ html missing patreon section');
-  if (!/auto-refreshes every minute/.test(root.body)) throw new Error('/ html missing refresh blurb');
+  if (!/SADGIRLCOIN/.test(root.body)) throw new Error('/ html missing SADGIRLCOIN title');
+  if (!/TOP 50 HOLDERS/.test(root.body)) throw new Error('/ html missing top holders section');
+  if (!/PATRONS/.test(root.body)) throw new Error('/ html missing patrons section');
+  if (!/auto-reloads every 60s/.test(root.body)) throw new Error('/ html missing refresh blurb');
   logger.info(`lb-smoke: GET / OK (${root.body.length} bytes)`);
 
   const json = await get('/api/leaderboard.json');
-  if (json.status !== 200) throw new Error(`/api/leaderboard.json status ${json.status}`);
-  const parsed = JSON.parse(json.body);
-  if (!parsed.generatedAt) throw new Error('json missing generatedAt');
-  if (!Array.isArray(parsed.topHolders)) throw new Error('json topHolders not array');
-  if (!Array.isArray(parsed.patrons)) throw new Error('json patrons not array');
-  if (!Array.isArray(parsed.patronsByTier)) throw new Error('json patronsByTier not array');
-  logger.info(`lb-smoke: GET /api/leaderboard.json OK (${parsed.topHolders.length} holders, ${parsed.patrons.length} patrons)`);
+  if (json.status !== 404) throw new Error(`/api/leaderboard.json should be removed, got ${json.status}`);
+  logger.info('lb-smoke: GET /api/leaderboard.json correctly disabled (404)');
 
   const health = await get('/healthz');
   if (health.status !== 200 || health.body !== 'ok') throw new Error('healthz failed');

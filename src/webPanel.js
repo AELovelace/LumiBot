@@ -60,12 +60,14 @@ const {
 
 const {
   validateAuthConfig,
+  assertAuthConfigOrThrow,
   handleLoginRoute,
   handleCallbackRoute,
   handleLogoutRoute,
   renderLoginPage,
   requireAuth,
   buildUserBadgeHtml,
+  validateSameOrigin,
 } = require('./webPanelAuth');
 
 const WEB_PANEL_PORT = Number(process.env.WEB_PANEL_PORT) || 7777;
@@ -2066,7 +2068,23 @@ async function handleRequest(req, res) {
   const pathname = parsedUrl.pathname;
   const method = req.method;
 
+  // Security headers (defense-in-depth — applied to every response).
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'interest-cohort=(), browsing-topics=()');
+
   try {
+    // CSRF defense for state-changing methods. Applies to ALL routes including
+    // /auth/logout. Read-only methods (GET/HEAD) are passed through.
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) {
+      logger.warn(`[csrf] rejected ${method} ${pathname}: ${originCheck.reason}`);
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Forbidden: cross-origin request rejected.');
+      return;
+    }
+
     // ── Auth routes (always public) ───────────────────────────────────
     if (pathname === '/auth/discord/login') {
       handleLoginRoute(req, res);
@@ -2642,6 +2660,9 @@ async function handleRequest(req, res) {
 // ---------------------------------------------------------------------------
 
 function startWebPanel() {
+  // Refuse to start without a session secret — sessions must be HMAC-signed.
+  assertAuthConfigOrThrow();
+
   // Validate Discord OAuth config and warn about missing/weak values.
   const authWarnings = validateAuthConfig();
   for (const warning of authWarnings) {

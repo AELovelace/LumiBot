@@ -103,12 +103,25 @@ function validateAuthConfig() {
   if (!cfg.clientSecret) warnings.push('DISCORD_OAUTH_CLIENT_SECRET is not set — OAuth login will fail');
   if (!cfg.redirectUri) warnings.push('DISCORD_OAUTH_REDIRECT_URI is not set — OAuth login will fail');
   if (!cfg.panelGuildId) warnings.push('DISCORD_PANEL_GUILD_ID is not set — defaulting to 895446230967148544');
-  if (!cfg.sessionSecret) warnings.push('WEB_PANEL_SESSION_SECRET is not set — sessions will not be cryptographically signed');
   if (cfg.sessionSecret && cfg.sessionSecret.length < 32) {
     warnings.push('WEB_PANEL_SESSION_SECRET is shorter than 32 characters — use a longer random value');
   }
 
   return warnings;
+}
+
+/**
+ * Throws if mandatory auth config is missing. Called at startup before the
+ * panel binds its socket — refuses to run unsigned sessions.
+ */
+function assertAuthConfigOrThrow() {
+  const cfg = getPanelAuthConfig();
+  if (!cfg.sessionSecret) {
+    throw new Error(
+      'WEB_PANEL_SESSION_SECRET is required and must be set to a long random value (>= 32 chars). ' +
+      'Refusing to start the web panel with unsigned sessions.'
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +164,6 @@ function buildSetCookieHeader(name, value, { maxAgeSeconds, secure, httpOnly = t
  * Returns "token.signature" — both parts are hex strings.
  */
 function signToken(token, secret) {
-  if (!secret) return token; // No secret configured — token is unsigned but still opaque.
   const sig = crypto.createHmac('sha256', secret).update(token).digest('hex');
   return `${token}.${sig}`;
 }
@@ -161,7 +173,7 @@ function signToken(token, secret) {
  * Returns null if verification fails.
  */
 function verifyToken(signed, secret) {
-  if (!secret) return signed; // No secret — trust as-is (warn is emitted at startup).
+  if (!secret) return null;
   const dotIdx = signed.lastIndexOf('.');
   if (dotIdx < 0) return null;
   const token = signed.slice(0, dotIdx);
@@ -556,6 +568,44 @@ function requireAuth(req) {
 }
 
 /**
+ * CSRF defense: for state-changing requests (POST/PUT/PATCH/DELETE), confirm
+ * the request originated from the same origin as the panel itself by checking
+ * the `Origin` header (sent by all modern browsers on cross-origin POSTs)
+ * with a `Referer` fallback. SameSite=Lax cookies already block most cross-
+ * site form submissions; this is defense-in-depth.
+ *
+ * Returns { ok: true } if safe, or { ok: false, reason } if rejected.
+ * Safe (read-only) methods always return { ok: true }.
+ */
+function validateSameOrigin(req) {
+  const method = (req.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return { ok: true };
+  }
+  const host = req.headers.host;
+  if (!host) return { ok: false, reason: 'missing host header' };
+
+  const origin = req.headers.origin;
+  if (origin) {
+    let parsed;
+    try { parsed = new URL(origin); } catch { return { ok: false, reason: 'malformed origin' }; }
+    if (parsed.host !== host) return { ok: false, reason: `origin host ${parsed.host} != ${host}` };
+    return { ok: true };
+  }
+
+  const referer = req.headers.referer || req.headers.referrer;
+  if (referer) {
+    let parsed;
+    try { parsed = new URL(referer); } catch { return { ok: false, reason: 'malformed referer' }; }
+    if (parsed.host !== host) return { ok: false, reason: `referer host ${parsed.host} != ${host}` };
+    return { ok: true };
+  }
+
+  // Neither header present on a state-changing request — reject.
+  return { ok: false, reason: 'missing Origin and Referer headers' };
+}
+
+/**
  * Build the user badge HTML fragment injected into the panel nav.
  */
 function buildUserBadgeHtml(session) {
@@ -574,12 +624,14 @@ function buildUserBadgeHtml(session) {
 
 module.exports = {
   validateAuthConfig,
+  assertAuthConfigOrThrow,
   handleLoginRoute,
   handleCallbackRoute,
   handleLogoutRoute,
   renderLoginPage,
   requireAuth,
   buildUserBadgeHtml,
+  validateSameOrigin,
   // Exported for testing/internal use
   getSession,
   destroySession,

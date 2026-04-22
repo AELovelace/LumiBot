@@ -16,7 +16,7 @@
  *   GET /              → cached HTML page (auto-reloads via meta refresh)
  *   GET /index.html    → same as /
  *   GET /leaderboard.html → same as /
- *   GET /api/leaderboard.json → JSON snapshot { generatedAt, topHolders, patrons }
+ *   GET /healthz                 → "ok"
  *   GET /healthz       → "ok"
  *
  * No login, no write paths — strictly public read-only.
@@ -32,6 +32,55 @@ const { getAllPatrons, getPatreonStats, TIERS } = require('./patreonRewards');
 
 const REFRESH_MS = 60 * 1000;
 const TOP_N = 50;
+
+// Per-IP rate limit (token bucket). Public-facing endpoint sees nginx-proxied
+// traffic, so this is cheap insurance against trivial flooding.
+const RATE_LIMIT_MAX = 120;          // requests
+const RATE_LIMIT_WINDOW_MS = 60_000; // per minute
+const rateBuckets = new Map();        // ip → { count, windowStart }
+
+function rateLimitCheck(ip) {
+  const now = Date.now();
+  const bucket = rateBuckets.get(ip);
+  if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
+    rateBuckets.set(ip, { count: 1, windowStart: now });
+    return { ok: true, retryAfter: 0 };
+  }
+  bucket.count++;
+  if (bucket.count > RATE_LIMIT_MAX) {
+    const retryAfter = Math.max(1, Math.ceil((RATE_LIMIT_WINDOW_MS - (now - bucket.windowStart)) / 1000));
+    return { ok: false, retryAfter };
+  }
+  return { ok: true, retryAfter: 0 };
+}
+
+// Periodic GC for the rate-limit map so it can't grow unbounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, bucket] of rateBuckets) {
+    if (now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS * 2) rateBuckets.delete(ip);
+  }
+}, RATE_LIMIT_WINDOW_MS).unref?.();
+
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+  'permissions-policy': 'interest-cohort=(), browsing-topics=()',
+  // Tight CSP — page only uses an inline <style> block, no scripts, no images.
+  'content-security-policy':
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+};
+
+function applySecurityHeaders(res) {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+}
 
 let server = null;
 let refreshTimer = null;
@@ -122,22 +171,23 @@ function buildSnapshot() {
 
 function renderHtml(snapshot) {
   const generatedHuman = formatTimestamp(snapshot.generatedAt);
+
   const tierBlocks = snapshot.patronsByTier.map((tier) => {
     if (!tier.members.length) {
       return `
-        <section class="tier">
-          <h3>${escapeHtml(tier.label)}</h3>
-          <p class="muted">No active supporters at this tier yet.</p>
-        </section>`;
+      <section class="tier">
+        <h3>&gt;&gt; ${escapeHtml(tier.label)}</h3>
+        <p class="muted">// no supporters at this tier yet</p>
+      </section>`;
     }
     const rows = tier.members.map((m) => `
       <li>
-        <span class="patron-name">${escapeHtml(m.username)}</span>
-        <span class="patron-meta">${formatNumber(m.monthsPaid)} months paid</span>
+        <span class="patron-name">&gt; ${escapeHtml(m.username)}</span>
+        <span class="patron-meta">[${formatNumber(m.monthsPaid)} mo]</span>
       </li>`).join('');
     return `
       <section class="tier">
-        <h3>${escapeHtml(tier.label)} <span class="muted">(${tier.members.length})</span></h3>
+        <h3>&gt;&gt; ${escapeHtml(tier.label)} <span class="muted">(${tier.members.length})</span></h3>
         <ul class="patron-list">${rows}</ul>
       </section>`;
   }).join('');
@@ -158,126 +208,274 @@ function renderHtml(snapshot) {
   <meta charset="utf-8">
   <meta http-equiv="refresh" content="60">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SadGirlCoin — Live Leaderboard</title>
+  <title>SADGIRLCOIN.WTF // LIVE LEADERBOARD</title>
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0e0b16;
-      --bg-soft: #181126;
-      --panel: #1f1532;
-      --border: #2d2046;
-      --text: #f3eaff;
-      --muted: #b3a0d8;
-      --accent: #e879f9;
-      --accent-2: #f0abfc;
-      --gold: #facc15;
-      --silver: #cbd5e1;
-      --bronze: #d97706;
+      --bg:        #0a0306;
+      --bg-soft:   #14080d;
+      --panel:     #15080e;
+      --panel-2:   #1d0a13;
+      --border:    #ff1744;
+      --border-dim:#5a0a1a;
+      --text:      #ffd6e2;
+      --text-bold: #ffffff;
+      --muted:     #b07487;
+      --red:       #ff1744;
+      --red-dim:   #b3001b;
+      --pink:      #ff4dd2;
+      --pink-hot:  #ff7ad9;
+      --pink-soft: #ffaee0;
+      --gold:      #ffb86b;
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0; padding: 0;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: radial-gradient(circle at top, #1a0f2e, #0e0b16 60%) fixed;
+      background: var(--bg);
       color: var(--text);
+      font-family: 'Courier New', 'Consolas', 'Lucida Console', monospace;
+      font-size: 14px;
+      line-height: 1.45;
     }
-    main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 64px; }
-    header { text-align: center; margin-bottom: 28px; }
-    h1 { margin: 0 0 8px; font-size: 2.4em; color: var(--accent-2); letter-spacing: 0.5px; }
-    h2 { margin: 0 0 16px; font-size: 1.4em; color: var(--accent); }
-    h3 { margin: 0 0 10px; font-size: 1.05em; color: var(--accent-2); }
-    .meta { color: var(--muted); font-size: 0.9em; }
+    body {
+      background:
+        repeating-linear-gradient(
+          0deg,
+          rgba(255, 23, 68, 0.04) 0px,
+          rgba(255, 23, 68, 0.04) 1px,
+          transparent 1px,
+          transparent 3px
+        ),
+        radial-gradient(ellipse at top, #1a0309 0%, #050103 70%) fixed;
+    }
+    a { color: var(--pink-hot); text-decoration: none; border-bottom: 1px dashed var(--pink-hot); }
+    a:hover { color: var(--text-bold); background: var(--red-dim); }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 18px 14px 60px;
+    }
+
+    /* ----- Title bar ----- */
+    .titlebar {
+      border: 2px solid var(--red);
+      background: linear-gradient(180deg, var(--red) 0%, var(--red-dim) 100%);
+      color: var(--text-bold);
+      padding: 6px 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 4px 4px 0 #000;
+    }
+    .titlebar .blink { animation: blink 1.1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .marquee-bar {
+      border: 2px solid var(--red);
+      border-top: none;
+      background: #000;
+      color: var(--pink-hot);
+      padding: 4px 10px;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      box-shadow: 4px 4px 0 #000;
+      margin-bottom: 22px;
+    }
+
+    /* ----- Section panels ----- */
     .panel {
       background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 22px;
-      margin-bottom: 24px;
-      box-shadow: 0 4px 18px rgba(0,0,0,0.3);
+      border: 2px solid var(--red);
+      box-shadow: 5px 5px 0 #000, 0 0 18px rgba(255, 23, 68, 0.15) inset;
+      margin: 0 0 22px;
     }
-    .grid-tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-    .tier {
-      background: var(--bg-soft);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 16px;
+    .panel-head {
+      background: var(--red);
+      color: #fff;
+      padding: 4px 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      border-bottom: 2px solid #000;
     }
-    .patron-list { list-style: none; padding: 0; margin: 0; }
-    .patron-list li {
-      display: flex; justify-content: space-between; align-items: baseline;
-      padding: 4px 0;
-      border-bottom: 1px dashed rgba(255,255,255,0.06);
-      font-size: 0.95em;
+    .panel-body { padding: 14px 14px 18px; }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: 'Impact', 'Arial Black', 'Courier New', monospace;
+      letter-spacing: 1px;
     }
-    .patron-list li:last-child { border-bottom: none; }
-    .patron-meta { color: var(--muted); font-size: 0.8em; }
-    table { width: 100%; border-collapse: collapse; }
-    thead th {
-      text-align: left; padding: 10px 12px;
-      color: var(--muted); font-weight: 600; font-size: 0.85em;
-      text-transform: uppercase; letter-spacing: 0.4px;
-      border-bottom: 1px solid var(--border);
-    }
-    tbody td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    tbody tr:hover { background: rgba(232,121,249,0.06); }
-    td.rank { width: 64px; font-weight: 700; color: var(--gold); }
-    tbody tr:nth-child(2) td.rank { color: var(--silver); }
-    tbody tr:nth-child(3) td.rank { color: var(--bronze); }
-    td.balance { font-weight: 700; color: var(--accent-2); }
-    td.earned { color: var(--muted); }
-    .muted { color: var(--muted); }
+    h1 { font-size: 22px; }
+    h2 { font-size: 16px; color: var(--pink-hot); margin-bottom: 10px; }
+    h3 { font-size: 13px; color: var(--pink); margin-bottom: 8px; text-transform: uppercase; }
+
     .stats {
-      display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
     }
     .stat {
       flex: 1 1 160px;
-      background: var(--bg-soft);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 14px;
+      background: #000;
+      border: 1px solid var(--red);
+      padding: 6px 10px;
     }
-    .stat .label { color: var(--muted); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat .value { font-size: 1.4em; font-weight: 700; margin-top: 4px; color: var(--accent-2); }
-    footer { text-align: center; color: var(--muted); margin-top: 28px; font-size: 0.85em; }
-    a { color: var(--accent-2); }
+    .stat .label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat .value {
+      color: var(--pink-hot);
+      font-size: 20px;
+      font-weight: 700;
+      margin-top: 2px;
+      font-family: 'Impact', 'Arial Black', monospace;
+      text-shadow: 0 0 6px rgba(255, 77, 210, 0.5);
+    }
+
+    .grid-tiers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .tier {
+      background: var(--panel-2);
+      border: 1px dashed var(--red);
+      padding: 10px 12px;
+    }
+    .patron-list { list-style: none; padding: 0; margin: 0; }
+    .patron-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 3px 0;
+      border-bottom: 1px dotted var(--border-dim);
+      font-size: 13px;
+    }
+    .patron-list li:last-child { border-bottom: none; }
+    .patron-name { color: var(--text-bold); }
+    .patron-meta { color: var(--pink-soft); font-size: 11px; }
+    .muted { color: var(--muted); font-style: italic; }
+
+    /* ----- Leaderboard table ----- */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #000;
+      border: 1px solid var(--red);
+    }
+    thead th {
+      background: var(--red-dim);
+      color: #fff;
+      text-align: left;
+      padding: 4px 10px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-bottom: 2px solid var(--red);
+    }
+    tbody td {
+      padding: 5px 10px;
+      border-bottom: 1px solid #2a0510;
+      font-size: 13px;
+    }
+    tbody tr:nth-child(odd) td { background: #100308; }
+    tbody tr:hover td { background: var(--red-dim); color: #fff; }
+    td.rank {
+      width: 60px;
+      font-weight: 700;
+      color: var(--pink-hot);
+      font-family: 'Impact', 'Arial Black', monospace;
+    }
+    tbody tr:nth-child(1) td.rank { color: var(--gold); text-shadow: 0 0 6px var(--gold); }
+    tbody tr:nth-child(2) td.rank { color: #e0e0e0; }
+    tbody tr:nth-child(3) td.rank { color: #ff8a3d; }
+    td.name { color: var(--text-bold); }
+    td.balance { color: var(--pink-hot); font-weight: 700; text-align: right; white-space: nowrap; }
+    td.earned { color: var(--muted); text-align: right; white-space: nowrap; }
+
+    /* ----- ASCII rule ----- */
+    .ascii-rule {
+      color: var(--red);
+      font-family: 'Courier New', monospace;
+      letter-spacing: -1px;
+      overflow: hidden;
+      white-space: nowrap;
+      margin: 6px 0 14px;
+      text-align: center;
+    }
+
+    footer {
+      margin-top: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+    footer .copyleft { color: var(--pink-hot); }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 16px; }
+      .titlebar { font-size: 12px; }
+      td.earned { display: none; }
+      thead th:last-child { display: none; }
+    }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <h1>💜 SadGirlCoin — Live Leaderboard</h1>
-      <p class="meta">Last updated <strong>${escapeHtml(generatedHuman)}</strong> · auto-refreshes every minute</p>
-    </header>
+    <div class="titlebar">
+      <span>&#9632; SADGIRLCOIN.WTF // LIVE LEADERBOARD</span>
+      <span class="blink">&#9608;</span>
+    </div>
+    <div class="marquee-bar">
+      [SYS] last sync :: ${escapeHtml(generatedHuman)} // page auto-reloads every 60s
+    </div>
 
     <section class="panel">
-      <h2>🌟 Patreon Supporters</h2>
-      <div class="stats">
-        <div class="stat"><div class="label">Active supporters</div><div class="value">${formatNumber(stats.activePatrons)}</div></div>
-        <div class="stat"><div class="label">All-time supporters</div><div class="value">${formatNumber(stats.totalPatrons)}</div></div>
-        <div class="stat"><div class="label">Total stipends paid</div><div class="value">${formatNumber(stats.totalPaid)} SGC</div></div>
+      <div class="panel-head">&gt; PATRONS / SUPPORTER ROLES</div>
+      <div class="panel-body">
+        <div class="stats">
+          <div class="stat"><div class="label">// active</div><div class="value">${formatNumber(stats.activePatrons)}</div></div>
+          <div class="stat"><div class="label">// all-time</div><div class="value">${formatNumber(stats.totalPatrons)}</div></div>
+          <div class="stat"><div class="label">// total stipends</div><div class="value">${formatNumber(stats.totalPaid)} SGC</div></div>
+        </div>
+        <div class="ascii-rule">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="grid-tiers">${tierBlocks}</div>
       </div>
-      <div class="grid-tiers">${tierBlocks}</div>
     </section>
 
     <section class="panel">
-      <h2>💰 Top ${TOP_N} Holders</h2>
-      ${snapshot.topHolders.length === 0
-        ? '<p class="muted">No accounts yet.</p>'
-        : `<table>
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Holder</th>
-                <th>Balance</th>
-                <th>Total earned</th>
-              </tr>
-            </thead>
-            <tbody>${topRows}</tbody>
-          </table>`}
+      <div class="panel-head">&gt; TOP ${TOP_N} HOLDERS // LIVE</div>
+      <div class="panel-body">
+        ${snapshot.topHolders.length === 0
+          ? '<p class="muted">// no accounts yet</p>'
+          : `<table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Holder</th>
+                  <th>Balance</th>
+                  <th>Total earned</th>
+                </tr>
+              </thead>
+              <tbody>${topRows}</tbody>
+            </table>`}
+      </div>
     </section>
 
     <footer>
-      Generated by Sad Girl Player · <a href="/api/leaderboard.json">JSON snapshot</a>
+      <span class="copyleft">[++]</span> generated by sad girl player ::
+      <a href="https://sadgirlsclub.wtf">sadgirlsclub.wtf</a>
+      <span class="copyleft">[++]</span>
     </footer>
   </main>
 </body>
@@ -319,6 +517,8 @@ function scheduleRefresh() {
 // ---------------------------------------------------------------------------
 
 function handleRequest(req, res) {
+  applySecurityHeaders(res);
+
   const url = (req.url || '/').split('?')[0];
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', 'allow': 'GET, HEAD' });
@@ -326,18 +526,23 @@ function handleRequest(req, res) {
     return;
   }
 
+  // Health check is exempt from rate limiting (proxy/uptime probes).
+  if (url !== '/healthz') {
+    const ip = clientIp(req);
+    const rl = rateLimitCheck(ip);
+    if (!rl.ok) {
+      res.writeHead(429, {
+        'content-type': 'text/plain; charset=utf-8',
+        'retry-after': String(rl.retryAfter),
+      });
+      res.end('Too Many Requests');
+      return;
+    }
+  }
+
   if (url === '/healthz') {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('ok');
-    return;
-  }
-
-  if (url === '/api/leaderboard.json') {
-    res.writeHead(200, {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'public, max-age=30',
-    });
-    res.end(req.method === 'HEAD' ? '' : cachedJson);
     return;
   }
 
