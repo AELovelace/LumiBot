@@ -1,0 +1,4 @@
+# Runtime Python dependencies for Fedora production deployment.
+# These pins match the currently verified workspace environment.
+chromadb==1.5.5
+sentence-transformers==5.3.0

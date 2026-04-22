@@ -40,6 +40,7 @@ require_root() {
 
 require_repo_files() {
   [[ -f "${REPO_ROOT}/package.json" ]] || fail "package.json not found under ${REPO_ROOT}"
+  [[ -f "${REPO_ROOT}/requirements.txt" ]] || fail "requirements.txt not found under ${REPO_ROOT}"
   [[ -f "${REPO_ROOT}/src/index.js" ]] || fail "src/index.js not found under ${REPO_ROOT}"
   [[ -f "${REPO_ROOT}/python/chatbot_memory_service_vector.py" ]] || fail 'Vector memory service is missing.'
   [[ -f "${REPO_ROOT}/python/chatbot_rag_service.py" ]] || fail 'RAG service is missing.'
@@ -124,6 +125,7 @@ install_packages() {
   dnf install -y \
     git \
     rsync \
+    sqlite \
     nodejs \
     npm \
     python3 \
@@ -192,7 +194,7 @@ install_python_dependencies() {
   log "Creating Python virtual environment at ${venv_dir}."
   sudo -u "${APP_USER}" -- "${PYTHON_BIN}" -m venv "${venv_dir}"
   sudo -u "${APP_USER}" -- "${venv_dir}/bin/pip" install --upgrade pip setuptools wheel
-  sudo -u "${APP_USER}" -- "${venv_dir}/bin/pip" install chromadb sentence-transformers
+  sudo -u "${APP_USER}" -- "${venv_dir}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
 }
 
 ensure_runtime_env() {
