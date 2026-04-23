@@ -21,9 +21,11 @@ const {
   formatSearchResultsForPrompt,
   incrementSearchCount,
 } = require('./braveSearch');
-const { getCurrentNowPlayingTrack } = require('./nowPlaying');
 
 const DISCORD_MAX_CHARS = 2000;
+const RECALL_INTENT_PATTERN = /\b(remember|recall|memory|remind me|what do you know)\b/iu;
+const SEARCH_INTENT_PATTERN = /\b(?:search|look up|find)\b\s+(.+)/iu;
+const GIF_INTENT_PATTERN = /\b(?:gif|giphy|reaction gif)\b/iu;
 
 /**
  * Split a long string into Discord-safe chunks (≤2000 chars),
@@ -33,6 +35,7 @@ function splitMessage(text, maxLen = DISCORD_MAX_CHARS) {
   if (text.length <= maxLen) return [text];
   const chunks = [];
   let remaining = text;
+
   while (remaining.length > maxLen) {
     const window = remaining.slice(0, maxLen);
     let splitPoint = Math.max(
@@ -53,30 +56,6 @@ function splitMessage(text, maxLen = DISCORD_MAX_CHARS) {
   if (remaining) chunks.push(remaining);
   return chunks;
 }
-
-const channelState = new Map();
-let initialized = false;
-const runtimeSettings = {
-  enabled: config.chatbotEnabled,
-  channelIds: [...config.chatbotChannelIds],
-  replyChance: config.chatbotReplyChance,
-  interestThreshold: config.chatbotInterestThreshold,
-  contextMessages: config.chatbotContextMessages,
-  cooldownMs: config.chatbotCooldownMs,
-  conversationWindowMs: config.chatbotConversationWindowMs,
-  followupCooldownMs: config.chatbotFollowupCooldownMs,
-  momentumWindowMs: config.chatbotMomentumWindowMs,
-  momentumChanceBoost: config.chatbotMomentumChanceBoost,
-  momentumMaxReplyChance: config.chatbotMomentumMaxReplyChance,
-  maxResponseChars: config.chatbotMaxResponseChars,
-};
-
-const RECALL_INTENT_PATTERN = /\b(remember|recall|remind|memory|forgot|forget|earlier|previous|before|last time|have we talked|what did i say|did i ever)\b/iu;
-
-const SEARCH_INTENT_PATTERN = /\blumi[,:]?\s+(?:search|look\s*up|google|find(?:\s+me)?|search\s+(?:the\s+)?(?:web|internet|online)\s+(?:for)?|what\s+does\s+the\s+(?:internet|web)\s+say\s+about)\s+(.+)/iu;
-
-const SONG_RECOMMENDATION_INTENT_PATTERN = /(?:\b(?:song|track|music)\b.*\b(?:recommend(?:ation)?s?|recs?)\b)|(?:\b(?:recommend(?:ation)?s?|recs?)\b.*\b(?:song|track|music|listen(?:ing)?)\b)|(?:\bwhat\s+should\s+i\s+listen\s+to\b)|(?:\bany\s+(?:song|music)\s+recs?\b)/iu;
-const GIF_INTENT_PATTERN = /\b(?:gif|giphy|reaction\s+gif|post\s+a\s+gif|send\s+a\s+gif)\b/iu;
 
 function shouldUseDeepRecall(text) {
   if (!text || typeof text !== 'string') {
@@ -101,14 +80,6 @@ function detectSearchIntent(text) {
   }
 
   return { isSearch: false, query: null };
-}
-
-function detectSongRecommendationIntent(text) {
-  if (!text || typeof text !== 'string') {
-    return false;
-  }
-
-  return SONG_RECOMMENDATION_INTENT_PATTERN.test(text.toLowerCase());
 }
 
 function buildGifQueryFromMessage(text) {
@@ -153,18 +124,6 @@ function detectGifIntent(text) {
     isGif: true,
     query: buildGifQueryFromMessage(text),
   };
-}
-
-function buildNowPlayingRecommendationReply(nowPlayingSnapshot) {
-  if (!nowPlayingSnapshot?.song) {
-    return null;
-  }
-
-  if (nowPlayingSnapshot.track?.url) {
-    return `for a song rec, i'd start with what's playing right now: **${nowPlayingSnapshot.track.title}** — ${nowPlayingSnapshot.track.artist}\n${nowPlayingSnapshot.track.url}`;
-  }
-
-  return `for a song rec, i'd start with what's playing right now: **${nowPlayingSnapshot.song}**`;
 }
 
 function persistUserMemoryEntry(entry) {
@@ -769,53 +728,6 @@ async function handleAutonomousMessage(message) {
 
   try {
     await message.channel.sendTyping();
-
-    const recommendationIntent = detectSongRecommendationIntent(text);
-    if (recommendationIntent) {
-      try {
-        const nowPlayingSnapshot = await getCurrentNowPlayingTrack();
-        const recommendationReply = buildNowPlayingRecommendationReply(nowPlayingSnapshot);
-
-        if (recommendationReply) {
-          const recommendationModeration = evaluateOutgoingMessage(recommendationReply);
-          if (recommendationModeration.allowed) {
-            const recommendationChunks = splitMessage(recommendationModeration.text);
-            await message.reply(recommendationChunks[0]);
-            for (let i = 1; i < recommendationChunks.length; i += 1) {
-              // eslint-disable-next-line no-await-in-loop
-              await message.channel.send(recommendationChunks[i]);
-            }
-
-            const recommendationTimestamp = Date.now();
-            state.lastReplyAt = recommendationTimestamp;
-            persistState();
-            pushHistoryEntry(state, {
-              role: 'assistant',
-              author: 'Lumi',
-              content: recommendationModeration.text,
-              timestamp: recommendationTimestamp,
-            });
-
-            persistUserMemoryEntry({
-              userId: message.author.id,
-              channelId: message.channelId,
-              role: 'assistant',
-              authorId: message.client.user?.id || 'lumi',
-              author: 'Lumi',
-              content: recommendationModeration.text,
-              timestamp: recommendationTimestamp,
-            });
-
-            logger.info(`Chatbot replied with now-playing recommendation in channel ${message.channelId} (${decision.reason}).`);
-            return;
-          }
-
-          logger.warn(`Now-playing recommendation blocked by moderation (${recommendationModeration.reason}).`);
-        }
-      } catch (error) {
-        logger.warn('Failed to build now-playing recommendation reply.', error.message);
-      }
-    }
 
     const gifIntent = detectGifIntent(text);
     if (gifIntent.isGif) {

@@ -69,9 +69,6 @@ const SCHEMA = {
   // ── Runtime Channels ─────────────────────────────────────────────────────
   'runtime.welcomeChannelId':       { default: '', type: 'string', label: 'Welcome Channel ID',       desc: 'Channel for AI welcome messages',             category: 'Runtime Channels' },
   'runtime.introductionsChannelId': { default: '', type: 'string', label: 'Introductions Channel ID', desc: 'Channel mention used in welcome prompt text', category: 'Runtime Channels' },
-  'runtime.nowPlayingChannelId':    { default: '', type: 'string', label: 'Now Playing Channel ID',   desc: 'Channel for now-playing posts',               category: 'Runtime Channels' },
-  'runtime.songPollUrl':            { default: 'https://sadgirlsclub.wtf/blog/posts/current_song.txt', type: 'string', label: 'Song Poll URL',          desc: 'URL polled for now-playing track title',      category: 'Runtime Channels' },
-  'runtime.songPollIntervalMs':     { default: 15000, type: 'number', label: 'Song Poll Interval (ms)', desc: 'How often to poll now-playing source',       category: 'Runtime Channels' },
 
   // ── Chatbot ──────────────────────────────────────────────────────────────
   'chatbot.enabled':             { default: 'true', type: 'string', label: 'Enabled',                desc: 'Enable chatbot autonomous responses (true/false)', category: 'Chatbot' },

@@ -5,7 +5,7 @@ const {
   SlashCommandBuilder,
 } = require('discord.js');
 
-const { buildPlayerCommands } = require('./commands');
+const { buildGlobalCommands: buildUserCommands } = require('./commands');
 const { buildEconomyCommands } = require('./sadgirlEconomyCommands');
 const { config } = require('./config');
 const { getRuntimeSettings, resetChatbotMemory, updateRuntimeSettings } = require('./chatbot');
@@ -28,7 +28,7 @@ function isAdminUser(interaction) {
 }
 
 function buildAdminCommands() {
-  return [
+  const adminCommands = [
     new SlashCommandBuilder()
       .setName('lumi-status')
       .setDescription('Show Lumi chatbot runtime settings.')
@@ -142,11 +142,11 @@ function buildAdminCommands() {
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   ].map((command) => command.toJSON());
 
-  return lumiCommands;
+  return adminCommands;
 }
 
-function buildGlobalCommands() {
-  return [...buildPlayerCommands(), ...buildEconomyCommands()];
+function buildRegisteredGlobalCommands() {
+  return [...buildUserCommands(), ...buildEconomyCommands()];
 }
 
 function formatSettings(settings) {
@@ -183,7 +183,7 @@ async function registerControlPlane(client) {
   try {
     // Player & economy commands are always registered globally so games
     // and bank work in every server the bot is in.
-    const globalCommands = buildGlobalCommands();
+    const globalCommands = buildRegisteredGlobalCommands();
     const adminCommands = buildAdminCommands();
     const allGlobalCommands = [...globalCommands, ...adminCommands];
 

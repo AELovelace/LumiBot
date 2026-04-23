@@ -1,6 +1,6 @@
 const { ChannelType, SlashCommandBuilder } = require('discord.js');
 
-const { config, parsePlayInput } = require('./config');
+const { config } = require('./config');
 const { handleAutonomousMessage } = require('./chatbot');
 const { logger } = require('./logger');
 const { awardMessageCoins } = require('./sadgirlEconomyStore');
@@ -17,9 +17,6 @@ const { buildSlotsCommand, handleSlotsCommand } = require('./slots');
 const { buildPrivateStockCommand, handlePrivateStockCommand, handleStockButtonInteraction } = require('./privateStockCommands');
 const { formatVcTime, getVcLeaderboard, getUserVcTime, activeVoiceUsers } = require('./vcRewards');
 const { getRandomQuote, addQuote, getRandomJackHandey } = require('./quotes');
-const { enqueue, getQueue, getQueueLength } = require('./queue');
-const { resolveTitle } = require('./stream');
-const { getActiveSessionSummary, playForMember, skipCurrentTrack, stopActiveSession } = require('./voice');
 const {
   checkSearchAllowed,
   executeBraveSearch,
@@ -59,24 +56,8 @@ function splitMessage(text, maxLen = DISCORD_MAX_CHARS) {
   return chunks;
 }
 
-function buildPlayerCommands() {
+function buildGlobalCommands() {
   const cmds = [
-    new SlashCommandBuilder()
-      .setName('lumi-play')
-      .setDescription('Play a YouTube/SoundCloud URL, search query, or HTTP stream URL.')
-      .addStringOption((option) => option
-        .setName('input')
-        .setDescription('YouTube/SoundCloud URL, search terms, or stream URL')
-        .setRequired(false)),
-    new SlashCommandBuilder()
-      .setName('lumi-stop')
-      .setDescription('Stop playback and leave the voice channel.'),
-    new SlashCommandBuilder()
-      .setName('lumi-skip')
-      .setDescription('Skip the current track and play the next queued one.'),
-    new SlashCommandBuilder()
-      .setName('lumi-queue')
-      .setDescription('Show the current track queue.'),
     new SlashCommandBuilder()
       .setName('lumi-quote')
       .setDescription('Get a random quote from the database.'),
@@ -108,10 +89,6 @@ function buildPlayerCommands() {
 function buildHelpText() {
   return [
     'Available commands:',
-    '`/lumi-play [input]` - Play a YouTube/SoundCloud URL, search query, or HTTP stream URL.',
-    '`/lumi-stop` - Stop playback and leave voice.',
-    '`/lumi-skip` - Skip the current track and play the next queued one.',
-    '`/lumi-queue` - Show the current track queue.',
     '`/lumi-quote` - Get a random quote from the database.',
     '`/lumi-quoteadd <text>` - Add a new quote to the database.',
     '`/lumi-jh` - Get a random Deep Thought, by Jack Handey.',
@@ -157,157 +134,6 @@ function buildHelpText() {
     '`/lumi-vc rank` - Voice channel time leaderboard.',
     '`/lumi-vc me` - Show your own VC time stats.',
   ].join('\n');
-}
-
-async function handlePlayCommand(interaction) {
-  const rawInput = (interaction.options.getString('input', false) ?? '').trim();
-
-  // Resolve the typed input (YouTube URL, SoundCloud URL, search query, or HTTP stream)
-  let playInput = rawInput ? parsePlayInput(rawInput) : null;
-
-  // Fall back to the default HTTP stream URL if no input was given
-  if (!playInput && config.defaultStreamUrl) {
-    playInput = { type: 'http', url: config.defaultStreamUrl };
-  }
-
-  if (!playInput) {
-    await interaction.reply({
-      content: 'No input provided and `DEFAULT_STREAM_URL` is not configured.\nUsage: `/play <YouTube URL | SoundCloud URL | search terms | stream URL>`',
-      ephemeral: true,
-    });
-    return;
-  }
-
-  const voiceChannel = interaction.member?.voice?.channel;
-  if (!voiceChannel) {
-    await interaction.reply({ content: 'Join a guild voice channel first, then try again.', ephemeral: true });
-    return;
-  }
-
-  if (voiceChannel.type === ChannelType.GuildStageVoice) {
-    await interaction.reply({ content: 'Stage channels are not supported in this first version.', ephemeral: true });
-    return;
-  }
-
-  if (!voiceChannel.joinable) {
-    await interaction.reply({ content: 'I do not have permission to join that voice channel.', ephemeral: true });
-    return;
-  }
-
-  if (!voiceChannel.speakable) {
-    await interaction.reply({ content: 'I can join that voice channel, but I do not have permission to speak.', ephemeral: true });
-    return;
-  }
-
-  // Title resolution and playback can take time — acknowledge the interaction immediately.
-  await interaction.deferReply();
-
-  // Resolve a human-readable title for queue display.
-  // For HTTP streams this is a fast no-op fallback; for YouTube/SoundCloud/search
-  // it calls yt-dlp --print title (a few seconds network round-trip).
-  let title = playInput.url ?? playInput.query ?? 'Unknown';
-  if (playInput.type !== 'http') {
-    const ytInput =
-      playInput.type === 'search' ? `ytsearch1:${playInput.query}` : playInput.url;
-    title = await resolveTitle(ytInput);
-  }
-
-  const track = {
-    type: playInput.type,
-    url: playInput.url ?? null,
-    query: playInput.query ?? null,
-    title,
-    requestedBy: interaction.user.tag,
-  };
-
-  // If something is already playing, add to queue instead of interrupting.
-  const activeSession = getActiveSessionSummary(interaction.guildId);
-  if (activeSession) {
-    const position = enqueue(interaction.guildId, track);
-
-    const isDefaultStreamActive = Boolean(
-      config.defaultStreamUrl
-        && activeSession.track
-        && activeSession.track.type === 'http'
-        && activeSession.track.url === config.defaultStreamUrl,
-    );
-
-    const isRequestForDefaultStream = Boolean(
-      config.defaultStreamUrl
-        && track.type === 'http'
-        && track.url === config.defaultStreamUrl,
-    );
-
-    if (isDefaultStreamActive && !isRequestForDefaultStream && position === 1) {
-      await skipCurrentTrack(interaction.guildId);
-      await interaction.editReply(`Added **${title}** to the queue and starting it now. The default stream will resume when the queue is empty.`);
-      return;
-    }
-
-    await interaction.editReply(`Added **${title}** to the queue (position ${position}).`);
-    return;
-  }
-
-  try {
-    await playForMember({
-      member: interaction.member,
-      textChannel: interaction.channel,
-      track,
-    });
-
-    await interaction.editReply(
-      `Now playing **${title}** in **${voiceChannel.name}**. Use \`/lumi-stop\` to disconnect.`,
-    );
-  } catch (error) {
-    logger.error('Play command failed.', error.message);
-    await interaction.editReply(`Could not start playback: ${error.message}`);
-  }
-}
-
-async function handleStopCommand(interaction) {
-  const activeSession = getActiveSessionSummary(interaction.guildId);
-  if (!activeSession) {
-    await interaction.reply({ content: 'There is no active playback session in this server right now.', ephemeral: true });
-    return;
-  }
-
-  await stopActiveSession(interaction.guildId, `stop requested by ${interaction.user.tag}`);
-  await interaction.reply('Playback stopped and the bot left voice.');
-}
-
-async function handleSkipCommand(interaction) {
-  const activeSession = getActiveSessionSummary(interaction.guildId);
-  if (!activeSession) {
-    await interaction.reply({ content: 'There is no active playback session in this server right now.', ephemeral: true });
-    return;
-  }
-
-  const queueLength = getQueueLength(interaction.guildId);
-  const skipped = await skipCurrentTrack(interaction.guildId);
-
-  if (skipped) {
-    if (queueLength > 0) {
-      await interaction.reply(`Skipped. ${queueLength} track(s) remaining in the queue.`);
-    } else if (activeSession.resumeDefaultStreamAfterQueue && activeSession.track?.type !== 'http') {
-      await interaction.reply('Skipped. Resuming the default stream.');
-    } else {
-      await interaction.reply('Skipped. The queue is empty — playback will stop.');
-    }
-  }
-}
-
-async function handleQueueCommand(interaction) {
-  const queue = getQueue(interaction.guildId);
-
-  if (queue.length === 0) {
-    await interaction.reply({ content: 'The queue is empty.', ephemeral: true });
-    return;
-  }
-
-  const lines = queue.map(
-    (track, i) => `${i + 1}. **${track.title}** (requested by ${track.requestedBy})`,
-  );
-  await interaction.reply(`**Queue (${queue.length} track${queue.length === 1 ? '' : 's'}):**\n${lines.join('\n')}`);
 }
 
 async function handleManCommand(interaction) {
@@ -487,10 +313,6 @@ async function handleVcCommand(interaction) {
 }
 
 const commandHandlers = new Map([
-  ['lumi-play', handlePlayCommand],
-  ['lumi-stop', handleStopCommand],
-  ['lumi-skip', handleSkipCommand],
-  ['lumi-queue', handleQueueCommand],
   ['lumi-quote', handleQuoteCommand],
   ['lumi-quoteadd', handleQuoteAddCommand],
   ['lumi-jh', handleJackHandeyCommand],
@@ -1149,7 +971,7 @@ async function handlePrefixCommand(message) {
 }
 
 module.exports = {
-  buildPlayerCommands,
+  buildGlobalCommands,
   handleCommandInteraction,
   handleMessageCreate,
 };

@@ -1,4 +1,4 @@
-const { existsSync, readFileSync, statSync } = require('node:fs');
+const { readFileSync, statSync } = require('node:fs');
 const path = require('node:path');
 
 const dotenv = require('dotenv');
@@ -153,45 +153,6 @@ function getChatbotPersona() {
   return refreshChatbotPersonaFromEnv() || DEFAULT_CHATBOT_PERSONA;
 }
 
-const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com']);
-const SOUNDCLOUD_HOSTS = new Set(['soundcloud.com', 'www.soundcloud.com', 'on.soundcloud.com']);
-
-/**
- * Parse a raw user input string into a typed play input object.
- *
- * Returns one of:
- *   { type: 'youtube',    url:   string }
- *   { type: 'soundcloud', url:   string }
- *   { type: 'http',       url:   string }
- *   { type: 'search',     query: string }
- *   null  — if the input is empty
- */
-function parsePlayInput(value) {
-  const trimmed = (value || '').trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      if (YOUTUBE_HOSTS.has(parsed.hostname)) {
-        return { type: 'youtube', url: parsed.toString() };
-      }
-
-      if (SOUNDCLOUD_HOSTS.has(parsed.hostname)) {
-        return { type: 'soundcloud', url: parsed.toString() };
-      }
-
-      return { type: 'http', url: parsed.toString() };
-    }
-  } catch {
-    // Not a URL — fall through to search
-  }
-
-  return { type: 'search', query: trimmed };
-}
-
 function redactUrl(value) {
   if (!value) {
     return 'unknown-url';
@@ -203,20 +164,6 @@ function redactUrl(value) {
   } catch {
     return 'invalid-url';
   }
-}
-
-function resolveYtDlpPath() {
-  const configuredPath = process.env.YTDLP_PATH?.trim();
-  if (configuredPath) {
-    return configuredPath;
-  }
-
-  const localCandidates = [
-    path.resolve(__dirname, '..', 'yt-dlp.exe'),
-    path.resolve(__dirname, '..', 'yt-dlp'),
-  ];
-
-  return localCandidates.find((candidate) => existsSync(candidate)) || 'yt-dlp';
 }
 
 const chatbotMemoryLegacyFile = process.env.CHATBOT_MEMORY_LEGACY_FILE?.trim()
@@ -245,20 +192,8 @@ function buildLlmEndpoints() {
 
 const config = Object.freeze({
   discordToken: process.env.DISCORD_TOKEN?.trim() || '',
-  defaultStreamUrl: parseHttpUrl(process.env.DEFAULT_STREAM_URL?.trim() || ''),
   allowedGuildId: process.env.ALLOWED_GUILD_ID?.trim() || null,
-  ffmpegPath: process.env.FFMPEG_PATH?.trim() || null,
-  ytdlpPath: resolveYtDlpPath(),
-  voiceReadyTimeoutMs: parsePositiveInt(process.env.VOICE_READY_TIMEOUT_MS, 30_000),
-  streamReconnectLimit: parsePositiveInt(process.env.STREAM_RECONNECT_LIMIT, 5),
-  voiceReconnectLimit: parsePositiveInt(process.env.VOICE_RECONNECT_LIMIT, 5),
-  reconnectBaseDelayMs: parsePositiveInt(process.env.RECONNECT_BASE_DELAY_MS, 2_500),
-  ffmpegUserAgent: process.env.FFMPEG_USER_AGENT?.trim() || 'SadGirlPlayer/0.1',
-  ffmpegLogLevel: process.env.FFMPEG_LOG_LEVEL?.trim() || 'warning',
-  opusBitrateKbps: parsePositiveInt(process.env.OPUS_BITRATE_KBPS, 128),
   logLevel: process.env.LOG_LEVEL?.trim().toLowerCase() || 'info',
-  songPollUrl: process.env.SONG_POLL_URL?.trim() || 'https://sadgirlsclub.wtf/blog/posts/current_song.txt',
-  songPollIntervalMs: parsePositiveInt(process.env.SONG_POLL_INTERVAL_MS, 15_000),
   chatbotEnabled: process.env.CHATBOT_ENABLED?.trim().toLowerCase() !== 'false',
   chatbotChannelIds: parseCsvList(process.env.CHATBOT_CHANNEL_IDS),
   chatbotReplyChance: parseProbability(process.env.CHATBOT_REPLY_CHANCE, 0.2),
@@ -316,9 +251,6 @@ const config = Object.freeze({
   chatbotGifLanguage: process.env.CHATBOT_GIF_LANG?.trim().toLowerCase() || 'en',
   chatbotGifTimeoutMs: parsePositiveInt(process.env.CHATBOT_GIF_TIMEOUT_MS, 5_000),
   thoughtChannelIds: parseCsvList(process.env.THOUGHTS_CHANNEL_IDS),
-  soundcloudClientId: process.env.SOUNDCLOUD_CLIENT_ID?.trim() || '',
-  soundcloudClientSecret: process.env.SOUNDCLOUD_CLIENT_SECRET?.trim() || '',
-  nowPlayingChannelId: process.env.NOW_PLAYING_CHANNEL_ID?.trim() || '',
   economyDbFile: process.env.SADGIRLCOIN_DB_FILE?.trim() || 'data/sadgirlcoin.sqlite3',
   economyEnabled: parseBoolean(process.env.SADGIRLCOIN_ENABLED, true),
   touhouDbFile: process.env.TOUHOU_DB_FILE?.trim() || 'data/touhou-market.sqlite3',
@@ -371,6 +303,5 @@ module.exports = {
   getChatbotPersona,
   getMissingConfigValues,
   parseHttpUrl,
-  parsePlayInput,
   redactUrl,
 };

@@ -10,8 +10,6 @@ const { initTouhouStore, closeTouhouStore, computeHistoricalOwings } = require('
 const { setTouhouDir } = require('./touhouCommands');
 const { setMenuTouhouDir } = require('./touhouMenu');
 const { logger } = require('./logger');
-const { initNowPlaying } = require('./nowPlaying');
-const { stopAllSessions } = require('./voice');
 const { killExistingProcesses } = require('./processCleanup');
 const { handleMessageReactionAdd, handleMessageReactionRemove } = require('./starboard');
 const { handleStockStarReaction } = require('./sadgirlStockActivation');
@@ -63,7 +61,6 @@ const client = new Client({
 setThoughtRelayClient(client);
 
 let isShuttingDown = false;
-let nowPlayingWatcher = null;
 
 async function shutdown(signal) {
   if (isShuttingDown) {
@@ -72,16 +69,6 @@ async function shutdown(signal) {
 
   isShuttingDown = true;
   logger.info(`Received ${signal}, shutting down.`);
-
-  if (nowPlayingWatcher) {
-    try { nowPlayingWatcher.stop(); } catch { }
-  }
-
-  try {
-    await stopAllSessions(`process shutdown (${signal})`);
-  } catch (error) {
-    logger.error('Failed to stop active sessions during shutdown.', error.message);
-  }
 
   try {
     await flushChatbotState();
@@ -407,7 +394,6 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
 
   await registerControlPlane(readyClient);
-  nowPlayingWatcher = initNowPlaying(readyClient);
 
   logger.info(`Logged in as ${readyClient.user.tag}`);
   if (config.allowedGuildId) {
