@@ -137,13 +137,21 @@ function isStarEmoji(emoji, emojiName) {
     return false;
   }
 
+  const configured = (emojiName || config.starboardEmojiName || '').trim();
+  const configuredLower = configured.toLowerCase();
   const normalizedName = emoji.name.toLowerCase();
-  const configuredName = (emojiName || config.starboardEmojiName).toLowerCase();
+
   if (emoji.id) {
-    return normalizedName === configuredName;
+    // Custom guild emoji — match by name (case-insensitive)
+    return normalizedName === configuredLower;
   }
 
-  return emoji.name === '⭐' || normalizedName === configuredName;
+  // Unicode emoji — emoji.name IS the literal character (e.g. "⭐", "😭").
+  // Match against the configured value as a raw character, OR fall back to
+  // the legacy "star" shortcode for backwards compatibility.
+  if (emoji.name === configured) return true;
+  if (configuredLower === 'star' && emoji.name === '⭐') return true;
+  return false;
 }
 
 function buildSourceKey(message) {
@@ -164,11 +172,11 @@ function getSourceKeyFromStarboardMessage(message) {
   return footerText.slice(markerIndex + STARBOARD_SOURCE_PREFIX.length).trim() || null;
 }
 
-function countStarReactions(message) {
+function countStarReactions(message, emojiName) {
   let totalStars = 0;
 
   for (const messageReaction of message.reactions.cache.values()) {
-    if (!isStarEmoji(messageReaction.emoji)) {
+    if (!isStarEmoji(messageReaction.emoji, emojiName)) {
       continue;
     }
 
@@ -315,7 +323,7 @@ async function processStarboardReaction(reaction) {
 
   processingSourceKeys.add(sourceKey);
   try {
-    const starCount = countStarReactions(message);
+    const starCount = countStarReactions(message, guildCfg.starboardEmojiName);
 
     let starboardChannel;
     try {
