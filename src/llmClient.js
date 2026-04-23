@@ -873,6 +873,9 @@ async function requestLlmCompletion({
           model: config.chatbotModel,
           stream: false,
           prompt: promptSections,
+          // Disable reasoning/thinking output for Qwen3-style models (Ollama 0.9+).
+          // Harmless no-op for models that don't support thinking.
+          think: false,
         }),
         signal: AbortSignal.timeout(config.llmTimeoutMs),
       });
