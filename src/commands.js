@@ -4,6 +4,7 @@ const { config } = require('./config');
 const { handleAutonomousMessage } = require('./chatbot');
 const { logger } = require('./logger');
 const { awardMessageCoins } = require('./sadgirlEconomyStore');
+const { evaluateRewardEligibility, buildDebugWarning } = require('./antiFarming');
 const { getSmokeBoost } = require('./smokeBoost');
 const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
 const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
@@ -372,26 +373,45 @@ async function handleMessageCreate(message) {
   // Images count as 25 bonus chars (half a coin), videos count as 50 bonus chars (full coin)
   if (config.economyEnabled) {
     try {
-      let effectiveChars = message.content?.length ?? 0;
+      const hasAttachment = message.attachments.size > 0;
 
-      for (const attachment of message.attachments.values()) {
-        const ct = attachment.contentType ?? '';
-        if (ct.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/iu.test(attachment.url)) {
-          effectiveChars += 50;
-        } else if (ct.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|tiff?)$/iu.test(attachment.url)) {
-          effectiveChars += 25;
+      // Anti-farming gate: suppress rewards on low-effort / duplicate / burst posting.
+      // Does not block the message itself — the user just doesn't earn coins for it.
+      const eligibility = evaluateRewardEligibility({
+        userId: message.author.id,
+        channelId: message.channelId,
+        content: message.content ?? '',
+        hasAttachment,
+      });
+
+      if (!eligibility.eligible) {
+        logger.debug(`Suppressed SGC reward for ${message.author.username}: ${eligibility.reasons.join(',')}`);
+        if (eligibility.shouldNotify) {
+          message.reply({ content: buildDebugWarning(eligibility), allowedMentions: { repliedUser: false } })
+            .catch(() => {});
         }
-      }
+      } else {
+        let effectiveChars = message.content?.length ?? 0;
 
-      const smokeBoost = getSmokeBoost(message.author.id);
-      if (smokeBoost.active) {
-        effectiveChars = Math.floor(effectiveChars * smokeBoost.multiplier);
-      }
+        for (const attachment of message.attachments.values()) {
+          const ct = attachment.contentType ?? '';
+          if (ct.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/iu.test(attachment.url)) {
+            effectiveChars += 50;
+          } else if (ct.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|tiff?)$/iu.test(attachment.url)) {
+            effectiveChars += 25;
+          }
+        }
 
-      if (effectiveChars > 0) {
-        const coins = awardMessageCoins(message.author.id, message.author.username, effectiveChars);
-        if (coins > 0) {
-          logger.debug(`Awarded ${coins} SGC to ${message.author.username} (${effectiveChars} effective chars${smokeBoost.active ? ', smoke boost active' : ''}).`);
+        const smokeBoost = getSmokeBoost(message.author.id);
+        if (smokeBoost.active) {
+          effectiveChars = Math.floor(effectiveChars * smokeBoost.multiplier);
+        }
+
+        if (effectiveChars > 0) {
+          const coins = awardMessageCoins(message.author.id, message.author.username, effectiveChars);
+          if (coins > 0) {
+            logger.debug(`Awarded ${coins} SGC to ${message.author.username} (${effectiveChars} effective chars${smokeBoost.active ? ', smoke boost active' : ''}).`);
+          }
         }
       }
     } catch (error) {
