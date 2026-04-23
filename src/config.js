@@ -215,6 +215,8 @@ const config = Object.freeze({
   llmTimeoutMs: parsePositiveInt(process.env.LLM_TIMEOUT_MS, 25_000),
   llmRetryLimit: parsePositiveInt(process.env.LLM_RETRY_LIMIT, 2),
   llmRetryBaseDelayMs: parsePositiveInt(process.env.LLM_RETRY_BASE_DELAY_MS, 1_000),
+  llmDisableThinking: parseBoolean(process.env.LLM_DISABLE_THINKING, true),
+  llmMaxPredictTokens: parsePositiveInt(process.env.LLM_MAX_PREDICT_TOKENS, 512),
   chatbotMemoryFile: chatbotMemoryLegacyFile,
   chatbotMemoryLegacyFile,
   chatbotMemoryDbFile: process.env.CHATBOT_MEMORY_DB_FILE?.trim() || 'data/chatbot-memory.sqlite3',

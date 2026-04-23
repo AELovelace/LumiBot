@@ -842,7 +842,7 @@ async function requestLlmCompletion({
     const startedAt = Date.now();
 
     try {
-      const promptSections = systemOverride
+      const basePromptSections = systemOverride
         ? [
           `System: ${getChatbotPersona()}`,
           systemOverride,
@@ -864,6 +864,13 @@ async function requestLlmCompletion({
           userContextProfile,
         });
 
+      // Qwen3 recognizes `/no_think` in the prompt and skips the reasoning
+      // phase. Portable across Ollama-native and llama.cpp-backed proxies
+      // (unlike the Ollama-only `think: false` request field).
+      const promptSections = config.llmDisableThinking
+        ? `${basePromptSections}\n\n/no_think`
+        : basePromptSections;
+
       const response = await fetch(`${endpoint}/api/generate`, {
         method: 'POST',
         headers: {
@@ -873,9 +880,12 @@ async function requestLlmCompletion({
           model: config.chatbotModel,
           stream: false,
           prompt: promptSections,
-          // Disable reasoning/thinking output for Qwen3-style models (Ollama 0.9+).
-          // Harmless no-op for models that don't support thinking.
-          think: false,
+          // Hard cap on generation length. Stops runaway thinking even when
+          // the backend ignores `/no_think`. Also forwarded as llama.cpp's
+          // n_predict by Ollama-compatible proxies.
+          options: {
+            num_predict: config.llmMaxPredictTokens,
+          },
         }),
         signal: AbortSignal.timeout(config.llmTimeoutMs),
       });
