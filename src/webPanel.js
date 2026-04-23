@@ -2100,7 +2100,10 @@ async function handleRequest(req, res) {
   // Security headers (defense-in-depth — applied to every response).
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  // same-origin allows the browser to send a Referer header on same-origin
+  // POSTs, which we use as a CSRF fallback when the Origin header is absent
+  // or set to the opaque value "null".
+  res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('Permissions-Policy', 'interest-cohort=(), browsing-topics=()');
 
   try {

@@ -608,9 +608,12 @@ function validateSameOrigin(req) {
   if (allowed.size === 0) return { ok: false, reason: 'missing host header' };
 
   const origin = req.headers.origin;
-  if (origin) {
+  // Browsers send the literal string "null" for opaque origins (sandboxed
+  // iframes, some cross-origin redirects, file://). Treat as missing and fall
+  // through to the Referer check.
+  if (origin && origin !== 'null') {
     let parsed;
-    try { parsed = new URL(origin); } catch { return { ok: false, reason: 'malformed origin' }; }
+    try { parsed = new URL(origin); } catch { return { ok: false, reason: `malformed origin: ${origin}` }; }
     if (!allowed.has(parsed.host)) {
       return { ok: false, reason: `origin host ${parsed.host} not in allowed [${[...allowed].join(',')}]` };
     }
