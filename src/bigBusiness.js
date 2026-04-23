@@ -12,12 +12,13 @@
 
 const { logger } = require('./logger');
 const { depositBigBusiness, getBigBusinessBalance, ensureGuildBigBusiness } = require('./sadgirlEconomyStore');
-const { getChatbotPersona } = require('./config');
+const { config, getChatbotPersona, parseHttpUrl } = require('./config');
 const { getGuildConfig, getAllGuildConfigs, getBigBusinessUserId } = require('./guildConfig');
 const { getSetting } = require('./panelSettings');
 
-const BIG_BUSINESS_LLM_ENDPOINT = 'http://100.83.3.32:11434';
-const BIG_BUSINESS_LLM_MODEL = 'server-2';
+const DEFAULT_BIG_BUSINESS_LLM_ENDPOINT = 'http://100.83.3.32:11434';
+const BIG_BUSINESS_LLM_ENDPOINT = resolveBigBusinessLlmEndpoint();
+const BIG_BUSINESS_LLM_MODEL = process.env.BIG_BUSINESS_LLM_MODEL?.trim() || 'server-2';
 let BIG_BUSINESS_LLM_TIMEOUT_MS = 40_000;
 
 let discordClient = null;
@@ -33,6 +34,42 @@ function stripThinkingTags(text) {
     .replace(/<\/?think>/giu, '')
     .replace(/\n{3,}/gu, '\n\n')
     .trim();
+}
+
+function normalizeEndpoint(value) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = parseHttpUrl(value);
+  if (!parsed) {
+    return null;
+  }
+
+  return parsed.replace(/\/+$/u, '');
+}
+
+function resolveBigBusinessLlmEndpoint() {
+  const envOverride = normalizeEndpoint(process.env.BIG_BUSINESS_LLM_ENDPOINT?.trim());
+  if (envOverride) {
+    return envOverride;
+  }
+
+  if (Array.isArray(config.llmEndpoints) && config.llmEndpoints.length > 1) {
+    const configuredSecondary = normalizeEndpoint(config.llmEndpoints[1]);
+    if (configuredSecondary) {
+      return configuredSecondary;
+    }
+  }
+
+  if (Array.isArray(config.llmEndpoints) && config.llmEndpoints.length > 0) {
+    const configuredPrimary = normalizeEndpoint(config.llmEndpoints[0]);
+    if (configuredPrimary) {
+      return configuredPrimary;
+    }
+  }
+
+  return DEFAULT_BIG_BUSINESS_LLM_ENDPOINT;
 }
 
 async function generateAnnouncement(username, matchedCoins, reason, bigBusinessBalance, businessName, source) {
@@ -66,9 +103,15 @@ async function generateAnnouncement(username, matchedCoins, reason, bigBusinessB
     const payload = await response.json();
     const completion = typeof payload.response === 'string' ? payload.response : '';
     const cleaned = stripThinkingTags(completion);
-    if (cleaned) return cleaned;
+    if (cleaned) {
+      logger.debug(`${businessName}: Big Business LLM announcement generated via ${BIG_BUSINESS_LLM_ENDPOINT} (${BIG_BUSINESS_LLM_MODEL}).`);
+      return cleaned;
+    }
   } catch (error) {
-    logger.warn('Big Business LLM announcement failed, using fallback.', error.message);
+    logger.warn(
+      `Big Business LLM announcement failed on ${BIG_BUSINESS_LLM_ENDPOINT} (${BIG_BUSINESS_LLM_MODEL}), using fallback.`,
+      error.message,
+    );
   }
 
   // Fallback if LLM is unavailable
@@ -180,6 +223,7 @@ function initBigBusiness(client) {
     }
   }
 
+  logger.info(`Big Business LLM route: endpoint=${BIG_BUSINESS_LLM_ENDPOINT}, model=${BIG_BUSINESS_LLM_MODEL}, timeoutMs=${BIG_BUSINESS_LLM_TIMEOUT_MS}.`);
   logger.info('Big Business system initialized (per-guild).');
 }
 
