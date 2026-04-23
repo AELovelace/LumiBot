@@ -19,9 +19,11 @@ const { logger } = require('./logger');
 const DEFAULTS = {
   recentWindow: 8,              // # of recent messages tracked per user/channel
   duplicateSimilarity: 0.88,    // Jaccard similarity (trigrams) cutoff
-  minMeaningfulLetters: 12,     // Minimum alphanumeric chars to be reward-eligible
+  shortMessageBypassLetters: 24, // Skip farming detection below this text size
+  minMeaningfulLetters: 12,     // Legacy threshold for non-bypass paths
   maxPunctuationRatio: 0.55,    // Reject if non-alnum/non-space exceeds this
   maxRepeatedCharRatio: 0.65,   // Reject if a single char dominates the message
+  minRepeatedCharRun: 11,       // Ignore repeated-char runs below this (expression)
   minUniqueTokenRatio: 0.35,    // Below this, message is too repetitive
   rewardCooldownMs: 25_000,     // Min spacing between reward-eligible msgs / user
   burstWindowMs: 120_000,       // Window for counting failed-quality attempts
@@ -133,11 +135,6 @@ function analyzeLowEffort(normalized) {
     return { lowEffort: false, reasons }; // empty text — handled elsewhere (attachments)
   }
 
-  const letters = normalized.replace(/[^a-z0-9]/g, '');
-  if (letters.length < thresholds.minMeaningfulLetters) {
-    reasons.push('SHORT_TEXT');
-  }
-
   const nonAlnumNonSpace = normalized.replace(/[a-z0-9\s]/g, '').length;
   const punctRatio = nonAlnumNonSpace / normalized.length;
   if (punctRatio > thresholds.maxPunctuationRatio) {
@@ -146,8 +143,18 @@ function analyzeLowEffort(normalized) {
 
   // Repeated single character (e.g. "..........." or "aaaaaaa")
   const charCounts = new Map();
+  let currentRun = 0;
+  let longestRun = 0;
+  let prevChar = '';
   for (const ch of normalized.replace(/\s/g, '')) {
     charCounts.set(ch, (charCounts.get(ch) ?? 0) + 1);
+    if (ch === prevChar) {
+      currentRun += 1;
+    } else {
+      currentRun = 1;
+      prevChar = ch;
+    }
+    if (currentRun > longestRun) longestRun = currentRun;
   }
   const totalChars = normalized.replace(/\s/g, '').length;
   let topRatio = 0;
@@ -155,7 +162,11 @@ function analyzeLowEffort(normalized) {
     const r = c / totalChars;
     if (r > topRatio) topRatio = r;
   }
-  if (totalChars >= 6 && topRatio > thresholds.maxRepeatedCharRatio) {
+  if (
+    totalChars >= thresholds.minRepeatedCharRun
+    && longestRun >= thresholds.minRepeatedCharRun
+    && topRatio > thresholds.maxRepeatedCharRatio
+  ) {
     reasons.push('REPEATED_CHAR');
   }
 
@@ -217,6 +228,21 @@ function evaluateRewardEligibility(ctx) {
   }
 
   const normalized = normalize(ctx.content);
+  const letters = normalized.replace(/[^a-z0-9]/g, '');
+
+  // Short text bypass: avoid chiming in on normal quick conversational posts.
+  // These usually don't farm meaningful coins and are commonly expressive.
+  if (letters.length > 0 && letters.length < thresholds.shortMessageBypassLetters) {
+    recordMessage(state, ctx.channelId, normalized, now);
+    return {
+      eligible: true,
+      reasons: [],
+      action: 'allow',
+      cooldownRemainingMs: 0,
+      shouldNotify: false,
+      debug: { bypass: 'SHORT_MESSAGE' },
+    };
+  }
 
   // 2. Low-effort text checks (only if there's text — attachment-only msgs
   //    are handled by callers requiring text quality before bonuses count)
@@ -239,7 +265,15 @@ function evaluateRewardEligibility(ctx) {
 
   // 4. Per-user reward cooldown
   const sinceLast = now - state.lastRewardAt;
-  if (state.lastRewardAt > 0 && sinceLast < thresholds.rewardCooldownMs) {
+  const hasRepeatedChar = reasons.includes('REPEATED_CHAR');
+  const hasAdditionalSpamSignal = reasons.some((reason) => [
+    'PUNCTUATION_SPAM',
+    'REPEATED_TOKENS',
+    'PLACEHOLDER_TEXT',
+    'DUPLICATE',
+  ].includes(reason));
+  const shouldApplyRapidCooldown = hasRepeatedChar && hasAdditionalSpamSignal;
+  if (state.lastRewardAt > 0 && sinceLast < thresholds.rewardCooldownMs && shouldApplyRapidCooldown) {
     reasons.push('REWARD_COOLDOWN');
   }
 
