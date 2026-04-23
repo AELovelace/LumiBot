@@ -577,6 +577,10 @@ function requireAuth(req) {
  * Returns { ok: true } if safe, or { ok: false, reason } if rejected.
  * Safe (read-only) methods always return { ok: true }.
  */
+function getRealHost(req) {
+  return req.headers['x-forwarded-host']?.split(',')[0].trim() || req.headers.host || '';
+}
+
 function validateSameOrigin(req) {
   const method = (req.method || 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
