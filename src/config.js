@@ -1,4 +1,4 @@
-const { readFileSync, statSync } = require('node:fs');
+const { existsSync, readFileSync, statSync } = require('node:fs');
 const path = require('node:path');
 
 const dotenv = require('dotenv');

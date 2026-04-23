@@ -27,6 +27,21 @@ const RECALL_INTENT_PATTERN = /\b(remember|recall|memory|remind me|what do you k
 const SEARCH_INTENT_PATTERN = /\b(?:search|look up|find)\b\s+(.+)/iu;
 const GIF_INTENT_PATTERN = /\b(?:gif|giphy|reaction gif)\b/iu;
 
+// Module-level state
+let initialized = false;
+const channelState = new Map();
+let runtimeSettings = {
+  enabled: config.chatbotEnabled,
+  channelIds: [...config.chatbotChannelIds],
+  replyChance: config.chatbotReplyChance,
+  interestThreshold: config.chatbotInterestThreshold,
+  contextMessages: config.chatbotContextMessages,
+  cooldownMs: config.chatbotCooldownMs,
+  followupCooldownMs: config.chatbotFollowupCooldownMs,
+  maxResponseChars: config.chatbotMaxResponseChars,
+  momentumMaxReplyChance: config.chatbotMomentumMaxReplyChance,
+};
+
 /**
  * Split a long string into Discord-safe chunks (≤2000 chars),
  * preferring to break at sentence or word boundaries.
