@@ -581,19 +581,39 @@ function getRealHost(req) {
   return req.headers['x-forwarded-host']?.split(',')[0].trim() || req.headers.host || '';
 }
 
+/**
+ * Comma-separated list of additional hosts (or full origins) that are accepted
+ * as same-origin for CSRF checks. Useful when behind a reverse proxy that does
+ * not forward X-Forwarded-Host. Examples:
+ *   WEB_PANEL_TRUSTED_ORIGINS=panel.example.com,https://example.com
+ */
+function getTrustedHosts() {
+  const raw = process.env.WEB_PANEL_TRUSTED_ORIGINS || '';
+  return raw.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      try { return new URL(entry).host; } catch { return entry; }
+    });
+}
+
 function validateSameOrigin(req) {
   const method = (req.method || 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
     return { ok: true };
   }
   const host = getRealHost(req);
-  if (!host) return { ok: false, reason: 'missing host header' };
+  const trusted = getTrustedHosts();
+  const allowed = new Set([host, ...trusted].filter(Boolean));
+  if (allowed.size === 0) return { ok: false, reason: 'missing host header' };
 
   const origin = req.headers.origin;
   if (origin) {
     let parsed;
     try { parsed = new URL(origin); } catch { return { ok: false, reason: 'malformed origin' }; }
-    if (parsed.host !== host) return { ok: false, reason: `origin host ${parsed.host} != ${host}` };
+    if (!allowed.has(parsed.host)) {
+      return { ok: false, reason: `origin host ${parsed.host} not in allowed [${[...allowed].join(',')}]` };
+    }
     return { ok: true };
   }
 
@@ -601,7 +621,9 @@ function validateSameOrigin(req) {
   if (referer) {
     let parsed;
     try { parsed = new URL(referer); } catch { return { ok: false, reason: 'malformed referer' }; }
-    if (parsed.host !== host) return { ok: false, reason: `referer host ${parsed.host} != ${host}` };
+    if (!allowed.has(parsed.host)) {
+      return { ok: false, reason: `referer host ${parsed.host} not in allowed [${[...allowed].join(',')}]` };
+    }
     return { ok: true };
   }
 
