@@ -828,13 +828,27 @@ async function requestLlmCompletion({
   searchResults,
   userContextProfile,
   systemOverride,
+  endpointOverride,
+  modelOverride,
+  timeoutMsOverride,
 }) {
   const maxAttempts = Math.max(1, config.llmRetryLimit + 1);
   const failures = [];
-  const localFirstEndpoints = config.llmUseLocalGpu ? getLocalFirstEndpoints() : null;
+  const forcedEndpoint = typeof endpointOverride === 'string' && endpointOverride.trim()
+    ? endpointOverride.trim().replace(/\/+$/u, '')
+    : null;
+  const forcedModel = typeof modelOverride === 'string' && modelOverride.trim()
+    ? modelOverride.trim()
+    : config.chatbotModel;
+  const timeoutMs = Number.isFinite(timeoutMsOverride)
+    ? Number(timeoutMsOverride)
+    : config.llmTimeoutMs;
+  const localFirstEndpoints = forcedEndpoint
+    ? null
+    : (config.llmUseLocalGpu ? getLocalFirstEndpoints() : null);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const endpoint = selectEndpointForAttempt(attempt, localFirstEndpoints);
+    const endpoint = forcedEndpoint || selectEndpointForAttempt(attempt, localFirstEndpoints);
     if (!endpoint) {
       throw new Error('No LLM endpoints configured.');
     }
@@ -877,7 +891,7 @@ async function requestLlmCompletion({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: config.chatbotModel,
+          model: forcedModel,
           stream: false,
           prompt: promptSections,
           // Hard cap on generation length. Stops runaway thinking even when
@@ -887,7 +901,7 @@ async function requestLlmCompletion({
             num_predict: config.llmMaxPredictTokens,
           },
         }),
-        signal: AbortSignal.timeout(config.llmTimeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {
@@ -902,7 +916,7 @@ async function requestLlmCompletion({
 
       void relayThoughtSegments(extractThoughtSegments(completion), {
         kind: 'chat',
-        model: config.chatbotModel,
+        model: forcedModel,
         endpoint,
       });
 

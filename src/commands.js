@@ -27,6 +27,65 @@ const {
 const { requestLlmCompletion } = require('./llmClient');
 
 const DISCORD_MAX_CHARS = 2000;
+const SERVER_2_MODEL = 'server-2';
+
+function getServer2Endpoint() {
+  if (Array.isArray(config.llmEndpoints) && config.llmEndpoints.length > 1 && config.llmEndpoints[1]) {
+    return config.llmEndpoints[1];
+  }
+
+  if (Array.isArray(config.llmEndpoints) && config.llmEndpoints.length > 0 && config.llmEndpoints[0]) {
+    return config.llmEndpoints[0];
+  }
+
+  return null;
+}
+
+async function generateRewardLimitMessage(message, eligibility) {
+  const server2Endpoint = getServer2Endpoint();
+  const fallback = buildDebugWarning(eligibility);
+  if (!server2Endpoint) {
+    return fallback;
+  }
+
+  const cooldownSeconds = Math.max(1, Math.ceil(eligibility.cooldownRemainingMs / 1000));
+  const systemOverride = [
+    'System: A user is being warned that their message rewards are temporarily suppressed for spam-like coin farming behavior.',
+    'System: Reply as Lumi in character, sweet but firm, in 2-4 short sentences.',
+    'System: Explain that they are being rate limited from earning SadGirlCoin right now because their posts looked spammy or repetitive.',
+    'System: Do not mention policy, moderation systems, or internal heuristics.',
+    'System: After the warning, include a short plain-text debug block with action, reasons, cooldown_s, similarity, and strikes.',
+    'System: Do not use markdown code fences. Do not use speaker labels. Do not use emojis unless they fit Lumi naturally.',
+  ].join(' ');
+
+  const latestContent = [
+    `Username: ${message.author.username}`,
+    `Suppressed message: ${message.content || '[attachment only]'}`,
+    `Action: ${eligibility.action}`,
+    `Reasons: ${eligibility.reasons.join(', ') || 'unknown'}`,
+    `Cooldown seconds: ${cooldownSeconds}`,
+    `Similarity score: ${(eligibility.debug?.topSimilarity ?? 0).toFixed(2)}`,
+    `Strike count: ${eligibility.debug?.strikes ?? 0}`,
+    'Write the warning now.',
+  ].join('\n');
+
+  try {
+    return await requestLlmCompletion({
+      latestContent,
+      history: [],
+      memoryClues: [],
+      deepRecall: false,
+      maxResponseChars: 550,
+      systemOverride,
+      endpointOverride: server2Endpoint,
+      modelOverride: SERVER_2_MODEL,
+      timeoutMsOverride: 20_000,
+    });
+  } catch (error) {
+    logger.warn('Failed to generate reward limit message via server-2.', error.message);
+    return fallback;
+  }
+}
 
 /**
  * Split a long string into Discord-safe chunks (≤2000 chars),
@@ -387,7 +446,8 @@ async function handleMessageCreate(message) {
       if (!eligibility.eligible) {
         logger.debug(`Suppressed SGC reward for ${message.author.username}: ${eligibility.reasons.join(',')}`);
         if (eligibility.shouldNotify) {
-          message.reply({ content: buildDebugWarning(eligibility), allowedMentions: { repliedUser: false } })
+          const warningMessage = await generateRewardLimitMessage(message, eligibility);
+          await message.reply({ content: warningMessage, allowedMentions: { repliedUser: false } })
             .catch(() => {});
         }
       } else {
