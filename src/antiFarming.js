@@ -103,6 +103,24 @@ function normalize(text) {
     .trim();
 }
 
+function isExpressiveShortMessage(rawContent) {
+  const raw = String(rawContent || '').trim();
+  if (!raw || raw.length > 12) return false;
+
+  // Discord custom emoji like <:ph:1234567890> or animated <a:...>
+  if (/^<a?:\w+:\d+>$/u.test(raw)) return true;
+
+  // Unicode emoji-only short expressions.
+  if (/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\u200d\ufe0f\s]+$/u.test(raw)) {
+    return true;
+  }
+
+  // Short non-alphanumeric expression like ":ph:" or "..." should not trigger anti-farm.
+  if (/^[^a-z0-9]{1,10}$/iu.test(raw)) return true;
+
+  return false;
+}
+
 function trigrams(s) {
   const set = new Set();
   if (s.length < 3) {
@@ -182,6 +200,18 @@ function analyzeLowEffort(normalized) {
     reasons.push('PLACEHOLDER_TEXT');
   }
 
+  // Catch long single-token gibberish strings (e.g., random consonant-heavy junk)
+  // that are often used to farm character-based rewards.
+  if (tokens.length === 1 && tokens[0].length >= 28) {
+    const token = tokens[0];
+    const vowels = (token.match(/[aeiou]/g) || []).length;
+    const vowelRatio = vowels / token.length;
+    const uniqueCharRatio = new Set(token).size / token.length;
+    if (vowelRatio < 0.22 && uniqueCharRatio > 0.45) {
+      reasons.push('GIBBERISH_TEXT');
+    }
+  }
+
   return { lowEffort: reasons.length > 0, reasons };
 }
 
@@ -230,6 +260,19 @@ function evaluateRewardEligibility(ctx) {
   const normalized = normalize(ctx.content);
   const letters = normalized.replace(/[^a-z0-9]/g, '');
 
+  // Explicit bypass for short expressive posts (single emoji, :ph:, ...).
+  if (isExpressiveShortMessage(ctx.content)) {
+    recordMessage(state, ctx.channelId, normalized, now);
+    return {
+      eligible: true,
+      reasons: [],
+      action: 'allow',
+      cooldownRemainingMs: 0,
+      shouldNotify: false,
+      debug: { bypass: 'EXPRESSIVE_SHORT' },
+    };
+  }
+
   // Short text bypass: avoid chiming in on normal quick conversational posts.
   // These usually don't farm meaningful coins and are commonly expressive.
   if (letters.length > 0 && letters.length < thresholds.shortMessageBypassLetters) {
@@ -271,6 +314,7 @@ function evaluateRewardEligibility(ctx) {
     'REPEATED_TOKENS',
     'PLACEHOLDER_TEXT',
     'DUPLICATE',
+    'GIBBERISH_TEXT',
   ].includes(reason));
   const shouldApplyRapidCooldown = hasRepeatedChar && hasAdditionalSpamSignal;
   if (state.lastRewardAt > 0 && sinceLast < thresholds.rewardCooldownMs && shouldApplyRapidCooldown) {
@@ -322,7 +366,8 @@ function evaluateRewardEligibility(ctx) {
   // Throttle notifications so we don't spam the user with warnings either
   const shouldNotify = (action === 'lockout' || reasons.includes('DUPLICATE')
       || reasons.includes('PLACEHOLDER_TEXT') || reasons.includes('REPEATED_CHAR')
-      || reasons.includes('PUNCTUATION_SPAM') || reasons.includes('REPEATED_TOKENS'))
+      || reasons.includes('PUNCTUATION_SPAM') || reasons.includes('REPEATED_TOKENS')
+      || reasons.includes('GIBBERISH_TEXT'))
     && (now - state.lastNotifyAt > thresholds.notifyCooldownMs);
   if (shouldNotify) state.lastNotifyAt = now;
 
@@ -379,5 +424,5 @@ module.exports = {
   setThresholds,
   getThresholds,
   // exported for tests
-  _internal: { normalize, trigrams, jaccard, analyzeLowEffort },
+  _internal: { normalize, trigrams, jaccard, analyzeLowEffort, isExpressiveShortMessage },
 };
