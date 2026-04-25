@@ -7,6 +7,7 @@ const {
 
 const { buildGlobalCommands: buildUserCommands } = require('./commands');
 const { buildEconomyCommands } = require('./sadgirlEconomyCommands');
+const { buildApiLinkCommand } = require('./apiLinkCommands');
 const { config } = require('./config');
 const { getRuntimeSettings, resetChatbotMemory, updateRuntimeSettings } = require('./chatbot');
 const { logger } = require('./logger');
@@ -146,7 +147,7 @@ function buildAdminCommands() {
 }
 
 function buildRegisteredGlobalCommands() {
-  return [...buildUserCommands(), ...buildEconomyCommands()];
+  return [...buildUserCommands(), ...buildEconomyCommands(), ...buildApiLinkCommand()];
 }
 
 function formatSettings(settings) {

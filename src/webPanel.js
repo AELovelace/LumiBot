@@ -45,7 +45,22 @@ const {
   getBalance,
   adjustBalance,
   ensureAccount,
+  BANK_OWNER_ID,
 } = require('./sadgirlEconomyStore');
+const {
+  VALID_SCOPES,
+  createApiApp,
+  getApiApp,
+  listApiApps,
+  disableApp,
+  enableApp,
+  updateApp,
+  issueApiKey,
+  listKeysForApp,
+  revokeApiKey,
+  listLinksForApp,
+  revokeLinkById,
+} = require('./apiKeyStore');
 const { activeVoiceUsers, formatVcTime, getVcLeaderboard, getVcRewardProgress } = require('./vcRewards');
 const { getAllPatrons, getPatreonStats, getTierInfo } = require('./patreonRewards');
 const {
@@ -645,6 +660,7 @@ function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
     <a href="${p('/memory')}">Memory</a>
     <a href="${p('/vc')}">VC Tracker</a>
     <a href="${p('/patrons')}">Patrons</a>
+    <a href="${p('/api-apps')}">API Apps</a>
     ${buildUserBadgeHtml(session)}
   </nav>
   ${bodyContent}
@@ -1926,6 +1942,145 @@ function renderMemory() {
 }
 
 // ---------------------------------------------------------------------------
+// External API admin views
+// ---------------------------------------------------------------------------
+
+function renderFlash(flash) {
+  if (!flash) return '';
+  const cls = flash.type === 'error' ? 'flash-error' : flash.type === 'success' ? 'flash-success' : 'flash-info';
+  return `<div class="flash ${cls}">${escapeHtml(flash.message)}</div>`;
+}
+
+function renderApiAppList(flash = null) {
+  const apps = listApiApps({ includeDisabled: true });
+  const rows = apps.map((a) => `
+    <tr>
+      <td><a href="${p('/api-apps/' + a.id)}">${escapeHtml(a.name)}</a> <span style="color:#777;font-size:11px;">${escapeHtml(a.id)}</span></td>
+      <td>${a.disabledAt ? '<span style="color:#ff4444;">disabled</span>' : '<span style="color:#7fff7f;">active</span>'}</td>
+      <td>${escapeHtml(a.scopes.join(', ') || '-')}</td>
+      <td>${a.rateLimitPerMin}/min</td>
+      <td>${a.canMint ? 'yes' : 'no'}</td>
+      <td>${escapeHtml(a.createdAt)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="color:#888;">No API apps registered yet.</td></tr>';
+
+  return buildPageHtml(`
+    <h2>&gt; External API Apps</h2>
+    ${renderFlash(flash)}
+    <p>Apps that hold <code>sgc_live_*</code> bearer tokens and can read/charge SadGirlCoin on behalf of linked Discord users.</p>
+    <p><a href="${p('/api-apps/new')}">[+ Register new app]</a></p>
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Status</th><th>Scopes</th><th>Rate</th><th>Mint</th><th>Created</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `, 'API Apps — SGC Control Panel');
+}
+
+function renderApiAppNew(flash = null, prev = {}) {
+  const scopeBoxes = VALID_SCOPES.map((s) => `
+    <label style="display:block;margin:2px 0;">
+      <input type="checkbox" name="scope_${escapeHtml(s)}" ${prev[`scope_${s}`] ? 'checked' : ''}>
+      <code>${escapeHtml(s)}</code>
+    </label>
+  `).join('');
+
+  return buildPageHtml(`
+    <h2>&gt; Register API App</h2>
+    ${renderFlash(flash)}
+    <form method="POST" action="${p('/api-apps')}" style="max-width:640px;">
+      <p><label>Name<br><input type="text" name="name" required maxlength="80" value="${escapeHtml(prev.name || '')}" style="width:100%"></label></p>
+      <p><label>Description<br><textarea name="description" maxlength="500" rows="3" style="width:100%">${escapeHtml(prev.description || '')}</textarea></label></p>
+      <p><label>Rate limit (req/min)<br><input type="number" name="rate_limit_per_min" value="${escapeHtml(prev.rate_limit_per_min || '60')}" min="1" max="6000"></label></p>
+      <p><label>Webhook URL (optional)<br><input type="url" name="webhook_url" value="${escapeHtml(prev.webhook_url || '')}" style="width:100%"></label></p>
+      <p><label><input type="checkbox" name="can_mint" ${prev.can_mint ? 'checked' : ''}> Allow minting (debits Central Bank)</label></p>
+      <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
+      <p><button type="submit">Create app + issue first key</button> <a href="${p('/api-apps')}">cancel</a></p>
+    </form>
+  `, 'New API App — SGC Control Panel');
+}
+
+function renderApiAppCreated(app, issued, opts = {}) {
+  return buildPageHtml(`
+    <h2>&gt; API Key Issued</h2>
+    <div class="flash flash-success">${escapeHtml(opts.extraNote || 'App registered successfully.')}</div>
+    <p><strong>App:</strong> ${escapeHtml(app.name)} <code>${escapeHtml(app.id)}</code></p>
+    <p><strong>Key ID:</strong> <code>${escapeHtml(issued.keyId)}</code></p>
+    <p style="background:#220011;border:2px solid #ff1744;padding:12px;">
+      <strong>Plaintext key (shown ONCE — copy now):</strong><br>
+      <code style="word-break:break-all;font-size:14px;">${escapeHtml(issued.plaintext)}</code>
+    </p>
+    <p>Send this in the <code>Authorization: Bearer ...</code> header.</p>
+    ${app.webhookSecret ? `<p><strong>Webhook signing secret:</strong> <code>${escapeHtml(app.webhookSecret)}</code></p>` : ''}
+    <p><a href="${p('/api-apps/' + app.id)}">Continue to app detail →</a></p>
+  `, 'Key Issued — SGC Control Panel');
+}
+
+function renderApiAppDetail(appId, flash = null) {
+  const app = getApiApp(appId);
+  if (!app) {
+    return buildPageHtml(`<h2>&gt; 404</h2><p>App <code>${escapeHtml(appId)}</code> not found.</p>`);
+  }
+  const keys = listKeysForApp(appId);
+  const links = listLinksForApp(appId);
+
+  const keyRows = keys.map((k) => `
+    <tr>
+      <td><code>${escapeHtml(k.id)}</code></td>
+      <td><code>${escapeHtml(k.key_prefix)}...</code></td>
+      <td>${escapeHtml(k.created_at)}</td>
+      <td>${escapeHtml(k.last_used_at || 'never')}</td>
+      <td>${k.revoked_at
+        ? `<span style="color:#ff4444;">revoked ${escapeHtml(k.revoked_at)}</span>`
+        : `<form method="POST" action="${p(`/api-apps/${appId}/keys/${k.id}/revoke`)}" style="display:inline;"><button type="submit">revoke</button></form>`}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="color:#888;">No keys.</td></tr>';
+
+  const linkRows = links.map((l) => `
+    <tr>
+      <td>${escapeHtml(l.discord_id)}</td>
+      <td>${escapeHtml(l.external_id)}</td>
+      <td>${escapeHtml(l.external_name || '')}</td>
+      <td>${escapeHtml(l.created_at)}</td>
+      <td>${l.revoked_at
+        ? `<span style="color:#888;">revoked</span>`
+        : `<form method="POST" action="${p(`/api-apps/${appId}/links/${l.id}/revoke`)}" style="display:inline;"><button type="submit">revoke</button></form>`}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="color:#888;">No links yet.</td></tr>';
+
+  return buildPageHtml(`
+    <h2>&gt; ${escapeHtml(app.name)} <span style="color:#777;font-size:13px;">${escapeHtml(app.id)}</span></h2>
+    ${renderFlash(flash)}
+    <p>${escapeHtml(app.description || '(no description)')}</p>
+    <ul>
+      <li>Status: ${app.disabledAt ? `<span style="color:#ff4444;">disabled at ${escapeHtml(app.disabledAt)}</span>` : '<span style="color:#7fff7f;">active</span>'}</li>
+      <li>Scopes: <code>${escapeHtml(app.scopes.join(', ') || '-')}</code></li>
+      <li>Rate limit: ${app.rateLimitPerMin}/min</li>
+      <li>Mint: ${app.canMint ? 'yes' : 'no'}</li>
+      <li>Treasury account: <code>${escapeHtml(app.treasuryUserId)}</code> (balance: ${getBalance(app.treasuryUserId).toLocaleString()} SGC)</li>
+      <li>Webhook: ${escapeHtml(app.webhookUrl || '-')}</li>
+      <li>Owner: <code>${escapeHtml(app.ownerDiscordId)}</code></li>
+      <li>Created: ${escapeHtml(app.createdAt)}</li>
+    </ul>
+
+    <h3>Keys</h3>
+    <form method="POST" action="${p(`/api-apps/${appId}/keys`)}"><button type="submit">+ Issue new key</button></form>
+    <table class="data-table"><thead><tr><th>Key ID</th><th>Prefix</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>${keyRows}</tbody></table>
+
+    <h3>Linked users (${links.filter((l) => !l.revoked_at).length} active / ${links.length} total)</h3>
+    <table class="data-table"><thead><tr><th>Discord ID</th><th>External ID</th><th>External name</th><th>Linked at</th><th></th></tr></thead><tbody>${linkRows}</tbody></table>
+
+    <h3>Danger zone</h3>
+    ${app.disabledAt
+      ? `<form method="POST" action="${p(`/api-apps/${appId}/enable`)}"><button type="submit">Re-enable app</button></form>`
+      : `<form method="POST" action="${p(`/api-apps/${appId}/disable`)}" onsubmit="return confirm('Disable app and revoke ALL its keys and user links?');"><button type="submit" style="background:#a00;color:#fff;">Disable app + revoke all keys/links</button></form>`}
+
+    <p><a href="${p('/api-apps')}">← back to app list</a></p>
+  `, `${app.name} — API App — SGC Control Panel`);
+}
+
+// ---------------------------------------------------------------------------
 // Request helpers
 // ---------------------------------------------------------------------------
 
@@ -2673,6 +2828,97 @@ async function handleRequest(req, res) {
     if (pathname === '/memory' && method === 'GET') {
       res.end(renderMemory());
       return;
+    }
+
+    // ── External API Apps (bank-owner only) ──────────────────────────
+    if (pathname.startsWith('/api-apps')) {
+      if (session.discordId !== BANK_OWNER_ID) {
+        res.writeHead(403);
+        res.end(buildPageHtml('<h2>> 403</h2><p style="color:#ff4444;">API key management is restricted to the bank owner.</p>'));
+        return;
+      }
+
+      if (pathname === '/api-apps' && method === 'GET') {
+        res.end(renderApiAppList());
+        return;
+      }
+      if (pathname === '/api-apps/new' && method === 'GET') {
+        res.end(renderApiAppNew());
+        return;
+      }
+      if (pathname === '/api-apps' && method === 'POST') {
+        const body = await parseFormBody(req);
+        const name = String(body.name || '').trim();
+        if (!name) { res.end(renderApiAppNew({ type: 'error', message: 'Name is required.' }, body)); return; }
+        const scopes = Object.keys(body).filter((k) => k.startsWith('scope_')).map((k) => k.slice(6));
+        const rateLimit = Math.max(1, Number(body.rate_limit_per_min) || 60);
+        const canMint = body.can_mint === 'on' || body.can_mint === '1';
+        const webhookUrl = String(body.webhook_url || '').trim() || null;
+        try {
+          const app = createApiApp({
+            name,
+            ownerDiscordId: session.discordId,
+            description: String(body.description || '').trim(),
+            scopes,
+            rateLimitPerMin: rateLimit,
+            canMint,
+            webhookUrl,
+          });
+          const issued = issueApiKey(app.id);
+          res.end(renderApiAppCreated(app, issued));
+        } catch (err) {
+          res.end(renderApiAppNew({ type: 'error', message: err.message }, body));
+        }
+        return;
+      }
+
+      const detailMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)$/u);
+      if (detailMatch && method === 'GET') {
+        res.end(renderApiAppDetail(detailMatch[1]));
+        return;
+      }
+
+      const issueMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/keys$/u);
+      if (issueMatch && method === 'POST') {
+        const appId = issueMatch[1];
+        try {
+          const app = getApiApp(appId);
+          if (!app) { res.end(renderApiAppList({ type: 'error', message: 'App not found.' })); return; }
+          const issued = issueApiKey(appId);
+          res.end(renderApiAppCreated(app, issued, { extraNote: 'New key issued. Store it now — it will not be shown again.' }));
+        } catch (err) {
+          res.end(renderApiAppDetail(appId, { type: 'error', message: err.message }));
+        }
+        return;
+      }
+
+      const revokeKeyMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/keys\/([a-z0-9_]+)\/revoke$/u);
+      if (revokeKeyMatch && method === 'POST') {
+        revokeApiKey(revokeKeyMatch[2]);
+        res.end(renderApiAppDetail(revokeKeyMatch[1], { type: 'success', message: 'Key revoked.' }));
+        return;
+      }
+
+      const disableMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/disable$/u);
+      if (disableMatch && method === 'POST') {
+        disableApp(disableMatch[1]);
+        res.end(renderApiAppDetail(disableMatch[1], { type: 'success', message: 'App disabled. All keys and links revoked.' }));
+        return;
+      }
+
+      const enableMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/enable$/u);
+      if (enableMatch && method === 'POST') {
+        enableApp(enableMatch[1]);
+        res.end(renderApiAppDetail(enableMatch[1], { type: 'success', message: 'App re-enabled. (Existing keys/links remain revoked — issue new ones.)' }));
+        return;
+      }
+
+      const revokeLinkMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/links\/(\d+)\/revoke$/u);
+      if (revokeLinkMatch && method === 'POST') {
+        revokeLinkById(Number(revokeLinkMatch[2]));
+        res.end(renderApiAppDetail(revokeLinkMatch[1], { type: 'success', message: 'Link revoked.' }));
+        return;
+      }
     }
 
     // 404

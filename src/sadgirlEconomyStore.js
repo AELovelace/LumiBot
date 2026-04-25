@@ -172,6 +172,62 @@ function createSchema() {
     CREATE INDEX IF NOT EXISTS idx_stock_positions_market ON stock_positions(market_id);
     CREATE INDEX IF NOT EXISTS idx_yearly_entries_year ON lottery_yearly_entries(year, user_id);
     CREATE INDEX IF NOT EXISTS idx_vc_time_total ON vc_time(total_seconds DESC);
+
+    -- External API: registered third-party apps + their issued keys + per-user link grants.
+    CREATE TABLE IF NOT EXISTS api_apps (
+      id                  TEXT PRIMARY KEY,
+      name                TEXT NOT NULL,
+      owner_discord_id    TEXT NOT NULL,
+      description         TEXT NOT NULL DEFAULT '',
+      scopes              TEXT NOT NULL DEFAULT '[]',
+      rate_limit_per_min  INTEGER NOT NULL DEFAULT 60,
+      can_mint            INTEGER NOT NULL DEFAULT 0,
+      webhook_url         TEXT DEFAULT NULL,
+      webhook_secret      TEXT DEFAULT NULL,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+      disabled_at         TEXT DEFAULT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id            TEXT PRIMARY KEY,
+      app_id        TEXT NOT NULL REFERENCES api_apps(id),
+      key_hash      TEXT NOT NULL UNIQUE,
+      key_prefix    TEXT NOT NULL,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at  TEXT DEFAULT NULL,
+      revoked_at    TEXT DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+    CREATE INDEX IF NOT EXISTS idx_api_keys_app  ON api_keys(app_id);
+
+    CREATE TABLE IF NOT EXISTS external_account_links (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      app_id        TEXT NOT NULL REFERENCES api_apps(id),
+      discord_id    TEXT NOT NULL,
+      external_id   TEXT NOT NULL,
+      external_name TEXT DEFAULT '',
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at    TEXT DEFAULT NULL,
+      UNIQUE(app_id, discord_id),
+      UNIQUE(app_id, external_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_links_discord  ON external_account_links(discord_id);
+
+    CREATE TABLE IF NOT EXISTS api_link_codes (
+      code         TEXT PRIMARY KEY,
+      app_id       TEXT NOT NULL REFERENCES api_apps(id),
+      discord_id   TEXT NOT NULL,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at   TEXT NOT NULL,
+      consumed_at  TEXT DEFAULT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS api_idempotency (
+      key           TEXT PRIMARY KEY,
+      response_json TEXT NOT NULL,
+      status_code   INTEGER NOT NULL DEFAULT 200,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migrations for existing databases (must run before creating indexes on new columns)

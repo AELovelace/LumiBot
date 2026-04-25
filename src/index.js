@@ -21,6 +21,7 @@ const { initBigBusiness, stopBigBusiness } = require('./bigBusiness');
 const { initGuildConfig } = require('./guildConfig');
 const { startWebPanel, stopWebPanel } = require('./webPanel');
 const { startLeaderboardServer, stopLeaderboardServer } = require('./leaderboardServer');
+const { startApiServer, stopApiServer } = require('./apiServer');
 const { initPrivateStockStore } = require('./privateStockStore');
 const { startPrivateStockScheduler, stopPrivateStockScheduler } = require('./privateStockScheduler');
 const { initStockEvents, stopStockEvents } = require('./stockEvents');
@@ -125,6 +126,7 @@ async function shutdown(signal) {
   try {
     stopWebPanel();
     stopLeaderboardServer();
+    stopApiServer();
   } catch (error) {
     logger.warn('Failed to stop web panel during shutdown.', error.message);
   }
@@ -276,6 +278,19 @@ client.once(Events.ClientReady, async (readyClient) => {
         });
       } catch (error) {
         logger.error('Failed to start public leaderboard server.', error.message);
+      }
+    }
+
+    // Start external SadGirlCoin API (third-party apps via API keys).
+    if (config.sgcApiEnabled) {
+      try {
+        startApiServer({
+          port: config.sgcApiPort,
+          host: config.sgcApiHost,
+          linkCodeTtlMs: config.sgcApiLinkCodeTtlMs,
+        });
+      } catch (error) {
+        logger.error('Failed to start SadGirlCoin external API.', error.message);
       }
     }
 

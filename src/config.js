@@ -288,6 +288,12 @@ const config = Object.freeze({
   leaderboardServerPort: parsePositiveInt(process.env.LEADERBOARD_SERVER_PORT, 7070),
   leaderboardServerHost: process.env.LEADERBOARD_SERVER_HOST?.trim() || '0.0.0.0',
   leaderboardServerOutputFile: process.env.LEADERBOARD_SERVER_OUTPUT_FILE?.trim() || 'data/leaderboard.html',
+  // External SadGirlCoin API (third-party apps via API keys + linked Discord accounts).
+  sgcApiEnabled: parseBoolean(process.env.SGC_API_ENABLED, true),
+  sgcApiPort: parsePositiveInt(process.env.SGC_API_PORT, 7788),
+  sgcApiHost: process.env.SGC_API_HOST?.trim() || '0.0.0.0',
+  sgcApiDefaultRateLimitPerMin: parsePositiveInt(process.env.SGC_API_DEFAULT_RATE_LIMIT_PER_MIN, 60),
+  sgcApiLinkCodeTtlMs: parsePositiveInt(process.env.SGC_API_LINK_CODE_TTL_MS, 600_000),
 });
 
 function getMissingConfigValues() {

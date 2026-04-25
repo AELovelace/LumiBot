@@ -7,6 +7,7 @@ const { awardMessageCoins } = require('./sadgirlEconomyStore');
 const { evaluateRewardEligibility, buildDebugWarning } = require('./antiFarming');
 const { getSmokeBoost } = require('./smokeBoost');
 const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
+const { handleApiLinkCommand } = require('./apiLinkCommands');
 const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
 const { handleTouhouMenu, handleTouhouMenuComponent } = require('./touhouMenu');
 const { buildCigaretteCommand, handleCigaretteCommand } = require('./cigaretteCommands');
@@ -380,6 +381,7 @@ const commandHandlers = new Map([
   ['lumi-search', handleSearchCommand],
   ['lumi-bank', handleBankCommand],
   ['lumi-bets', handleBetsCommand],
+  ['lumi-link', handleApiLinkCommand],
   ['lumi-stocks', handlePrivateStockCommand],
   ['lumi-touhou', handleTouhouCommand],
   ['lumi-cigarette', handleCigaretteCommand],
