@@ -194,6 +194,16 @@ function buildHelpText() {
     '`/lumi-slots leave` - Leave the slot machine.',
     '`/lumi-vc rank` - Voice channel time leaderboard.',
     '`/lumi-vc me` - Show your own VC time stats.',
+    '',
+    '**Text command shortcuts (`!` prefix):**',
+    '`!link [app] <appname>` - Link to an external app (shorthand: `!link <appname>`)',
+    '`!link list` - Show your linked apps.',
+    '`!link revoke <appname>` - Revoke an app link.',
+    '`!pachinko <peg 1-10> <bet>` - Play pachinko.',
+    '`!blackjack <bet>` - Join blackjack (`!bj` alias).',
+    '`!holdem <bet>` - Join Texas Hold\'em (`!th` alias).',
+    '`!horserace` - Start or join horse racing.',
+    '`!slots` - Open or join slots.',
   ].join('\n');
 }
 
@@ -1045,6 +1055,41 @@ async function handlePrefixCommand(message) {
     } else {
       const mentioned = message.mentions.users.first();
       await handleCigaretteCommand(fakeInteraction(message, { _subcommand: 'case', user: mentioned || null }));
+    }
+    return true;
+  }
+
+  // ── !link [app|list|revoke] ──
+  if (cmd === '!link') {
+    const sub = (parts[1] ?? 'list').toLowerCase();
+    if (sub === 'app') {
+      const appName = parts.slice(2).join(' ').trim();
+      if (!appName) {
+        await message.reply('Usage: `!link app <appname>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'app', app: appName });
+      await handleApiLinkCommand(fake);
+    } else if (sub === 'revoke') {
+      const appName = parts.slice(2).join(' ').trim();
+      if (!appName) {
+        await message.reply('Usage: `!link revoke <appname>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'revoke', app: appName });
+      await handleApiLinkCommand(fake);
+    } else if (sub === 'list') {
+      const fake = fakeInteraction(message, { _subcommand: 'list' });
+      await handleApiLinkCommand(fake);
+    } else {
+      // Assume it's an app name (shorthand: !link <appname>)
+      const appName = parts.slice(1).join(' ').trim();
+      if (!appName) {
+        await message.reply('Usage: `!link [app] <appname>` | `!link list` | `!link revoke <appname>`');
+        return true;
+      }
+      const fake = fakeInteraction(message, { _subcommand: 'app', app: appName });
+      await handleApiLinkCommand(fake);
     }
     return true;
   }
