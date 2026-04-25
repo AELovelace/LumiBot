@@ -35,8 +35,16 @@ function resolveAppFromInput(rawInput) {
 
   // Fall back to case-insensitive name match for user-friendly command input.
   const apps = listApiApps({ includeDisabled: true });
+  logger.debug(`resolveAppFromInput: found ${apps.length} total apps, searching for "${input}"`);
+  if (apps.length === 0) {
+    logger.warn(`resolveAppFromInput: no apps registered in the system`);
+  }
   const normalized = input.toLowerCase();
-  return apps.find((app) => String(app.name || '').trim().toLowerCase() === normalized) || null;
+  const match = apps.find((app) => String(app.name || '').trim().toLowerCase() === normalized);
+  if (!match) {
+    logger.debug(`resolveAppFromInput: no match for "${input}". Available apps: ${apps.map(a => `${a.name}(${a.id})`).join(', ')}`);
+  }
+  return match || null;
 }
 
 function buildApiLinkCommand() {
@@ -71,54 +79,94 @@ function buildApiLinkCommand() {
 }
 
 async function handleApiLinkCommand(interaction) {
-  const sub = interaction.options.getSubcommand();
-  switch (sub) {
-    case 'app':    return handleLinkApp(interaction);
-    case 'list':   return handleLinkList(interaction);
-    case 'revoke': return handleLinkRevoke(interaction);
-    default:
-      await interaction.reply({ content: 'Unknown subcommand.', ephemeral: true });
+  try {
+    const sub = interaction.options.getSubcommand();
+    logger.debug(`Handling lumi-link subcommand: ${sub} by user ${interaction.user.id}`);
+    switch (sub) {
+      case 'app':    return handleLinkApp(interaction);
+      case 'list':   return handleLinkList(interaction);
+      case 'revoke': return handleLinkRevoke(interaction);
+      default:
+        await interaction.reply({ content: 'Unknown subcommand.', ephemeral: true });
+    }
+  } catch (err) {
+    logger.error(`lumi-link command error for user ${interaction.user.id}: ${err.message}`);
+    throw err;
   }
 }
 
 async function handleLinkApp(interaction) {
-  const appInput = interaction.options.getString('app', true);
-  const app = resolveAppFromInput(appInput);
-  if (!app || app.disabledAt) {
-    await interaction.reply({ content: 'That app is not registered or has been disabled.', ephemeral: true });
-    return;
-  }
-
-  // If already linked, tell the user.
-  const existing = getLinkByDiscord(app.id, interaction.user.id);
-  if (existing) {
-    await interaction.reply({
-      content: `You're already linked to **${app.name}** (external id \`${existing.external_id}\`). Use \`/lumi-link revoke\` to unlink first.`,
-      ephemeral: true,
-    });
-    return;
-  }
-
-  let code;
   try {
-    code = createLinkCode(app.id, interaction.user.id, config.sgcApiLinkCodeTtlMs);
+    const appInput = interaction.options.getString('app', true);
+    logger.debug(`lumi-link app: user=${interaction.user.id}, appInput=${appInput}`);
+    const app = resolveAppFromInput(appInput);
+    
+    // Check if there are ANY apps registered
+    const allApps = listApiApps({ includeDisabled: true });
+    if (allApps.length === 0) {
+      logger.warn(`lumi-link app: No apps registered in the system`);
+      await interaction.reply({ 
+        content: '❌ No external apps have been registered yet. Bot admin needs to add apps via the control panel.', 
+        ephemeral: true 
+      });
+      return;
+    }
+    
+    if (!app) {
+      logger.warn(`lumi-link app: app not found for input "${appInput}"`);
+      const appList = allApps.filter(a => !a.disabledAt).map(a => `\`${a.name}\``).join(', ');
+      await interaction.reply({ 
+        content: `That app is not found. Available apps: ${appList || '(none enabled)'}`, 
+        ephemeral: true 
+      });
+      return;
+    }
+    if (app.disabledAt) {
+      logger.warn(`lumi-link app: app "${app.id}" is disabled`);
+      await interaction.reply({ content: 'That app has been disabled.', ephemeral: true });
+      return;
+    }
+
+    // If already linked, tell the user.
+    const existing = getLinkByDiscord(app.id, interaction.user.id);
+    if (existing) {
+      logger.debug(`lumi-link app: user already linked to "${app.id}"`);
+      await interaction.reply({
+        content: `You're already linked to **${app.name}** (external id \`${existing.external_id}\`). Use \`/lumi-link revoke\` to unlink first.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    let code;
+    try {
+      logger.debug(`lumi-link app: creating link code for user ${interaction.user.id} app ${app.id}`);
+      code = createLinkCode(app.id, interaction.user.id, config.sgcApiLinkCodeTtlMs);
+      logger.info(`lumi-link app: link code created for user ${interaction.user.id} app ${app.id}`);
+    } catch (err) {
+      logger.error(`createLinkCode failed for user ${interaction.user.id} app ${app.id}: ${err.message}`, err.stack);
+      await interaction.reply({ content: `Could not create link code: ${err.message}`, ephemeral: true });
+      return;
+    }
+
+    const minutes = Math.max(1, Math.round((config.sgcApiLinkCodeTtlMs || 600_000) / 60_000));
+    const lines = [
+      `**Link code for ${app.name}:** \`${code.code}\``,
+      `Expires in ~${minutes} minutes.`,
+      '',
+      `Paste this code into **${app.name}** (e.g. \`/sgc link ${code.code}\` in-game, or wherever the app prompts).`,
+      '',
+      `⚠️ Once linked, **${app.name}** can debit your SadGirlCoin balance freely until you revoke. Only redeem this in the actual app you trust.`,
+    ];
+
+    await interaction.reply({ content: lines.join('\n'), ephemeral: true });
   } catch (err) {
-    logger.error(`createLinkCode failed: ${err.message}`);
-    await interaction.reply({ content: `Could not create link code: ${err.message}`, ephemeral: true });
-    return;
+    logger.error(`handleLinkApp error for user ${interaction.user.id}: ${err.message}`, err.stack);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: `Error: ${err.message}`, ephemeral: true }).catch(() => {});
+    }
+    throw err;
   }
-
-  const minutes = Math.max(1, Math.round((config.sgcApiLinkCodeTtlMs || 600_000) / 60_000));
-  const lines = [
-    `**Link code for ${app.name}:** \`${code.code}\``,
-    `Expires in ~${minutes} minutes.`,
-    '',
-    `Paste this code into **${app.name}** (e.g. \`/sgc link ${code.code}\` in-game, or wherever the app prompts).`,
-    '',
-    `⚠️ Once linked, **${app.name}** can debit your SadGirlCoin balance freely until you revoke. Only redeem this in the actual app you trust.`,
-  ];
-
-  await interaction.reply({ content: lines.join('\n'), ephemeral: true });
 }
 
 async function handleLinkList(interaction) {

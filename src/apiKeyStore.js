@@ -291,6 +291,7 @@ function lookupApiKey(plaintext) {
 // ---------------------------------------------------------------------------
 
 function createLinkCode(appId, discordId, ttlMs = 600_000) {
+  if (!db()) throw new Error('Economy database not initialized');
   const app = getApiApp(appId);
   if (!app) throw new Error('App not found');
   if (app.disabledAt) throw new Error('App is disabled');
