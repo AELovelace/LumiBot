@@ -527,11 +527,31 @@ function fakeInteraction(message, optionsData = {}) {
 
     options: {
       getSubcommand() { return optionsData._subcommand ?? null; },
-      getInteger(name) { return optionsData[name] ?? null; },
-      getNumber(name) { return optionsData[name] ?? null; },
-      getString(name) { return optionsData[name] ?? null; },
-      getUser(name) { return optionsData[name] ?? null; },
-      getBoolean(name) { return optionsData[name] ?? null; },
+      getInteger(name, required = false) {
+        const val = optionsData[name];
+        if (required && val == null) throw new Error(`Missing required option: ${name}`);
+        return val ?? null;
+      },
+      getNumber(name, required = false) {
+        const val = optionsData[name];
+        if (required && val == null) throw new Error(`Missing required option: ${name}`);
+        return val ?? null;
+      },
+      getString(name, required = false) {
+        const val = optionsData[name];
+        if (required && val == null) throw new Error(`Missing required option: ${name}`);
+        return val ?? null;
+      },
+      getUser(name, required = false) {
+        const val = optionsData[name];
+        if (required && val == null) throw new Error(`Missing required option: ${name}`);
+        return val ?? null;
+      },
+      getBoolean(name, required = false) {
+        const val = optionsData[name];
+        if (required && val == null) throw new Error(`Missing required option: ${name}`);
+        return val ?? null;
+      },
     },
 
     async reply(content) {
@@ -1061,37 +1081,48 @@ async function handlePrefixCommand(message) {
 
   // ── !link [app|list|revoke] ──
   if (cmd === '!link') {
-    const sub = (parts[1] ?? 'list').toLowerCase();
-    if (sub === 'app') {
-      const appName = parts.slice(2).join(' ').trim();
-      if (!appName) {
-        await message.reply('Usage: `!link app <appname>`');
-        return true;
+    try {
+      const sub = (parts[1] ?? 'list').toLowerCase();
+      logger.debug(`!link command: sub="${sub}", parts=[${parts.join(', ')}]`);
+      if (sub === 'app') {
+        const appName = parts.slice(2).join(' ').trim();
+        if (!appName) {
+          await message.reply('Usage: `!link app <appname>`');
+          return true;
+        }
+        logger.debug(`!link app: creating fake interaction with appName="${appName}"`);
+        const fake = fakeInteraction(message, { _subcommand: 'app', app: appName });
+        await handleApiLinkCommand(fake);
+      } else if (sub === 'revoke') {
+        const appName = parts.slice(2).join(' ').trim();
+        if (!appName) {
+          await message.reply('Usage: `!link revoke <appname>`');
+          return true;
+        }
+        logger.debug(`!link revoke: creating fake interaction with appName="${appName}"`);
+        const fake = fakeInteraction(message, { _subcommand: 'revoke', app: appName });
+        await handleApiLinkCommand(fake);
+      } else if (sub === 'list') {
+        logger.debug(`!link list: creating fake interaction`);
+        const fake = fakeInteraction(message, { _subcommand: 'list' });
+        await handleApiLinkCommand(fake);
+      } else {
+        // Assume it's an app name (shorthand: !link <appname>)
+        const appName = parts.slice(1).join(' ').trim();
+        if (!appName) {
+          await message.reply('Usage: `!link [app] <appname>` | `!link list` | `!link revoke <appname>`');
+          return true;
+        }
+        logger.debug(`!link shorthand: creating fake interaction with appName="${appName}"`);
+        const fake = fakeInteraction(message, { _subcommand: 'app', app: appName });
+        await handleApiLinkCommand(fake);
       }
-      const fake = fakeInteraction(message, { _subcommand: 'app', app: appName });
-      await handleApiLinkCommand(fake);
-    } else if (sub === 'revoke') {
-      const appName = parts.slice(2).join(' ').trim();
-      if (!appName) {
-        await message.reply('Usage: `!link revoke <appname>`');
-        return true;
-      }
-      const fake = fakeInteraction(message, { _subcommand: 'revoke', app: appName });
-      await handleApiLinkCommand(fake);
-    } else if (sub === 'list') {
-      const fake = fakeInteraction(message, { _subcommand: 'list' });
-      await handleApiLinkCommand(fake);
-    } else {
-      // Assume it's an app name (shorthand: !link <appname>)
-      const appName = parts.slice(1).join(' ').trim();
-      if (!appName) {
-        await message.reply('Usage: `!link [app] <appname>` | `!link list` | `!link revoke <appname>`');
-        return true;
-      }
-      const fake = fakeInteraction(message, { _subcommand: 'app', app: appName });
-      await handleApiLinkCommand(fake);
+      return true;
+    } catch (err) {
+      logger.error(`!link command error: ${err.message}`, err.stack);
+      await message.reply(`Error: ${err.message}`).catch(() => {});
+      return true;
     }
-    return true;
   }
 
   return false; // not a recognized prefix command
