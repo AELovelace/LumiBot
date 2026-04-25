@@ -90,7 +90,7 @@ async function handleLinkApp(interaction) {
   }
 
   // If already linked, tell the user.
-  const existing = getLinkByDiscord(appId, interaction.user.id);
+  const existing = getLinkByDiscord(app.id, interaction.user.id);
   if (existing) {
     await interaction.reply({
       content: `You're already linked to **${app.name}** (external id \`${existing.external_id}\`). Use \`/lumi-link revoke\` to unlink first.`,
@@ -101,7 +101,7 @@ async function handleLinkApp(interaction) {
 
   let code;
   try {
-    code = createLinkCode(appId, interaction.user.id, config.sgcApiLinkCodeTtlMs);
+    code = createLinkCode(app.id, interaction.user.id, config.sgcApiLinkCodeTtlMs);
   } catch (err) {
     logger.error(`createLinkCode failed: ${err.message}`);
     await interaction.reply({ content: `Could not create link code: ${err.message}`, ephemeral: true });
