@@ -228,6 +228,28 @@ function createSchema() {
       status_code   INTEGER NOT NULL DEFAULT 200,
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS api_webhook_events (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      app_id        TEXT NOT NULL REFERENCES api_apps(id),
+      event_type    TEXT NOT NULL,
+      payload_json  TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TEXT DEFAULT NULL,
+      next_retry_at TEXT DEFAULT NULL,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_pending ON api_webhook_events(status, next_retry_at);
+    CREATE INDEX IF NOT EXISTS idx_webhook_events_app ON api_webhook_events(app_id);
+
+    CREATE TABLE IF NOT EXISTS api_rate_limit_log (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      app_id    TEXT NOT NULL REFERENCES api_apps(id),
+      method    TEXT NOT NULL,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_log_app_time ON api_rate_limit_log(app_id, timestamp);
   `);
 
   // Migrations for existing databases (must run before creating indexes on new columns)

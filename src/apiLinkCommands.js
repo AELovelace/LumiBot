@@ -21,16 +21,25 @@ const {
   getApiApp,
 } = require('./apiKeyStore');
 
-const MAX_DISCORD_CHOICES = 25;
+function resolveAppFromInput(rawInput) {
+  const input = String(rawInput || '').trim();
+  if (!input) {
+    return null;
+  }
 
-function activeAppChoices() {
-  const apps = listApiApps({ includeDisabled: false });
-  return apps.slice(0, MAX_DISCORD_CHOICES).map((a) => ({ name: a.name.slice(0, 100), value: a.id }));
+  // Fast path when an app id is provided.
+  const byId = getApiApp(input);
+  if (byId) {
+    return byId;
+  }
+
+  // Fall back to case-insensitive name match for user-friendly command input.
+  const apps = listApiApps({ includeDisabled: true });
+  const normalized = input.toLowerCase();
+  return apps.find((app) => String(app.name || '').trim().toLowerCase() === normalized) || null;
 }
 
 function buildApiLinkCommand() {
-  const choices = activeAppChoices();
-
   const cmd = new SlashCommandBuilder()
     .setName('lumi-link')
     .setDescription('Link your SadGirlCoin account to external apps (Minecraft, sister bots, etc.).')
@@ -38,11 +47,10 @@ function buildApiLinkCommand() {
       const o = sub
         .setName('app')
         .setDescription('Generate a one-time code to link your account to an external app.')
-        .addStringOption((opt) => {
-          opt.setName('app').setDescription('External app to link').setRequired(true);
-          if (choices.length > 0) opt.addChoices(...choices);
-          return opt;
-        });
+        .addStringOption((opt) => opt
+          .setName('app')
+          .setDescription('External app id or name (example: app_abc123 or SadBot)')
+          .setRequired(true));
       return o;
     })
     .addSubcommand((sub) => sub
@@ -52,11 +60,10 @@ function buildApiLinkCommand() {
       const o = sub
         .setName('revoke')
         .setDescription('Revoke an app\'s access to charge or read your SadGirlCoin balance.')
-        .addStringOption((opt) => {
-          opt.setName('app').setDescription('App to revoke').setRequired(true);
-          if (choices.length > 0) opt.addChoices(...choices);
-          return opt;
-        });
+        .addStringOption((opt) => opt
+          .setName('app')
+          .setDescription('External app id or name (example: app_abc123 or SadBot)')
+          .setRequired(true));
       return o;
     });
 
@@ -75,8 +82,8 @@ async function handleApiLinkCommand(interaction) {
 }
 
 async function handleLinkApp(interaction) {
-  const appId = interaction.options.getString('app', true);
-  const app = getApiApp(appId);
+  const appInput = interaction.options.getString('app', true);
+  const app = resolveAppFromInput(appInput);
   if (!app || app.disabledAt) {
     await interaction.reply({ content: 'That app is not registered or has been disabled.', ephemeral: true });
     return;
@@ -146,13 +153,13 @@ async function handleLinkList(interaction) {
 }
 
 async function handleLinkRevoke(interaction) {
-  const appId = interaction.options.getString('app', true);
-  const app = getApiApp(appId);
+  const appInput = interaction.options.getString('app', true);
+  const app = resolveAppFromInput(appInput);
   if (!app) {
     await interaction.reply({ content: 'Unknown app.', ephemeral: true });
     return;
   }
-  const ok = revokeLinkByDiscord(appId, interaction.user.id);
+  const ok = revokeLinkByDiscord(app.id, interaction.user.id);
   if (!ok) {
     await interaction.reply({ content: `You weren't linked to **${app.name}**.`, ephemeral: true });
     return;

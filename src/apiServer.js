@@ -38,6 +38,9 @@ const {
   storeIdempotentResponse,
   purgeOldIdempotency,
   purgeExpiredLinkCodes,
+  checkRateLimit,
+  trackRequest,
+  cleanUpRateLimitLog,
 } = require('./apiKeyStore');
 
 let server = null;
@@ -54,6 +57,52 @@ const MAX_BODY_BYTES = 8 * 1024;
 
 const RATE_WINDOW_MS = 60_000;
 const rateBuckets = new Map(); // appId -> { count, windowStart }
+
+// Rate limiting for link code redemption (per Discord ID + per IP)
+const REDEEM_RATE_WINDOW_MS = 60_000;
+const redeemBucketsDiscord = new Map(); // discordId -> { count, windowStart }
+const redeemBucketsIp = new Map(); // clientIp -> { count, windowStart }
+
+function rateLimitRedeemDiscord(discordId) {
+  const now = Date.now();
+  const bucket = redeemBucketsDiscord.get(discordId);
+  if (!bucket || now - bucket.windowStart >= REDEEM_RATE_WINDOW_MS) {
+    redeemBucketsDiscord.set(discordId, { count: 1, windowStart: now });
+    return { ok: true, retryAfter: 0 };
+  }
+  bucket.count++;
+  if (bucket.count > 5) { // 5 per minute per Discord ID
+    const retryAfter = Math.max(1, Math.ceil((REDEEM_RATE_WINDOW_MS - (now - bucket.windowStart)) / 1000));
+    return { ok: false, retryAfter };
+  }
+  return { ok: true, retryAfter: 0 };
+}
+
+function rateLimitRedeemIp(clientIp) {
+  const now = Date.now();
+  const bucket = redeemBucketsIp.get(clientIp);
+  if (!bucket || now - bucket.windowStart >= REDEEM_RATE_WINDOW_MS) {
+    redeemBucketsIp.set(clientIp, { count: 1, windowStart: now });
+    return { ok: true, retryAfter: 0 };
+  }
+  bucket.count++;
+  if (bucket.count > 3) { // 3 per minute per IP
+    const retryAfter = Math.max(1, Math.ceil((REDEEM_RATE_WINDOW_MS - (now - bucket.windowStart)) / 1000));
+    return { ok: false, retryAfter };
+  }
+  return { ok: true, retryAfter: 0 };
+}
+
+// Cleanup old redeem rate limit buckets
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, b] of redeemBucketsDiscord) {
+    if (now - b.windowStart >= REDEEM_RATE_WINDOW_MS * 2) redeemBucketsDiscord.delete(k);
+  }
+  for (const [k, b] of redeemBucketsIp) {
+    if (now - b.windowStart >= REDEEM_RATE_WINDOW_MS * 2) redeemBucketsIp.delete(k);
+  }
+}, REDEEM_RATE_WINDOW_MS).unref?.();
 
 function rateLimitCheck(appId, perMinute) {
   const now = Date.now();
@@ -220,8 +269,19 @@ async function handleRequest(req, res) {
   // ---------- Links ----------
   if (pathname === '/v1/links/codes/redeem' && method === 'POST') {
     if (!requireScope(app, 'links:redeem')) return sendError(res, 403, 'forbidden', 'Missing scope: links:redeem');
+    
+    // Rate limit link code redemption (prevent brute force)
     let body;
     try { body = await readJsonBody(req); } catch (err) { return sendError(res, err.statusCode || 400, 'bad_request', err.message); }
+    const discordId = String(body.discord_id || '').trim();
+    const clientIp = req.headers['x-real-ip'] || req.socket.remoteAddress || '127.0.0.1';
+    
+    const rlDiscord = rateLimitRedeemDiscord(discordId);
+    if (!rlDiscord.ok) return sendError(res, 429, 'rate_limited', 'Too many link code redemptions from this Discord ID', { retry_after_s: rlDiscord.retryAfter });
+    
+    const rlIp = rateLimitRedeemIp(String(clientIp));
+    if (!rlIp.ok) return sendError(res, 429, 'rate_limited', 'Too many link code redemptions from this IP', { retry_after_s: rlIp.retryAfter });
+    
     const code = String(body.code || '').trim().toUpperCase();
     const externalId = String(body.external_id || '').trim();
     const externalName = String(body.external_name || '').trim();
@@ -416,10 +476,11 @@ function startApiServer(opts = {}) {
     logger.info(`SadGirlCoin API: listening on http://${host}:${port}/v1`);
   });
 
-  // Periodic janitor for expired link codes + stale idempotency rows.
+  // Periodic janitor for expired link codes + stale idempotency rows + old rate limit logs.
   purgeTimer = setInterval(() => {
     purgeExpiredLinkCodes();
     purgeOldIdempotency();
+    cleanUpRateLimitLog();
   }, 60 * 60 * 1000);
   purgeTimer.unref?.();
 }

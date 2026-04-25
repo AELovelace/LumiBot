@@ -6,6 +6,7 @@ const { config, getMissingConfigValues } = require('./config');
 const { handleControlPlaneInteraction, registerControlPlane } = require('./controlPlane');
 const { initEconomyStore, closeEconomyStore, getEconomyDb, adjustBalance, getSystemState, setSystemState, TOUHOU_MGMT_USER_ID } = require('./sadgirlEconomyStore');
 const { startEconomyScheduler, stopEconomyScheduler } = require('./sadgirlEconomyScheduler');
+const { startWebhookDispatcher, stopWebhookDispatcher } = require('./webhookDispatcher');
 const { initTouhouStore, closeTouhouStore, computeHistoricalOwings } = require('./touhouStore');
 const { setTouhouDir } = require('./touhouCommands');
 const { setMenuTouhouDir } = require('./touhouMenu');
@@ -141,6 +142,7 @@ async function shutdown(signal) {
   // Shutdown SadGirlCoin economy
   try {
     stopEconomyScheduler();
+    stopWebhookDispatcher();
     closeEconomyStore();
   } catch (error) {
     logger.warn('Failed to close SadGirlCoin economy DB during shutdown.', error.message);
@@ -172,6 +174,7 @@ client.once(Events.ClientReady, async (readyClient) => {
 
     try {
       initEconomyStore(config.economyDbFile);
+      startWebhookDispatcher();
 
       // Reload panel-configurable settings from DB overrides
       try {

@@ -21,6 +21,8 @@ const {
   CENTRAL_BANK_USER_ID,
 } = require('./sadgirlEconomyStore');
 
+let fireWebhookEvent = null; // Lazy-loaded to avoid circular dependency
+
 const VALID_SCOPES = Object.freeze([
   'balance:read',
   'txn:read',
@@ -360,6 +362,20 @@ function consumeLinkCode(appId, code, externalId, externalName = '') {
     return { discordId: row.discord_id, link };
   })();
 
+  if (result.link && !result.error) {
+    try {
+      if (!fireWebhookEvent) fireWebhookEvent = require('./webhookDispatcher').fireWebhookEvent;
+      fireWebhookEvent(appId, 'link.created', {
+        event: 'link.created',
+        external_id: result.link.external_id,
+        app_id: appId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn(`Failed to fire link.created webhook: ${err.message}`);
+    }
+  }
+
   return result;
 }
 
@@ -485,6 +501,21 @@ function apiChargeUser({ app, externalId, amount, note = '' }) {
   );
   if (!result.success) return { success: false, error: result.error, code: 402 };
 
+  try {
+    if (!fireWebhookEvent) fireWebhookEvent = require('./webhookDispatcher').fireWebhookEvent;
+    fireWebhookEvent(app.id, 'transaction.completed', {
+      event: 'transaction.completed',
+      type: 'charge',
+      external_id: link.external_id,
+      amount: result.amount,
+      fee: result.fee,
+      app_id: app.id,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.warn(`Failed to fire transaction webhook: ${err.message}`);
+  }
+
   return {
     success: true,
     fee: result.fee,
@@ -519,6 +550,20 @@ function apiCreditUser({ app, externalId, amount, note = '', mint = false }) {
       `).run(CENTRAL_BANK_USER_ID, link.discord_id, amount, `api:${app.id}:mint ${note || ''}`.trim().slice(0, 200));
     });
     txn();
+    try {
+      if (!fireWebhookEvent) fireWebhookEvent = require('./webhookDispatcher').fireWebhookEvent;
+      fireWebhookEvent(app.id, 'transaction.completed', {
+        event: 'transaction.completed',
+        type: 'mint',
+        external_id: link.external_id,
+        amount,
+        minted: true,
+        app_id: app.id,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.warn(`Failed to fire transaction webhook: ${err.message}`);
+    }
     return { success: true, amount, minted: true, to: { external_id: link.external_id, discord_id: link.discord_id } };
   }
 
@@ -552,6 +597,22 @@ function apiP2PTransfer({ app, fromExternalId, toExternalId, amount, note = '' }
     `api:${app.id}:p2p ${note || ''}`.trim().slice(0, 200),
   );
   if (!result.success) return { success: false, error: result.error, code: 402 };
+
+  try {
+    if (!fireWebhookEvent) fireWebhookEvent = require('./webhookDispatcher').fireWebhookEvent;
+    fireWebhookEvent(app.id, 'transaction.completed', {
+      event: 'transaction.completed',
+      type: 'transfer',
+      from_external_id: fromLink.external_id,
+      to_external_id: toLink.external_id,
+      amount: result.amount,
+      fee: result.fee,
+      app_id: app.id,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.warn(`Failed to fire transaction webhook: ${err.message}`);
+  }
 
   return {
     success: true,
@@ -588,6 +649,75 @@ function withdrawAppTreasury(appId, toDiscordId, amount, note = 'app treasury wi
   const app = getApiApp(appId);
   if (!app) return { success: false, error: 'app_not_found' };
   return transferCoins(app.treasuryUserId, toDiscordId, amount, note);
+}
+
+/**
+ * Check if an app has exceeded its rate limit (requests per minute).
+ * Returns an object: { ok: boolean, rateLimit: number, requestsInWindow: number }
+ */
+function checkRateLimit(appId) {
+  if (!db()) return { ok: false, error: 'No database' };
+
+  try {
+    const app = getApiApp(appId);
+    if (!app) return { ok: false, error: 'app_not_found', code: 404 };
+    if (!app.rateLimitPerMin) return { ok: true }; // No rate limit
+
+    // Count requests in the last 60 seconds
+    const oneMinuteAgo = new Date(Date.now() - 60_000)
+      .toISOString().replace('T', ' ').slice(0, 19);
+    const result = db().prepare(`
+      SELECT COUNT(*) as count FROM api_rate_limit_log
+      WHERE app_id = ? AND timestamp > ?
+    `).get(appId, oneMinuteAgo);
+
+    const requestsInWindow = result?.count || 0;
+    const ok = requestsInWindow < app.rateLimitPerMin;
+
+    return {
+      ok,
+      rateLimit: app.rateLimitPerMin,
+      requestsInWindow,
+      retryAfterSeconds: ok ? null : 60 - (Date.now() % 60_000) / 1000,
+    };
+  } catch (err) {
+    logger.warn(`Rate limit check error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Track a request for rate limiting purposes.
+ */
+function trackRequest(appId, method = 'api') {
+  if (!db()) return;
+  try {
+    db().prepare(`
+      INSERT INTO api_rate_limit_log (app_id, method)
+      VALUES (?, ?)
+    `).run(appId, method);
+  } catch (err) {
+    logger.warn(`Failed to log rate limit request: ${err.message}`);
+  }
+}
+
+/**
+ * Clean up old rate limit log entries (keep only last 24 hours).
+ */
+function cleanUpRateLimitLog() {
+  if (!db()) return;
+  try {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toISOString().replace('T', ' ').slice(0, 19);
+    const result = db().prepare(`
+      DELETE FROM api_rate_limit_log WHERE timestamp < ?
+    `).run(oneDayAgo);
+    if (result.changes > 0) {
+      logger.debug(`Rate limit log cleanup: removed ${result.changes} old entries.`);
+    }
+  } catch (err) {
+    logger.warn(`Rate limit log cleanup error: ${err.message}`);
+  }
 }
 
 module.exports = {
@@ -630,6 +760,10 @@ module.exports = {
   apiP2PTransfer,
   apiUserTransactions,
   withdrawAppTreasury,
+  // Rate limiting
+  checkRateLimit,
+  trackRequest,
+  cleanUpRateLimitLog,
   // Util
   unsafe_adjustBalance: adjustBalance,
 };
