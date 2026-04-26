@@ -1,0 +1,61 @@
+[Unit]
+Description=SadGirlCoin standalone API server (SGCServer)
+Documentation=file:///opt/sadgirlplayer/SGCServer/README.md
+After=network-online.target
+Wants=network-online.target
+# The Discord bot depends on SGCServer for /internal/* privileged routes.
+# Bot's unit (sadgirlplayer-bot.service) should declare:
+#   After=sadgirlplayer-sgcserver.service
+#   Wants=sadgirlplayer-sgcserver.service
+
+[Service]
+Type=simple
+User=sadgirlplayer
+Group=sadgirlplayer
+
+# Repository root is the same as LumiBot — both processes share the SQLite DB.
+WorkingDirectory=/opt/sadgirlplayer/SGCServer
+
+# /etc/sadgirlplayer/runtime.env carries the shared values (DB path, Discord
+# token, etc.). /etc/sadgirlplayer/sgcserver.env holds the SGCServer-specific
+# values (SGC_INTERNAL_TOKEN, listener ports). Both are optional (-) so the
+# unit will start even if only one exists, but SGC_INTERNAL_TOKEN MUST be set
+# somewhere or the internal listener will reject every request.
+EnvironmentFile=-/etc/sadgirlplayer/runtime.env
+EnvironmentFile=-/etc/sadgirlplayer/sgcserver.env
+
+ExecStart=/usr/bin/node /opt/sadgirlplayer/SGCServer/src/index.js
+
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+KillSignal=SIGINT
+
+# Logging — journalctl -u sadgirlplayer-sgcserver.service -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sgcserver
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Allow writes to the shared SQLite DB and SGCServer working dir only.
+ReadWritePaths=/opt/sadgirlplayer/data /opt/sadgirlplayer/SGCServer
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+# Resource limits — adjust if you scale up.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

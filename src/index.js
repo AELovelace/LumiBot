@@ -174,7 +174,30 @@ client.once(Events.ClientReady, async (readyClient) => {
 
     try {
       initEconomyStore(config.economyDbFile);
-      startWebhookDispatcher();
+      // Phase 4 (split): the canonical webhook dispatcher now lives in
+      // SGCServer. We only spin up an in-proc dispatcher when explicitly
+      // opted-in, otherwise we'd double-deliver every webhook.
+      if (config.sgcWebhookDispatcherInproc) {
+        logger.info('SGC webhook dispatcher: running IN-PROCESS (legacy mode).');
+        startWebhookDispatcher();
+      } else {
+        logger.info('SGC webhook dispatcher: skipped (canonical owner is SGCServer).');
+      }
+
+      // Smoke-test SGCServer connectivity if configured (non-fatal).
+      try {
+        const sgcClient = require('./sgcClient');
+        if (sgcClient.isEnabled()) {
+          sgcClient.ping().then((ok) => {
+            if (ok) logger.info(`SGCServer reachable at ${config.sgcServerInternalUrl}.`);
+            else logger.warn(`SGCServer NOT reachable at ${config.sgcServerInternalUrl} — make sure it's running.`);
+          }).catch(() => {});
+        } else {
+          logger.debug('sgcClient disabled (SGC_SERVER_INTERNAL_URL or SGC_INTERNAL_TOKEN not set).');
+        }
+      } catch (clientErr) {
+        logger.warn(`sgcClient smoke check failed: ${clientErr.message}`);
+      }
 
       // Reload panel-configurable settings from DB overrides
       try {

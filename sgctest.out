@@ -1,0 +1,15 @@
+[2026-04-26T19:02:08.758Z] [SGC] [INFO] SGCServer starting (node v24.14.0).
+[2026-04-26T19:02:08.760Z] [SGC] [INFO] SGC_DB_FILE = C:\Scripts\LumiBot\data\sadgirlcoin.sqlite3
+[2026-04-26T19:02:08.760Z] [INFO] SadGirlCoin economy DB: C:\Scripts\LumiBot\data\sadgirlcoin.sqlite3
+[2026-04-26T19:02:08.767Z] [SGC] [INFO] SQLite journal_mode = wal
+[2026-04-26T19:02:08.768Z] [SGC] [INFO] OAuth schema initialized.
+[2026-04-26T19:02:08.777Z] [SGC] [INFO] Webhook dispatcher started.
+[2026-04-26T19:02:08.778Z] [SGC] [INFO] SGCServer ready.
+[2026-04-26T19:02:08.784Z] [SGC] [INFO] SGCServer public API listening on http://0.0.0.0:17788/ (v1 + oauth)
+[2026-04-26T19:02:08.785Z] [SGC] [INFO] SGCServer internal API listening on http://127.0.0.1:17789/internal/ [LumiBot only]
+[2026-04-26T19:02:10.737Z] [SGC] [DEBUG] Public GET /v1/healthz
+[2026-04-26T19:02:10.799Z] [SGC] [DEBUG] Internal GET /internal/healthz
+[2026-04-26T19:02:10.802Z] [SGC] [DEBUG] Internal GET /internal/constants
+[2026-04-26T19:02:10.803Z] [SGC] [DEBUG] Authenticated internal request via SGC_INTERNAL_TOKEN.
+[2026-04-26T19:02:10.805Z] [SGC] [DEBUG] Internal GET /internal/constants
+[2026-04-26T19:02:10.818Z] [SGC] [DEBUG] Public GET /v1/me

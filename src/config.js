@@ -289,11 +289,22 @@ const config = Object.freeze({
   leaderboardServerHost: process.env.LEADERBOARD_SERVER_HOST?.trim() || '0.0.0.0',
   leaderboardServerOutputFile: process.env.LEADERBOARD_SERVER_OUTPUT_FILE?.trim() || 'data/leaderboard.html',
   // External SadGirlCoin API (third-party apps via API keys + linked Discord accounts).
-  sgcApiEnabled: parseBoolean(process.env.SGC_API_ENABLED, true),
+  // Phase 4 of the split: by default LumiBot does NOT host the API in-process.
+  // Run SGCServer separately (see SGCServer/). Set SGC_API_INPROC_ENABLED=true
+  // to keep the legacy in-process listener alive on the same node.
+  sgcApiEnabled: parseBoolean(process.env.SGC_API_INPROC_ENABLED, false),
   sgcApiPort: parsePositiveInt(process.env.SGC_API_PORT, 7788),
   sgcApiHost: process.env.SGC_API_HOST?.trim() || '0.0.0.0',
   sgcApiDefaultRateLimitPerMin: parsePositiveInt(process.env.SGC_API_DEFAULT_RATE_LIMIT_PER_MIN, 60),
   sgcApiLinkCodeTtlMs: parsePositiveInt(process.env.SGC_API_LINK_CODE_TTL_MS, 600_000),
+  // SGCServer (Phase 4 split): URL of SGCServer's internal listener and the
+  // shared bearer token. When both are set, sgcClient.js can call privileged
+  // routes for things like /internal/healthz smoke checks.
+  sgcServerInternalUrl: process.env.SGC_SERVER_INTERNAL_URL?.trim() || 'http://127.0.0.1:7789',
+  sgcInternalToken: process.env.SGC_INTERNAL_TOKEN?.trim() || '',
+  // Run the in-process webhook dispatcher alongside SGCServer? Default OFF
+  // so we don't double-deliver. Only enable in legacy in-proc deployments.
+  sgcWebhookDispatcherInproc: parseBoolean(process.env.SGC_WEBHOOK_DISPATCHER_INPROC, false),
 });
 
 function getMissingConfigValues() {
