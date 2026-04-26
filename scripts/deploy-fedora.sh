@@ -220,7 +220,7 @@ ensure_runtime_env() {
 # Public app ports
 LEADERBOARD_SERVER_HOST=0.0.0.0
 LEADERBOARD_SERVER_PORT=7070
-WEB_PANEL_HOST=0.0.0.0
+WEB_PANEL_HOST=127.0.0.1
 WEB_PANEL_PORT=7777
 
 # Internal-only AI services

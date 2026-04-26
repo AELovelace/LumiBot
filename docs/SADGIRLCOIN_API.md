@@ -39,7 +39,7 @@ The operator gives you (the AI / integration) two values:
 
 | Value | Example | Notes |
 |---|---|---|
-| Base URL | `https://api.sadgirlsclub.wtf/v1` or `http://host:7788/v1` | Always ends in `/v1`. |
+| Base URL | `https://sadgirlsclub.wtf/v1` or `http://host:7788/v1` | Always ends in `/v1`. |
 | API key | `sgc_live_4f3e…` | Treat as a password. Never log or echo. |
 
 You will also be told the `app_id` (e.g. `app_d56e35b…`) — useful for diagnostics, but you don't need it in any request.

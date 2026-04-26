@@ -81,9 +81,17 @@ const {
   handleLogoutRoute,
   renderLoginPage,
   requireAuth,
+  requireUserAuth,
   buildUserBadgeHtml,
   validateSameOrigin,
 } = require('./webPanelAuth');
+const {
+  createOAuthClient,
+  getOAuthClient,
+  listOAuthClientsForApp,
+  revokeOAuthClient,
+  createAuthorizationCode,
+} = require('../SGCServer/src/oauthServer');
 
 const WEB_PANEL_PORT = Number(process.env.WEB_PANEL_PORT) || 7777;
 const WEB_PANEL_HOST = process.env.WEB_PANEL_HOST || '0.0.0.0';
@@ -2015,6 +2023,132 @@ function renderApiAppCreated(app, issued, opts = {}) {
   `, 'Key Issued — SGC Control Panel');
 }
 
+function parseOAuthClientForm(body) {
+  const redirectUris = String(body.redirect_uris || '')
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const grantTypes = ['authorization_code', 'client_credentials']
+    .filter((grantType) => body[`grant_${grantType}`] === 'on' || body[`grant_${grantType}`] === '1');
+  return { redirectUris, grantTypes };
+}
+
+function renderOAuthClientCreated(app, issued, opts = {}) {
+  return buildPageHtml(`
+    <h2>&gt; OAuth Client Issued</h2>
+    <div class="flash flash-success">${escapeHtml(opts.extraNote || 'OAuth client created successfully.')}</div>
+    <p><strong>App:</strong> ${escapeHtml(app.name)} <code>${escapeHtml(app.id)}</code></p>
+    <p><strong>Client ID:</strong> <code>${escapeHtml(issued.clientId)}</code></p>
+    <p style="background:#220011;border:2px solid #ff1744;padding:12px;">
+      <strong>Client secret (shown ONCE â€” copy now):</strong><br>
+      <code style="word-break:break-all;font-size:14px;">${escapeHtml(issued.clientSecret)}</code>
+    </p>
+    <p><strong>Grant types:</strong> <code>${escapeHtml(issued.grantTypes.join(', '))}</code></p>
+    <p><strong>Redirect URIs:</strong></p>
+    <pre style="white-space:pre-wrap;">${escapeHtml(issued.redirectUris.join('\n') || '(none)')}</pre>
+    <p><a href="${p('/api-apps/' + app.id)}">Continue to app detail</a></p>
+  `, 'OAuth Client Issued â€” SGC Control Panel');
+}
+
+function renderOAuthConsent(session, client, app, payload, flash = null) {
+  const requestedScopes = String(payload.scope || '').split(/\s+/u).filter(Boolean);
+  const grantedScopes = requestedScopes.length > 0
+    ? app.scopes.filter((scope) => requestedScopes.includes(scope))
+    : app.scopes.slice();
+  const scopeItems = grantedScopes.length > 0
+    ? grantedScopes.map((scope) => `<li><code>${escapeHtml(scope)}</code></li>`).join('')
+    : '<li><em>No scopes requested.</em></li>';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authorize ${escapeHtml(app.name)} - SadGirlsClub</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Space+Mono:wght@400;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#0a0a0f; color:#c9c9d1;
+    font-family:'Space Mono','Courier New',monospace;
+    font-size:14px; line-height:1.6; min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  body::before {
+    content:''; position:fixed; top:0;left:0;right:0;bottom:0;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.15) 2px,rgba(0,0,0,0.15) 4px);
+    pointer-events:none; z-index:9999;
+  }
+  .card {
+    background:#12121f; border:1px solid #ff69b4; max-width:680px; width:100%;
+    padding:32px; position:relative;
+  }
+  .card::before {
+    content:''; position:absolute; top:0;left:0; width:4px; height:100%; background:#ff69b4;
+  }
+  h1 { font-family:'VT323',monospace; font-size:34px; color:#ff69b4; margin-bottom:8px; }
+  .subtitle { color:#888; font-size:12px; margin-bottom:20px; }
+  .flash { padding:10px 14px; margin-bottom:18px; border:1px solid #ff4444; color:#ff4444; background:rgba(255,68,68,0.1); }
+  .meta { display:grid; gap:12px; margin-bottom:20px; }
+  .meta-row { background:#0f0f18; border:1px solid #2a2a3e; padding:12px; }
+  .meta-label { color:#888; font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+  ul { margin-left:18px; margin-bottom:20px; }
+  code { color:#44ff88; }
+  .actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:20px; }
+  button {
+    display:inline-block; padding:12px 18px; border:1px solid #ff69b4; background:#1a1a2e;
+    color:#ff69b4; cursor:pointer; font-family:'VT323',monospace; font-size:22px;
+  }
+  button:hover { background:#ff69b4; color:#0a0a0f; }
+  .danger { border-color:#ff4444; color:#ff4444; }
+  .danger:hover { background:#ff4444; color:#0a0a0f; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>AUTHORIZE APP LINK</h1>
+  <div class="subtitle">signed in as ${escapeHtml(session.username)} // sadgirlsclub.wtf</div>
+  ${flash ? `<div class="flash">${escapeHtml(flash.message)}</div>` : ''}
+  <div class="meta">
+    <div class="meta-row">
+      <div class="meta-label">Application</div>
+      <div><strong>${escapeHtml(app.name)}</strong> <code>${escapeHtml(app.id)}</code></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-label">OAuth Client</div>
+      <div><code>${escapeHtml(client.client_id)}</code></div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-label">External Account</div>
+      <div><code>${escapeHtml(payload.externalId)}</code>${payload.externalName ? ` // ${escapeHtml(payload.externalName)}` : ''}</div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-label">Redirect URI</div>
+      <div><code>${escapeHtml(payload.redirectUri)}</code></div>
+    </div>
+  </div>
+  <p style="margin-bottom:12px;">This app is requesting permission to act on your linked SadGirlCoin account with these scopes:</p>
+  <ul>${scopeItems}</ul>
+  <p style="color:#888;">Approving creates or refreshes the link for this app and returns an authorization code to the app.</p>
+  <form method="POST" action="${p('/oauth/consent')}">
+    <input type="hidden" name="client_id" value="${escapeHtml(payload.clientId)}">
+    <input type="hidden" name="redirect_uri" value="${escapeHtml(payload.redirectUri)}">
+    <input type="hidden" name="scope" value="${escapeHtml(payload.scope)}">
+    <input type="hidden" name="state" value="${escapeHtml(payload.state)}">
+    <input type="hidden" name="code_challenge" value="${escapeHtml(payload.codeChallenge)}">
+    <input type="hidden" name="code_challenge_method" value="${escapeHtml(payload.codeChallengeMethod)}">
+    <input type="hidden" name="external_id" value="${escapeHtml(payload.externalId)}">
+    <input type="hidden" name="external_name" value="${escapeHtml(payload.externalName)}">
+    <div class="actions">
+      <button type="submit" name="decision" value="approve">Approve Link</button>
+      <button type="submit" name="decision" value="deny" class="danger">Deny</button>
+    </div>
+  </form>
+</div>
+</body>
+</html>`;
+}
+
 function renderApiAppDetail(appId, flash = null) {
   const app = getApiApp(appId);
   if (!app) {
@@ -2022,6 +2156,7 @@ function renderApiAppDetail(appId, flash = null) {
   }
   const keys = listKeysForApp(appId);
   const links = listLinksForApp(appId);
+  const oauthClients = listOAuthClientsForApp(appId);
 
   const keyRows = keys.map((k) => `
     <tr>
@@ -2049,6 +2184,19 @@ function renderApiAppDetail(appId, flash = null) {
     </tr>
   `).join('') || '<tr><td colspan="5" style="color:#888;">No links yet.</td></tr>';
 
+  const oauthRows = oauthClients.map((client) => `
+    <tr>
+      <td><code>${escapeHtml(client.client_id)}</code></td>
+      <td>${escapeHtml((client.grantTypes || []).join(', ') || '-')}</td>
+      <td><pre style="white-space:pre-wrap;">${escapeHtml((client.redirectUris || []).join('\n') || '-')}</pre></td>
+      <td>${escapeHtml(client.created_at || '')}</td>
+      <td>${client.revoked_at
+        ? `<span style="color:#ff4444;">revoked ${escapeHtml(client.revoked_at)}</span>`
+        : `<form method="POST" action="${p(`/api-apps/${appId}/oauth-clients/${client.client_id}/revoke`)}" style="display:inline;"><button type="submit">revoke</button></form>`}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="color:#888;">No OAuth clients yet.</td></tr>';
+
   return buildPageHtml(`
     <h2>&gt; ${escapeHtml(app.name)} <span style="color:#777;font-size:13px;">${escapeHtml(app.id)}</span></h2>
     ${renderFlash(flash)}
@@ -2067,6 +2215,16 @@ function renderApiAppDetail(appId, flash = null) {
     <h3>Keys</h3>
     <form method="POST" action="${p(`/api-apps/${appId}/keys`)}"><button type="submit">+ Issue new key</button></form>
     <table class="data-table"><thead><tr><th>Key ID</th><th>Prefix</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>${keyRows}</tbody></table>
+
+    <h3>OAuth clients</h3>
+    <form method="POST" action="${p(`/api-apps/${appId}/oauth-clients`)}" style="max-width:720px;">
+      <p style="color:#888;">Create an OAuth client for browser-based linking. Redirect URIs must match exactly.</p>
+      <p><label>Redirect URIs (one per line)<br><textarea name="redirect_uris" rows="4" style="width:100%;" placeholder="https://example.com/oauth/callback"></textarea></label></p>
+      <p><label><input type="checkbox" name="grant_authorization_code" checked> authorization_code</label></p>
+      <p><label><input type="checkbox" name="grant_client_credentials"> client_credentials</label></p>
+      <p><button type="submit">+ Create OAuth client</button></p>
+    </form>
+    <table class="data-table"><thead><tr><th>Client ID</th><th>Grant types</th><th>Redirect URIs</th><th>Created</th><th></th></tr></thead><tbody>${oauthRows}</tbody></table>
 
     <h3>Linked users (${links.filter((l) => !l.revoked_at).length} active / ${links.length} total)</h3>
     <table class="data-table"><thead><tr><th>Discord ID</th><th>External ID</th><th>External name</th><th>Linked at</th><th></th></tr></thead><tbody>${linkRows}</tbody></table>
@@ -2117,6 +2275,36 @@ function parseJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+function buildOauthLoginRedirect(pathname, parsedUrl) {
+  const next = `${p(pathname)}${parsedUrl.search || ''}`;
+  return `${p('/auth/discord/login')}?mode=member&next=${encodeURIComponent(next)}`;
+}
+
+function extractConsentPayload(source) {
+  return {
+    clientId: String(source.client_id || '').trim(),
+    redirectUri: String(source.redirect_uri || '').trim(),
+    scope: String(source.scope || '').trim(),
+    state: String(source.state || '').trim(),
+    codeChallenge: String(source.code_challenge || '').trim(),
+    codeChallengeMethod: String(source.code_challenge_method || '').trim(),
+    externalId: String(source.external_id || '').trim(),
+    externalName: String(source.external_name || '').trim(),
+  };
+}
+
+function validateConsentPayload(payload) {
+  if (!payload.clientId) return 'client_id is required';
+  if (!payload.redirectUri) return 'redirect_uri is required';
+  if (!payload.state) return 'state is required';
+  if (!payload.codeChallenge) return 'code_challenge is required';
+  if (payload.codeChallengeMethod !== 'S256') return 'code_challenge_method must be S256';
+  if (!payload.externalId) return 'external_id is required';
+  if (payload.externalId.length > 200) return 'external_id is too long';
+  if (payload.externalName.length > 80) return 'external_name is too long';
+  return null;
 }
 
 /**
@@ -2283,6 +2471,140 @@ async function handleRequest(req, res) {
     }
     if (pathname === '/auth/logout' && method === 'POST') {
       handleLogoutRoute(req, res);
+      return;
+    }
+
+    if (pathname === '/oauth/consent' && method === 'GET') {
+      const session = requireUserAuth(req);
+      if (!session) {
+        res.writeHead(302, { Location: buildOauthLoginRedirect(pathname, parsedUrl) });
+        res.end();
+        return;
+      }
+
+      const payload = extractConsentPayload(Object.fromEntries(parsedUrl.searchParams.entries()));
+      const payloadError = validateConsentPayload(payload);
+      if (payloadError) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, { client_id: payload.clientId }, { id: '', name: 'Unknown app', scopes: [] }, payload, { message: payloadError }));
+        return;
+      }
+
+      const client = getOAuthClient(payload.clientId);
+      if (!client) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, { client_id: payload.clientId }, { id: '', name: 'Unknown app', scopes: [] }, payload, { message: 'Unknown OAuth client.' }));
+        return;
+      }
+      const app = getApiApp(client.app_id);
+      if (!app || app.disabledAt) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client, app || { id: '', name: 'Disabled app', scopes: [] }, payload, { message: 'App is disabled or unavailable.' }));
+        return;
+      }
+      if (!client.grantTypes.includes('authorization_code')) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client, app, payload, { message: 'Client is not allowed to use authorization_code.' }));
+        return;
+      }
+      if (!client.redirectUris.includes(payload.redirectUri)) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client, app, payload, { message: 'redirect_uri is not registered for this client.' }));
+        return;
+      }
+      const requestedScopes = payload.scope.split(/\s+/u).filter(Boolean);
+      const invalidScope = requestedScopes.find((scope) => !app.scopes.includes(scope));
+      if (invalidScope) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client, app, payload, { message: `Scope not allowed: ${invalidScope}` }));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(renderOAuthConsent(session, client, app, payload));
+      return;
+    }
+
+    if (pathname === '/oauth/consent' && method === 'POST') {
+      const body = await parseFormBody(req);
+      const payload = extractConsentPayload(body);
+      const payloadError = validateConsentPayload(payload);
+      if (payloadError) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(payloadError);
+        return;
+      }
+
+      const session = requireUserAuth(req);
+      if (!session) {
+        const nextParams = new URLSearchParams({
+          client_id: payload.clientId,
+          redirect_uri: payload.redirectUri,
+          scope: payload.scope,
+          state: payload.state,
+          code_challenge: payload.codeChallenge,
+          code_challenge_method: payload.codeChallengeMethod,
+          external_id: payload.externalId,
+        });
+        if (payload.externalName) nextParams.set('external_name', payload.externalName);
+        res.writeHead(302, { Location: `${p('/auth/discord/login')}?mode=member&next=${encodeURIComponent(`${p('/oauth/consent')}?${nextParams.toString()}`)}` });
+        res.end();
+        return;
+      }
+
+      const client = getOAuthClient(payload.clientId);
+      const app = client ? getApiApp(client.app_id) : null;
+      if (!client || !app || app.disabledAt || !client.grantTypes.includes('authorization_code') || !client.redirectUris.includes(payload.redirectUri)) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client || { client_id: payload.clientId }, app || { id: '', name: 'Unknown app', scopes: [] }, payload, { message: 'Invalid OAuth client or redirect URI.' }));
+        return;
+      }
+
+      const requestedScopes = payload.scope.split(/\s+/u).filter(Boolean);
+      const invalidScope = requestedScopes.find((scope) => !app.scopes.includes(scope));
+      if (invalidScope) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client, app, payload, { message: `Scope not allowed: ${invalidScope}` }));
+        return;
+      }
+
+      const decision = String(body.decision || '').trim().toLowerCase();
+      const redirect = new URL(payload.redirectUri);
+      redirect.searchParams.set('state', payload.state);
+
+      if (decision !== 'approve') {
+        redirect.searchParams.set('error', 'access_denied');
+        res.writeHead(302, { Location: redirect.toString(), 'Cache-Control': 'no-store' });
+        res.end();
+        return;
+      }
+
+      const grantedScope = requestedScopes.length > 0
+        ? app.scopes.filter((scope) => requestedScopes.includes(scope)).join(' ')
+        : app.scopes.join(' ');
+
+      let code;
+      try {
+        code = createAuthorizationCode({
+          clientId: client.client_id,
+          appId: app.id,
+          discordId: session.discordId,
+          redirectUri: payload.redirectUri,
+          scope: grantedScope,
+          codeChallenge: payload.codeChallenge,
+          codeChallengeMethod: payload.codeChallengeMethod,
+          externalId: payload.externalId,
+          externalName: payload.externalName,
+        });
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderOAuthConsent(session, client, app, payload, { message: err.message }));
+        return;
+      }
+
+      redirect.searchParams.set('code', code);
+      res.writeHead(302, { Location: redirect.toString(), 'Cache-Control': 'no-store' });
+      res.end();
       return;
     }
 
@@ -2892,10 +3214,44 @@ async function handleRequest(req, res) {
         return;
       }
 
+      const oauthCreateMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/oauth-clients$/u);
+      if (oauthCreateMatch && method === 'POST') {
+        const appId = oauthCreateMatch[1];
+        const body = await parseFormBody(req);
+        const { redirectUris, grantTypes } = parseOAuthClientForm(body);
+        if (redirectUris.length === 0) {
+          res.end(renderApiAppDetail(appId, { type: 'error', message: 'At least one redirect URI is required.' }));
+          return;
+        }
+        if (grantTypes.length === 0) {
+          res.end(renderApiAppDetail(appId, { type: 'error', message: 'Select at least one OAuth grant type.' }));
+          return;
+        }
+        try {
+          const app = getApiApp(appId);
+          if (!app) {
+            res.end(renderApiAppList({ type: 'error', message: 'App not found.' }));
+            return;
+          }
+          const issued = createOAuthClient({ appId, redirectUris, grantTypes });
+          res.end(renderOAuthClientCreated(app, issued));
+        } catch (err) {
+          res.end(renderApiAppDetail(appId, { type: 'error', message: err.message }));
+        }
+        return;
+      }
+
       const revokeKeyMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/keys\/([a-z0-9_]+)\/revoke$/u);
       if (revokeKeyMatch && method === 'POST') {
         revokeApiKey(revokeKeyMatch[2]);
         res.end(renderApiAppDetail(revokeKeyMatch[1], { type: 'success', message: 'Key revoked.' }));
+        return;
+      }
+
+      const revokeOauthClientMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/oauth-clients\/([a-z0-9_]+)\/revoke$/u);
+      if (revokeOauthClientMatch && method === 'POST') {
+        revokeOAuthClient(revokeOauthClientMatch[2]);
+        res.end(renderApiAppDetail(revokeOauthClientMatch[1], { type: 'success', message: 'OAuth client revoked.' }));
         return;
       }
 

@@ -26,8 +26,8 @@
 
 const crypto = require('node:crypto');
 const { logger } = require('./logger');
-const { getEconomyDb, ensureAccount } = require('./economyStore');
-const { getApiApp } = require('./apiKeyStore');
+const { getEconomyDb } = require('./economyStore');
+const { getApiApp, upsertExternalAccountLink } = require('./apiKeyStore');
 
 const ACCESS_TOKEN_PREFIX = 'sgc_at_';
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000;          // 5 minutes
@@ -99,19 +99,65 @@ function constantTimeEquals(a, b) {
   return crypto.timingSafeEqual(ab, bb);
 }
 
+function normalizeRedirectUris(redirectUris) {
+  if (!Array.isArray(redirectUris)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of redirectUris) {
+    const raw = String(entry || '').trim();
+    if (!raw) continue;
+    let parsed;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw new Error(`Invalid redirect URI: ${raw}`);
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`Unsupported redirect URI protocol: ${raw}`);
+    }
+    const normalized = parsed.toString();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function normalizeGrantTypes(grantTypes) {
+  const allowed = new Set(['client_credentials', 'authorization_code']);
+  const seen = new Set();
+  const out = [];
+  for (const entry of Array.isArray(grantTypes) ? grantTypes : []) {
+    const normalized = String(entry || '').trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    if (!allowed.has(normalized)) throw new Error(`Unknown grant type: ${normalized}`);
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out.length > 0 ? out : ['client_credentials'];
+}
+
 function createOAuthClient({ appId, redirectUris = [], grantTypes = ['client_credentials'] }) {
   ensureOAuthSchema();
   const app = getApiApp(appId);
   if (!app) throw new Error('App not found');
+  const normalizedRedirectUris = normalizeRedirectUris(redirectUris);
+  const normalizedGrantTypes = normalizeGrantTypes(grantTypes);
   const clientId = generateClientId();
   const secretPlain = generateClientSecret();
   const secretHash = hashSecret(secretPlain);
   db().prepare(`
     INSERT INTO oauth_clients (client_id, client_secret, app_id, redirect_uris, grant_types)
     VALUES (?, ?, ?, ?, ?)
-  `).run(clientId, secretHash, appId, JSON.stringify(redirectUris), JSON.stringify(grantTypes));
+  `).run(clientId, secretHash, appId, JSON.stringify(normalizedRedirectUris), JSON.stringify(normalizedGrantTypes));
   logger.info(`OAuth client created: ${clientId} for app ${appId}`);
-  return { clientId, clientSecret: secretPlain };
+  return {
+    clientId,
+    clientSecret: secretPlain,
+    appId,
+    redirectUris: normalizedRedirectUris,
+    grantTypes: normalizedGrantTypes,
+  };
 }
 
 function getOAuthClient(clientId) {
@@ -122,6 +168,32 @@ function getOAuthClient(clientId) {
   try { redirectUris = JSON.parse(row.redirect_uris || '[]'); } catch { /* */ }
   try { grantTypes = JSON.parse(row.grant_types || '[]'); } catch { /* */ }
   return { ...row, redirectUris, grantTypes };
+}
+
+function listOAuthClientsForApp(appId) {
+  ensureOAuthSchema();
+  const rows = db().prepare(`
+    SELECT * FROM oauth_clients
+    WHERE app_id = ?
+    ORDER BY created_at DESC
+  `).all(appId);
+  return rows.map((row) => {
+    let redirectUris = [];
+    let grantTypes = [];
+    try { redirectUris = JSON.parse(row.redirect_uris || '[]'); } catch { /* */ }
+    try { grantTypes = JSON.parse(row.grant_types || '[]'); } catch { /* */ }
+    return { ...row, redirectUris, grantTypes };
+  });
+}
+
+function revokeOAuthClient(clientId) {
+  ensureOAuthSchema();
+  const r = db().prepare(`
+    UPDATE oauth_clients
+    SET revoked_at = COALESCE(revoked_at, datetime('now'))
+    WHERE client_id = ?
+  `).run(clientId);
+  return r.changes > 0;
 }
 
 function verifyClientCredentials(clientId, clientSecret) {
@@ -249,15 +321,13 @@ function consumeAuthorizationCode({ code, clientId, redirectUri, codeVerifier = 
 
   // Create the external_account_links row if external_id was supplied.
   if (row.external_id) {
-    try {
-      db().prepare(`
-        INSERT OR IGNORE INTO external_account_links (app_id, discord_id, external_id, external_name)
-        VALUES (?, ?, ?, ?)
-      `).run(row.app_id, row.discord_id, row.external_id, row.external_name);
-      ensureAccount(row.discord_id);
-    } catch (err) {
-      logger.warn(`Failed to create external_account_links during OAuth: ${err.message}`);
-    }
+    const linked = upsertExternalAccountLink({
+      appId: row.app_id,
+      discordId: row.discord_id,
+      externalId: row.external_id,
+      externalName: row.external_name,
+    });
+    if (linked.error) return { error: linked.error };
   }
 
   return {
@@ -361,11 +431,35 @@ async function handleAuthorizeEndpoint(req, res, { url, sendError }) {
   const clientId = url.searchParams.get('client_id') || '';
   const redirectUri = url.searchParams.get('redirect_uri') || '';
   const responseType = url.searchParams.get('response_type') || '';
+  const scope = String(url.searchParams.get('scope') || '').trim();
+  const state = String(url.searchParams.get('state') || '').trim();
+  const codeChallenge = String(url.searchParams.get('code_challenge') || '').trim();
+  const codeChallengeMethod = String(url.searchParams.get('code_challenge_method') || '').trim();
+  const externalId = String(url.searchParams.get('external_id') || '').trim();
+  const externalName = String(url.searchParams.get('external_name') || '').trim();
   if (responseType !== 'code') return sendError(res, 400, 'unsupported_response_type', 'response_type must be "code"');
   const client = getOAuthClient(clientId);
   if (!client) return sendError(res, 400, 'invalid_client', 'Unknown client_id');
+  if (!client.grantTypes.includes('authorization_code')) {
+    return sendError(res, 400, 'unauthorized_client', 'Client not allowed to use authorization_code');
+  }
   if (!client.redirectUris.includes(redirectUri)) {
     return sendError(res, 400, 'invalid_request', 'redirect_uri not registered for this client');
+  }
+  if (!state) return sendError(res, 400, 'invalid_request', 'state is required');
+  if (!codeChallenge) return sendError(res, 400, 'invalid_request', 'code_challenge is required');
+  if (codeChallengeMethod !== 'S256') {
+    return sendError(res, 400, 'invalid_request', 'code_challenge_method must be S256');
+  }
+  if (!externalId) return sendError(res, 400, 'invalid_request', 'external_id is required');
+  if (externalId.length > 200) return sendError(res, 400, 'invalid_request', 'external_id too long');
+  if (externalName.length > 80) return sendError(res, 400, 'invalid_request', 'external_name too long');
+  const app = getApiApp(client.app_id);
+  if (!app || app.disabledAt) return sendError(res, 400, 'invalid_client', 'App disabled');
+  if (scope) {
+    const requestedScopes = scope.split(/\s+/).filter(Boolean);
+    const invalidScope = requestedScopes.find((entry) => !app.scopes.includes(entry));
+    if (invalidScope) return sendError(res, 400, 'invalid_scope', `Scope not allowed: ${invalidScope}`);
   }
   res.writeHead(302, {
     location: `/oauth/consent?${url.searchParams.toString()}`,
@@ -377,7 +471,7 @@ async function handleAuthorizeEndpoint(req, res, { url, sendError }) {
 module.exports = {
   ensureOAuthSchema,
   // Client mgmt
-  createOAuthClient, getOAuthClient,
+  createOAuthClient, getOAuthClient, listOAuthClientsForApp, revokeOAuthClient,
   // Token ops
   issueAccessToken, lookupAccessToken, revokeAccessToken, purgeExpiredTokens,
   // Auth code grant

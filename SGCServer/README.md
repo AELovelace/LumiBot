@@ -7,7 +7,7 @@ backend can run, scale, and deploy independently of the Discord bot.
 
 | Listener | Default | Purpose |
 |----------|---------|---------|
-| Public API | `0.0.0.0:7788` | `/v1/*` third-party app routes (charge / credit / transfer / mint / links). |
+| Public API | `127.0.0.1:7788` | `/v1/*` third-party app routes (charge / credit / transfer / mint / links), typically exposed via nginx. |
 | OAuth | shared with public | `/oauth/token`, `/oauth/authorize`, `/oauth/revoke`. |
 | Internal | `127.0.0.1:7789` | `/internal/*` privileged routes for LumiBot. **Bind to localhost only.** |
 
@@ -64,3 +64,4 @@ curl http://127.0.0.1:7789/internal/healthz
 # Internal route (requires SGC_INTERNAL_TOKEN)
 curl -H "Authorization: Bearer $env:SGC_INTERNAL_TOKEN" http://127.0.0.1:7789/internal/constants
 ```
+ 

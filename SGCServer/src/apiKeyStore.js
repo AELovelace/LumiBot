@@ -336,6 +336,44 @@ function createLinkCode(appId, discordId, ttlMs = 600_000) {
   throw new Error('Failed to generate unique link code');
 }
 
+function upsertExternalAccountLink({ appId, discordId, externalId, externalName = '' }) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  const normalizedExternalId = String(externalId || '').trim();
+  const normalizedExternalName = String(externalName || '').slice(0, 80);
+  if (!appId || !normalizedDiscordId || !normalizedExternalId) {
+    return { error: 'app_id, discord_id, external_id required' };
+  }
+
+  const existing = db().prepare(
+    'SELECT * FROM external_account_links WHERE app_id = ? AND discord_id = ? AND revoked_at IS NULL',
+  ).get(appId, normalizedDiscordId);
+  if (existing && existing.external_id !== normalizedExternalId) {
+    return { error: 'discord_already_linked_to_different_external_id' };
+  }
+  const claim = db().prepare(
+    'SELECT discord_id FROM external_account_links WHERE app_id = ? AND external_id = ? AND revoked_at IS NULL',
+  ).get(appId, normalizedExternalId);
+  if (claim && claim.discord_id !== normalizedDiscordId) {
+    return { error: 'external_id_already_linked' };
+  }
+
+  if (existing) {
+    db().prepare("UPDATE external_account_links SET external_name = ? WHERE id = ?")
+      .run(normalizedExternalName, existing.id);
+    const refreshed = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(existing.id);
+    ensureAccount(normalizedDiscordId);
+    return { link: refreshed };
+  }
+
+  const info = db().prepare(`
+    INSERT INTO external_account_links (app_id, discord_id, external_id, external_name)
+    VALUES (?, ?, ?, ?)
+  `).run(appId, normalizedDiscordId, normalizedExternalId, normalizedExternalName);
+  const link = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(info.lastInsertRowid);
+  ensureAccount(normalizedDiscordId);
+  return { link };
+}
+
 function consumeLinkCode(appId, code, externalId, externalName = '') {
   if (!appId || !code || !externalId) return { error: 'app_id, code, external_id required' };
   const result = db().transaction(() => {
@@ -344,35 +382,15 @@ function consumeLinkCode(appId, code, externalId, externalName = '') {
     if (row.consumed_at) return { error: 'code_already_used' };
     if (Date.parse(row.expires_at + 'Z') < Date.now()) return { error: 'code_expired' };
 
-    const existing = db().prepare(
-      'SELECT * FROM external_account_links WHERE app_id = ? AND discord_id = ? AND revoked_at IS NULL',
-    ).get(appId, row.discord_id);
-    if (existing && existing.external_id !== String(externalId)) {
-      return { error: 'discord_already_linked_to_different_external_id' };
-    }
-    const claim = db().prepare(
-      'SELECT discord_id FROM external_account_links WHERE app_id = ? AND external_id = ? AND revoked_at IS NULL',
-    ).get(appId, String(externalId));
-    if (claim && claim.discord_id !== row.discord_id) {
-      return { error: 'external_id_already_linked' };
-    }
-
     db().prepare("UPDATE api_link_codes SET consumed_at = datetime('now') WHERE code = ?").run(row.code);
-
-    if (existing) {
-      db().prepare("UPDATE external_account_links SET external_name = ? WHERE id = ?")
-        .run(String(externalName || '').slice(0, 80), existing.id);
-      const refreshed = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(existing.id);
-      return { discordId: row.discord_id, link: refreshed };
-    }
-
-    const info = db().prepare(`
-      INSERT INTO external_account_links (app_id, discord_id, external_id, external_name)
-      VALUES (?, ?, ?, ?)
-    `).run(appId, row.discord_id, String(externalId), String(externalName || '').slice(0, 80));
-    const link = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(info.lastInsertRowid);
-    ensureAccount(row.discord_id);
-    return { discordId: row.discord_id, link };
+    const linked = upsertExternalAccountLink({
+      appId,
+      discordId: row.discord_id,
+      externalId,
+      externalName,
+    });
+    if (linked.error) return linked;
+    return { discordId: row.discord_id, link: linked.link };
   })();
 
   if (result.link && !result.error) {
@@ -675,7 +693,7 @@ module.exports = {
   // Keys
   issueApiKey, listKeysForApp, revokeApiKey, lookupApiKey,
   // Links
-  createLinkCode, consumeLinkCode, getLinkByExternal, getLinkByDiscord,
+  createLinkCode, consumeLinkCode, upsertExternalAccountLink, getLinkByExternal, getLinkByDiscord,
   listLinksForApp, listLinksForDiscordUser,
   revokeLinkByExternal, revokeLinkByDiscord, revokeLinkById,
   // Idempotency
