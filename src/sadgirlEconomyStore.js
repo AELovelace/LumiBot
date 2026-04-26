@@ -207,11 +207,15 @@ function createSchema() {
       external_id   TEXT NOT NULL,
       external_name TEXT DEFAULT '',
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      revoked_at    TEXT DEFAULT NULL,
-      UNIQUE(app_id, discord_id),
-      UNIQUE(app_id, external_id)
+      revoked_at    TEXT DEFAULT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_links_discord  ON external_account_links(discord_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_app_discord
+      ON external_account_links(app_id, discord_id)
+      WHERE revoked_at IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_app_external
+      ON external_account_links(app_id, external_id)
+      WHERE revoked_at IS NULL;
 
     CREATE TABLE IF NOT EXISTS api_link_codes (
       code         TEXT PRIMARY KEY,
@@ -253,8 +257,78 @@ function createSchema() {
   `);
 
   // Migrations for existing databases (must run before creating indexes on new columns)
+  migrateExternalAccountLinks();
   migrateStockMarkets();
   migrateVcSessions();
+}
+
+function migrateExternalAccountLinks() {
+  try {
+    const table = db.prepare(`
+      SELECT sql
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'external_account_links'
+    `).get();
+    if (!table?.sql) return;
+
+    const hasLegacyGlobalUniqueConstraints =
+      table.sql.includes('UNIQUE(app_id, discord_id)') ||
+      table.sql.includes('UNIQUE(app_id, external_id)');
+
+    if (!hasLegacyGlobalUniqueConstraints) {
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_app_discord
+        ON external_account_links(app_id, discord_id)
+        WHERE revoked_at IS NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_app_external
+        ON external_account_links(app_id, external_id)
+        WHERE revoked_at IS NULL;
+      `);
+      return;
+    }
+
+    db.transaction(() => {
+      db.exec(`
+        DROP TABLE IF EXISTS external_account_links__migrating;
+
+        CREATE TABLE external_account_links__migrating (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_id        TEXT NOT NULL REFERENCES api_apps(id),
+          discord_id    TEXT NOT NULL,
+          external_id   TEXT NOT NULL,
+          external_name TEXT DEFAULT '',
+          created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+          revoked_at    TEXT DEFAULT NULL
+        );
+
+        INSERT INTO external_account_links__migrating (
+          id, app_id, discord_id, external_id, external_name, created_at, revoked_at
+        )
+        SELECT
+          id, app_id, discord_id, external_id, external_name, created_at, revoked_at
+        FROM external_account_links;
+
+        DROP TABLE external_account_links;
+
+        ALTER TABLE external_account_links__migrating RENAME TO external_account_links;
+
+        CREATE INDEX IF NOT EXISTS idx_links_discord
+        ON external_account_links(discord_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_app_discord
+        ON external_account_links(app_id, discord_id)
+        WHERE revoked_at IS NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_app_external
+        ON external_account_links(app_id, external_id)
+        WHERE revoked_at IS NULL;
+      `);
+    })();
+  } catch (err) {
+    logger.error(`Failed to migrate external_account_links uniqueness: ${err.message}`);
+    throw err;
+  }
 }
 
 function migrateStockMarkets() {
