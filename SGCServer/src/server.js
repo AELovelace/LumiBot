@@ -190,6 +190,12 @@ function bearerToken(req) {
   return m ? m[1] : null;
 }
 
+function getPublicOrigin(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim() || 'localhost';
+  return `${proto}://${host}`;
+}
+
 /**
  * Unified bearer auth: tries OAuth access tokens first (sgc_at_*), then
  * legacy API keys (sgc_live_*).
@@ -277,6 +283,54 @@ async function handlePublicRequest(req, res) {
   }
 
   // ---------- Links ----------
+  if (pathname === '/v1/links/oauth/start' && method === 'POST') {
+    if (!requireScope(app, 'links:redeem')) return sendError(res, 403, 'forbidden', 'Missing scope: links:redeem');
+    let body;
+    try { body = await readJsonBody(req); }
+    catch (err) { return sendError(res, err.statusCode || 400, 'bad_request', err.message); }
+
+    const clientId = String(body.client_id || '').trim();
+    const redirectUri = String(body.redirect_uri || '').trim();
+    const scope = String(body.scope || '').trim();
+    const state = String(body.state || '').trim();
+    const codeChallenge = String(body.code_challenge || '').trim();
+    const codeChallengeMethod = String(body.code_challenge_method || '').trim() || 'S256';
+    const externalId = String(body.external_id || '').trim();
+    const externalName = String(body.external_name || '').trim();
+
+    const result = oauth.createAuthorizationUrl({
+      publicBaseUrl: getPublicOrigin(req),
+      clientId,
+      redirectUri,
+      scope,
+      state,
+      codeChallenge,
+      codeChallengeMethod,
+      externalId,
+      externalName,
+      expectedAppId: app.id,
+    });
+    if (result.error) return sendError(res, 400, result.error, result.message || result.error);
+
+    return sendJson(res, 200, {
+      oauth: {
+        authorize_url: result.authorizeUrl,
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope,
+        external_id: externalId,
+        external_name: externalName,
+        code_challenge_method: codeChallengeMethod,
+      },
+      fallback: {
+        method: 'link_code',
+        supported: true,
+        redeem_endpoint: '/v1/links/codes/redeem',
+        instructions: 'If browser OAuth is unavailable, ask the player to run /lumi-link in Discord and redeem the one-time code through the legacy endpoint.',
+      },
+    });
+  }
+
   if (pathname === '/v1/links/codes/redeem' && method === 'POST') {
     if (!requireScope(app, 'links:redeem')) return sendError(res, 403, 'forbidden', 'Missing scope: links:redeem');
     let body;

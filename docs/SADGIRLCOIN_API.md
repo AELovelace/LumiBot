@@ -78,7 +78,20 @@ Examples of good `external_id` choices:
 
 `external_id` is opaque to the API; pick something stable and unique within your app. **Do not put PII in it.**
 
-### Flow
+### Preferred flow: browser OAuth link
+
+Your app can ask the API to generate a browser-ready authorize URL for a specific player identity:
+
+1. Your app creates an OAuth client in the control panel with the `authorization_code` grant enabled.
+2. Your app generates PKCE values (`state`, `code_challenge`, `code_verifier`) and calls `POST /v1/links/oauth/start`.
+3. The API returns an `authorize_url`.
+4. Your app gives that URL to the player to open in a browser.
+5. The player signs into Discord in the SadGirlsClub panel and approves the link.
+6. Your app exchanges the returned authorization `code` at `/oauth/token` and the Discord account is linked to your `external_id`.
+
+This is the best UX for web apps, launchers, game chat prompts, and anywhere you can hand a player a clickable or copy-pasteable URL.
+
+### Compatibility fallback: Discord code redeem
 
 ```
 ┌──────────┐   /lumi-link app:<app>     ┌─────────┐  one-time code
@@ -136,6 +149,51 @@ Use this on startup to confirm the key works and to discover which scopes you ha
 ---
 
 ### 5.2 Links
+
+#### `POST /v1/links/oauth/start`  *(scope `links:redeem`)*
+
+Returns a browser URL your app can give to the player, plus compatibility info for the legacy code-redeem flow.
+
+```json
+Request:
+{
+  "client_id": "sgc_client_abc123",
+  "redirect_uri": "https://example.com/oauth/callback",
+  "scope": "balance:read coins:debit",
+  "state": "4c2b88f4...",
+  "code_challenge": "N2Y0d1...",
+  "code_challenge_method": "S256",
+  "external_id": "11111111-2222-3333-4444-555555555555",
+  "external_name": "Steve"
+}
+
+200 OK
+{
+  "oauth": {
+    "authorize_url": "https://sadgirlsclub.wtf/oauth/authorize?response_type=code&client_id=...",
+    "client_id": "sgc_client_abc123",
+    "redirect_uri": "https://example.com/oauth/callback",
+    "scope": "balance:read coins:debit",
+    "external_id": "11111111-2222-3333-4444-555555555555",
+    "external_name": "Steve",
+    "code_challenge_method": "S256"
+  },
+  "fallback": {
+    "method": "link_code",
+    "supported": true,
+    "redeem_endpoint": "/v1/links/codes/redeem",
+    "instructions": "If browser OAuth is unavailable, ask the player to run /lumi-link in Discord and redeem the one-time code through the legacy endpoint."
+  }
+}
+```
+
+Notes:
+
+- `client_id` must belong to the authenticated app.
+- The OAuth client must allow the `authorization_code` grant.
+- `redirect_uri` must exactly match a registered redirect URI.
+- `state` and PKCE (`code_challenge`, `code_challenge_method=S256`) are required.
+- `external_id` is the identity that will be linked once the browser flow completes.
 
 #### `POST /v1/links/codes/redeem`  *(scope `links:redeem`)*
 

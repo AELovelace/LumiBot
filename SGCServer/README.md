@@ -44,6 +44,10 @@ backend can run, scale, and deploy independently of the Discord bot.
 * OAuth access tokens (`sgc_at_*`) and legacy API keys (`sgc_live_*`) are
   both accepted on `/v1/*`. New integrations should use the OAuth
   client_credentials flow.
+* User-facing apps can bootstrap browser linking by calling
+  `POST /v1/links/oauth/start`, which returns an `/oauth/authorize` URL to
+  hand to the player. The older `/v1/links/codes/redeem` flow remains
+  available as a compatibility fallback.
 * The synthetic "internal" app authenticated by `SGC_INTERNAL_TOKEN`
   bypasses all rate limiting and has every scope. Treat the token as
   highly sensitive.

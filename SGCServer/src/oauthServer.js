@@ -272,6 +272,107 @@ function purgeExpiredTokens() {
   }
 }
 
+function validateAuthorizationRequest({
+  clientId,
+  redirectUri,
+  responseType = 'code',
+  scope = '',
+  state,
+  codeChallenge,
+  codeChallengeMethod,
+  externalId,
+  externalName = '',
+  expectedAppId = null,
+}) {
+  if (responseType !== 'code') return { error: 'unsupported_response_type', message: 'response_type must be "code"' };
+  const client = getOAuthClient(clientId);
+  if (!client) return { error: 'invalid_client', message: 'Unknown client_id' };
+  if (expectedAppId && client.app_id !== expectedAppId) {
+    return { error: 'invalid_client', message: 'OAuth client does not belong to this app' };
+  }
+  if (!client.grantTypes.includes('authorization_code')) {
+    return { error: 'unauthorized_client', message: 'Client not allowed to use authorization_code' };
+  }
+  if (!client.redirectUris.includes(redirectUri)) {
+    return { error: 'invalid_request', message: 'redirect_uri not registered for this client' };
+  }
+  if (!state) return { error: 'invalid_request', message: 'state is required' };
+  if (!codeChallenge) return { error: 'invalid_request', message: 'code_challenge is required' };
+  if (codeChallengeMethod !== 'S256') {
+    return { error: 'invalid_request', message: 'code_challenge_method must be S256' };
+  }
+  if (!externalId) return { error: 'invalid_request', message: 'external_id is required' };
+  if (externalId.length > 200) return { error: 'invalid_request', message: 'external_id too long' };
+  if (externalName.length > 80) return { error: 'invalid_request', message: 'external_name too long' };
+  const app = getApiApp(client.app_id);
+  if (!app || app.disabledAt) return { error: 'invalid_client', message: 'App disabled' };
+  if (scope) {
+    const requestedScopes = scope.split(/\s+/).filter(Boolean);
+    const invalidScope = requestedScopes.find((entry) => !app.scopes.includes(entry));
+    if (invalidScope) return { error: 'invalid_scope', message: `Scope not allowed: ${invalidScope}` };
+  }
+  return { client, app };
+}
+
+function createAuthorizationUrl({
+  publicBaseUrl,
+  clientId,
+  redirectUri,
+  scope = '',
+  state,
+  codeChallenge,
+  codeChallengeMethod = 'S256',
+  externalId,
+  externalName = '',
+  expectedAppId = null,
+}) {
+  ensureOAuthSchema();
+  const normalizedRedirectUri = String(redirectUri || '').trim();
+  const normalizedScope = String(scope || '').trim();
+  const normalizedState = String(state || '').trim();
+  const normalizedCodeChallenge = String(codeChallenge || '').trim();
+  const normalizedMethod = String(codeChallengeMethod || '').trim() || 'S256';
+  const normalizedExternalId = String(externalId || '').trim();
+  const normalizedExternalName = String(externalName || '').trim();
+
+  const validation = validateAuthorizationRequest({
+    clientId: String(clientId || '').trim(),
+    redirectUri: normalizedRedirectUri,
+    responseType: 'code',
+    scope: normalizedScope,
+    state: normalizedState,
+    codeChallenge: normalizedCodeChallenge,
+    codeChallengeMethod: normalizedMethod,
+    externalId: normalizedExternalId,
+    externalName: normalizedExternalName,
+    expectedAppId,
+  });
+  if (validation.error) return validation;
+
+  let authorizeUrl;
+  try {
+    authorizeUrl = new URL('/oauth/authorize', publicBaseUrl);
+  } catch {
+    return { error: 'invalid_request', message: 'public_base_url is invalid' };
+  }
+
+  authorizeUrl.searchParams.set('response_type', 'code');
+  authorizeUrl.searchParams.set('client_id', String(clientId || '').trim());
+  authorizeUrl.searchParams.set('redirect_uri', normalizedRedirectUri);
+  authorizeUrl.searchParams.set('state', normalizedState);
+  authorizeUrl.searchParams.set('code_challenge', normalizedCodeChallenge);
+  authorizeUrl.searchParams.set('code_challenge_method', normalizedMethod);
+  authorizeUrl.searchParams.set('external_id', normalizedExternalId);
+  if (normalizedScope) authorizeUrl.searchParams.set('scope', normalizedScope);
+  if (normalizedExternalName) authorizeUrl.searchParams.set('external_name', normalizedExternalName);
+
+  return {
+    authorizeUrl: authorizeUrl.toString(),
+    client: validation.client,
+    app: validation.app,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Authorization codes (auth-code grant)
 // ---------------------------------------------------------------------------
@@ -426,41 +527,18 @@ async function handleRevokeEndpoint(req, res, { readJsonOrForm, sendJson, sendEr
  * OAuth flow first, then call back into createAuthorizationCode().
  */
 async function handleAuthorizeEndpoint(req, res, { url, sendError }) {
-  // Simple stub: returns instructions. The web panel (Phase 5) will host the
-  // proper consent UI and call createAuthorizationCode() after Discord auth.
-  const clientId = url.searchParams.get('client_id') || '';
-  const redirectUri = url.searchParams.get('redirect_uri') || '';
-  const responseType = url.searchParams.get('response_type') || '';
-  const scope = String(url.searchParams.get('scope') || '').trim();
-  const state = String(url.searchParams.get('state') || '').trim();
-  const codeChallenge = String(url.searchParams.get('code_challenge') || '').trim();
-  const codeChallengeMethod = String(url.searchParams.get('code_challenge_method') || '').trim();
-  const externalId = String(url.searchParams.get('external_id') || '').trim();
-  const externalName = String(url.searchParams.get('external_name') || '').trim();
-  if (responseType !== 'code') return sendError(res, 400, 'unsupported_response_type', 'response_type must be "code"');
-  const client = getOAuthClient(clientId);
-  if (!client) return sendError(res, 400, 'invalid_client', 'Unknown client_id');
-  if (!client.grantTypes.includes('authorization_code')) {
-    return sendError(res, 400, 'unauthorized_client', 'Client not allowed to use authorization_code');
-  }
-  if (!client.redirectUris.includes(redirectUri)) {
-    return sendError(res, 400, 'invalid_request', 'redirect_uri not registered for this client');
-  }
-  if (!state) return sendError(res, 400, 'invalid_request', 'state is required');
-  if (!codeChallenge) return sendError(res, 400, 'invalid_request', 'code_challenge is required');
-  if (codeChallengeMethod !== 'S256') {
-    return sendError(res, 400, 'invalid_request', 'code_challenge_method must be S256');
-  }
-  if (!externalId) return sendError(res, 400, 'invalid_request', 'external_id is required');
-  if (externalId.length > 200) return sendError(res, 400, 'invalid_request', 'external_id too long');
-  if (externalName.length > 80) return sendError(res, 400, 'invalid_request', 'external_name too long');
-  const app = getApiApp(client.app_id);
-  if (!app || app.disabledAt) return sendError(res, 400, 'invalid_client', 'App disabled');
-  if (scope) {
-    const requestedScopes = scope.split(/\s+/).filter(Boolean);
-    const invalidScope = requestedScopes.find((entry) => !app.scopes.includes(entry));
-    if (invalidScope) return sendError(res, 400, 'invalid_scope', `Scope not allowed: ${invalidScope}`);
-  }
+  const validation = validateAuthorizationRequest({
+    clientId: url.searchParams.get('client_id') || '',
+    redirectUri: String(url.searchParams.get('redirect_uri') || '').trim(),
+    responseType: url.searchParams.get('response_type') || '',
+    scope: String(url.searchParams.get('scope') || '').trim(),
+    state: String(url.searchParams.get('state') || '').trim(),
+    codeChallenge: String(url.searchParams.get('code_challenge') || '').trim(),
+    codeChallengeMethod: String(url.searchParams.get('code_challenge_method') || '').trim(),
+    externalId: String(url.searchParams.get('external_id') || '').trim(),
+    externalName: String(url.searchParams.get('external_name') || '').trim(),
+  });
+  if (validation.error) return sendError(res, 400, validation.error, validation.message);
   res.writeHead(302, {
     location: `/oauth/consent?${url.searchParams.toString()}`,
     'cache-control': 'no-store',
@@ -476,6 +554,7 @@ module.exports = {
   issueAccessToken, lookupAccessToken, revokeAccessToken, purgeExpiredTokens,
   // Auth code grant
   createAuthorizationCode, consumeAuthorizationCode,
+  createAuthorizationUrl,
   // HTTP handlers
   handleTokenEndpoint, handleRevokeEndpoint, handleAuthorizeEndpoint,
   // Constants
