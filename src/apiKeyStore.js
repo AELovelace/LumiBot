@@ -353,10 +353,35 @@ function consumeLinkCode(appId, code, externalId, externalName = '') {
       return { discordId: row.discord_id, link: refreshed };
     }
 
-    const info = db().prepare(`
-      INSERT INTO external_account_links (app_id, discord_id, external_id, external_name)
-      VALUES (?, ?, ?, ?)
-    `).run(appId, row.discord_id, String(externalId), String(externalName || '').slice(0, 80));
+    let info;
+    try {
+      info = db().prepare(`
+        INSERT INTO external_account_links (app_id, discord_id, external_id, external_name)
+        VALUES (?, ?, ?, ?)
+      `).run(appId, row.discord_id, String(externalId), String(externalName || '').slice(0, 80));
+    } catch (err) {
+      if (!String(err.message || '').includes('UNIQUE')) throw err;
+      const byDiscord = db().prepare(
+        'SELECT * FROM external_account_links WHERE app_id = ? AND discord_id = ? AND revoked_at IS NULL',
+      ).get(appId, row.discord_id);
+      if (byDiscord && byDiscord.external_id === String(externalId)) {
+        db().prepare(
+          'UPDATE external_account_links SET external_name = ? WHERE id = ?',
+        ).run(String(externalName || '').slice(0, 80), byDiscord.id);
+        const refreshed = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(byDiscord.id);
+        return { discordId: row.discord_id, link: refreshed };
+      }
+      const byExternal = db().prepare(
+        'SELECT * FROM external_account_links WHERE app_id = ? AND external_id = ? AND revoked_at IS NULL',
+      ).get(appId, String(externalId));
+      if (byExternal && byExternal.discord_id !== row.discord_id) {
+        return { error: 'external_id_already_linked' };
+      }
+      if (byDiscord && byDiscord.external_id !== String(externalId)) {
+        return { error: 'discord_already_linked_to_different_external_id' };
+      }
+      throw err;
+    }
 
     const link = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(info.lastInsertRowid);
     ensureAccount(row.discord_id);

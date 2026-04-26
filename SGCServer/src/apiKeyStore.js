@@ -365,10 +365,33 @@ function upsertExternalAccountLink({ appId, discordId, externalId, externalName 
     return { link: refreshed };
   }
 
-  const info = db().prepare(`
-    INSERT INTO external_account_links (app_id, discord_id, external_id, external_name)
-    VALUES (?, ?, ?, ?)
-  `).run(appId, normalizedDiscordId, normalizedExternalId, normalizedExternalName);
+  let info;
+  try {
+    info = db().prepare(`
+      INSERT INTO external_account_links (app_id, discord_id, external_id, external_name)
+      VALUES (?, ?, ?, ?)
+    `).run(appId, normalizedDiscordId, normalizedExternalId, normalizedExternalName);
+  } catch (err) {
+    if (!String(err.message || '').includes('UNIQUE')) throw err;
+    const byDiscord = db().prepare(
+      'SELECT * FROM external_account_links WHERE app_id = ? AND discord_id = ? AND revoked_at IS NULL',
+    ).get(appId, normalizedDiscordId);
+    if (byDiscord && byDiscord.external_id === normalizedExternalId) {
+      db().prepare("UPDATE external_account_links SET external_name = ? WHERE id = ?")
+        .run(normalizedExternalName, byDiscord.id);
+      return { link: db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(byDiscord.id) };
+    }
+    const byExternal = db().prepare(
+      'SELECT * FROM external_account_links WHERE app_id = ? AND external_id = ? AND revoked_at IS NULL',
+    ).get(appId, normalizedExternalId);
+    if (byExternal && byExternal.discord_id !== normalizedDiscordId) {
+      return { error: 'external_id_already_linked' };
+    }
+    if (byDiscord && byDiscord.external_id !== normalizedExternalId) {
+      return { error: 'discord_already_linked_to_different_external_id' };
+    }
+    throw err;
+  }
   const link = db().prepare('SELECT * FROM external_account_links WHERE id = ?').get(info.lastInsertRowid);
   ensureAccount(normalizedDiscordId);
   return { link };
