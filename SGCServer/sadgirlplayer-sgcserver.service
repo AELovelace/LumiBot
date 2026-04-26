@@ -49,7 +49,10 @@ ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+# NOTE: MemoryDenyWriteExecute is intentionally OMITTED. Node's V8 engine
+# needs W→X memory transitions for baseline/JIT code generation; enabling
+# it crashes the process with a SIGTRAP / "Check failed: 12 == errno"
+# (ENOMEM on mprotect) the moment the tiering compiler kicks in.
 RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
