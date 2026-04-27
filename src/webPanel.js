@@ -12,6 +12,7 @@
  *  - Voice channel reward tracker
  */
 
+const crypto = require('node:crypto');
 const http = require('node:http');
 const { URL } = require('node:url');
 const { logger } = require('./logger');
@@ -46,6 +47,9 @@ const {
   adjustBalance,
   ensureAccount,
   BANK_OWNER_ID,
+  getSystemState,
+  setSystemState,
+  deleteSystemState,
 } = require('./sadgirlEconomyStore');
 const {
   VALID_SCOPES,
@@ -1959,8 +1963,21 @@ function renderFlash(flash) {
   return `<div class="flash ${cls}">${escapeHtml(flash.message)}</div>`;
 }
 
+function getBridgeConfigView() {
+  const token = String(getSystemState('bridge.token') || process.env.SGC_BRIDGE_TOKEN || '').trim();
+  const treasuryUserId = String(getSystemState('bridge.treasury_user_id') || process.env.SGC_BRIDGE_TREASURY_USER_ID || '').trim();
+  const maxPayoutAmount = String(getSystemState('bridge.max_payout_amount') || process.env.SGC_BRIDGE_MAX_PAYOUT_AMOUNT || '250000').trim();
+  return {
+    token,
+    treasuryUserId,
+    maxPayoutAmount,
+    tokenPreview: token ? `${token.slice(0, 8)}...${token.slice(-6)}` : '(not configured)',
+  };
+}
+
 function renderApiAppList(flash = null) {
   const apps = listApiApps({ includeDisabled: true });
+  const bridge = getBridgeConfigView();
   const rows = apps.map((a) => `
     <tr>
       <td><a href="${p('/api-apps/' + a.id)}">${escapeHtml(a.name)}</a> <span style="color:#777;font-size:11px;">${escapeHtml(a.id)}</span></td>
@@ -1977,6 +1994,19 @@ function renderApiAppList(flash = null) {
     ${renderFlash(flash)}
     <p>Apps that hold <code>sgc_live_*</code> bearer tokens and can read/charge SadGirlCoin on behalf of linked Discord users.</p>
     <p><a href="${p('/api-apps/new')}">[+ Register new app]</a></p>
+    <h3>Bridge Settings</h3>
+    <form method="POST" action="${p('/api-apps/bridge')}" style="max-width:720px;">
+      <p style="color:#888;">Controls the runtime bearer token and funding source for <code>/v1/bridge/company/payout</code>.</p>
+      <p><label>Bridge bearer token<br><input type="text" name="bridge_token" value="${escapeHtml(bridge.token)}" style="width:100%;font-family:monospace;" placeholder="paste a secret or use regenerate"></label></p>
+      <p style="color:#888;">Current token preview: <code>${escapeHtml(bridge.tokenPreview)}</code></p>
+      <p><label>Bridge treasury user id<br><input type="text" name="bridge_treasury_user_id" value="${escapeHtml(bridge.treasuryUserId)}" style="width:100%;font-family:monospace;" placeholder="__APP_your_bridge_app__"></label></p>
+      <p><label>Bridge max payout amount<br><input type="number" name="bridge_max_payout_amount" value="${escapeHtml(bridge.maxPayoutAmount || '250000')}" min="1" max="1000000000"></label></p>
+      <p>
+        <button type="submit">Save bridge settings</button>
+        <button type="submit" name="action" value="regenerate_token">Save + regenerate token</button>
+        <button type="submit" name="action" value="clear_runtime" class="danger">Clear runtime overrides</button>
+      </p>
+    </form>
     <table class="data-table">
       <thead><tr><th>Name</th><th>Status</th><th>Scopes</th><th>Rate</th><th>Mint</th><th>Created</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -3198,6 +3228,48 @@ async function handleRequest(req, res) {
         } catch (err) {
           res.end(renderApiAppNew({ type: 'error', message: err.message }, body));
         }
+        return;
+      }
+
+      if (pathname === '/api-apps/bridge' && method === 'POST') {
+        const body = await parseFormBody(req);
+        const action = String(body.action || '').trim();
+
+        if (action === 'clear_runtime') {
+          deleteSystemState('bridge.token');
+          deleteSystemState('bridge.treasury_user_id');
+          deleteSystemState('bridge.max_payout_amount');
+          res.end(renderApiAppList({ type: 'success', message: 'Bridge runtime overrides cleared. Env values will be used if present.' }));
+          return;
+        }
+
+        let bridgeToken = String(body.bridge_token || '').trim();
+        const treasuryUserId = String(body.bridge_treasury_user_id || '').trim();
+        const maxPayoutAmount = Math.max(1, Math.min(1_000_000_000, Math.floor(Number(body.bridge_max_payout_amount) || 250000)));
+
+        if (action === 'regenerate_token') {
+          bridgeToken = crypto.randomBytes(24).toString('hex');
+        } else if (!bridgeToken) {
+          bridgeToken = String(getSystemState('bridge.token') || process.env.SGC_BRIDGE_TOKEN || '').trim();
+        }
+
+        if (!bridgeToken) {
+          res.end(renderApiAppList({ type: 'error', message: 'Bridge token is required unless you clear runtime overrides.' }));
+          return;
+        }
+        if (!treasuryUserId) {
+          res.end(renderApiAppList({ type: 'error', message: 'Bridge treasury user id is required.' }));
+          return;
+        }
+
+        setSystemState('bridge.token', bridgeToken);
+        setSystemState('bridge.treasury_user_id', treasuryUserId);
+        setSystemState('bridge.max_payout_amount', String(maxPayoutAmount));
+
+        const msg = action === 'regenerate_token'
+          ? `Bridge settings saved. New token: ${bridgeToken}`
+          : 'Bridge settings saved.';
+        res.end(renderApiAppList({ type: 'success', message: msg }));
         return;
       }
 

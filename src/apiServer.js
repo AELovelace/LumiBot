@@ -24,7 +24,7 @@ const http = require('node:http');
 const { URL } = require('node:url');
 
 const { logger } = require('./logger');
-const { getBalance, ensureAccount, transferCoins } = require('./sadgirlEconomyStore');
+const { getBalance, ensureAccount, transferCoins, getSystemState } = require('./sadgirlEconomyStore');
 const { getStockById, getStockByTicker } = require('./privateStockStore');
 const { getBigBusinessUserId } = require('./guildConfig');
 const {
@@ -53,12 +53,7 @@ let purgeTimer = null;
 
 const MAX_BODY_BYTES = 8 * 1024;
 const BRIDGE_IDEMPOTENCY_APP_ID = '__bridge_company_payout__';
-const bridgeToken = String(process.env.SGC_BRIDGE_TOKEN || '').trim();
-const bridgeTreasuryUserId = String(process.env.SGC_BRIDGE_TREASURY_USER_ID || '').trim();
-const bridgeMaxPayoutAmount = (() => {
-  const raw = Number(process.env.SGC_BRIDGE_MAX_PAYOUT_AMOUNT || 250_000);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 250_000;
-})();
+const DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT = 250_000;
 
 // ---------------------------------------------------------------------------
 // Per-app rate limiting (token bucket; same pattern as leaderboardServer.js).
@@ -224,7 +219,22 @@ function positiveAmount(value) {
   return n;
 }
 
+function getBridgeToken() {
+  return String(getSystemState('bridge.token') || process.env.SGC_BRIDGE_TOKEN || '').trim();
+}
+
+function getBridgeTreasuryUserId() {
+  return String(getSystemState('bridge.treasury_user_id') || process.env.SGC_BRIDGE_TREASURY_USER_ID || '').trim();
+}
+
+function getBridgeMaxPayoutAmount() {
+  const runtimeValue = getSystemState('bridge.max_payout_amount');
+  const raw = Number(runtimeValue || process.env.SGC_BRIDGE_MAX_PAYOUT_AMOUNT || DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT;
+}
+
 function authenticateBridge(req) {
+  const bridgeToken = getBridgeToken();
   if (!bridgeToken) return false;
   const token = bearerToken(req);
   return Boolean(token) && token === bridgeToken;
@@ -251,6 +261,9 @@ function normalizeBridgePayoutBody(body) {
 }
 
 async function handleBridgeCompanyPayout(req, res) {
+  const bridgeToken = getBridgeToken();
+  const bridgeTreasuryUserId = getBridgeTreasuryUserId();
+  const bridgeMaxPayoutAmount = getBridgeMaxPayoutAmount();
   if (!bridgeToken) {
     return sendError(res, 503, 'bridge_disabled', 'Bridge payout endpoint is not configured');
   }
