@@ -188,7 +188,7 @@ function enableApp(appId) {
   db().prepare('UPDATE api_apps SET disabled_at = NULL WHERE id = ?').run(appId);
 }
 
-function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, name } = {}) {
+function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, name, canMint } = {}) {
   const app = getApiApp(appId);
   if (!app) throw new Error('App not found');
 
@@ -217,6 +217,10 @@ function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, na
   if (typeof name === 'string' && name.trim()) {
     sets.push('name = ?');
     params.push(name.trim().slice(0, 80));
+  }
+  if (typeof canMint === 'boolean') {
+    sets.push('can_mint = ?');
+    params.push(canMint ? 1 : 0);
   }
   if (!sets.length) return app;
   params.push(appId);

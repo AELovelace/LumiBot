@@ -2197,6 +2197,12 @@ function renderApiAppDetail(appId, flash = null) {
   const keys = listKeysForApp(appId);
   const links = listLinksForApp(appId);
   const oauthClients = listOAuthClientsForApp(appId);
+  const scopeBoxes = VALID_SCOPES.map((s) => `
+    <label style="display:block;margin:2px 0;">
+      <input type="checkbox" name="scope_${escapeHtml(s)}" ${app.scopes.includes(s) ? 'checked' : ''}>
+      <code>${escapeHtml(s)}</code>
+    </label>
+  `).join('');
 
   const keyRows = keys.map((k) => `
     <tr>
@@ -2253,9 +2259,11 @@ function renderApiAppDetail(appId, flash = null) {
     </ul>
 
     <h3>App Settings</h3>
-    <form method="POST" action="${p(`/api-apps/${appId}/update`)}" style="max-width:480px;">
-      <p style="color:#888;">Adjust the per-app API request budget used by LumiBot's public API server.</p>
+    <form method="POST" action="${p(`/api-apps/${appId}/update`)}" style="max-width:640px;">
+      <p style="color:#888;">Adjust API permissions and request budget for this app.</p>
       <p><label>Rate limit (req/min)<br><input type="number" name="rate_limit_per_min" value="${escapeHtml(String(app.rateLimitPerMin || 60))}" min="1" max="100000" required></label></p>
+      <p><label><input type="checkbox" name="can_mint" ${app.canMint ? 'checked' : ''}> Allow minting (required for `/v1/mint`)</label></p>
+      <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
       <p><button type="submit">Save settings</button></p>
     </form>
 
@@ -3297,14 +3305,16 @@ async function handleRequest(req, res) {
         const appId = updateAppMatch[1];
         const body = await parseFormBody(req);
         const rateLimit = Math.max(1, Math.min(100000, Math.floor(Number(body.rate_limit_per_min) || 60)));
+        const scopes = Object.keys(body).filter((k) => k.startsWith('scope_')).map((k) => k.slice(6));
+        const canMint = body.can_mint === 'on' || body.can_mint === '1';
         try {
           const app = getApiApp(appId);
           if (!app) {
             res.end(renderApiAppList({ type: 'error', message: 'App not found.' }));
             return;
           }
-          updateApp(appId, { rateLimitPerMin: rateLimit });
-          res.end(renderApiAppDetail(appId, { type: 'success', message: `Rate limit updated to ${rateLimit}/min.` }));
+          updateApp(appId, { rateLimitPerMin: rateLimit, scopes, canMint });
+          res.end(renderApiAppDetail(appId, { type: 'success', message: `App settings updated. Rate limit ${rateLimit}/min, mint ${canMint ? 'enabled' : 'disabled'}.` }));
         } catch (err) {
           res.end(renderApiAppDetail(appId, { type: 'error', message: err.message }));
         }
