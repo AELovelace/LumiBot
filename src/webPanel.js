@@ -2262,7 +2262,7 @@ function renderApiAppDetail(appId, flash = null) {
     <form method="POST" action="${p(`/api-apps/${appId}/update`)}" style="max-width:640px;">
       <p style="color:#888;">Adjust API permissions and request budget for this app.</p>
       <p><label>Rate limit (req/min)<br><input type="number" name="rate_limit_per_min" value="${escapeHtml(String(app.rateLimitPerMin || 60))}" min="1" max="100000" required></label></p>
-      <p><label><input type="checkbox" name="can_mint" ${app.canMint ? 'checked' : ''}> Allow minting (required for `/v1/mint`)</label></p>
+      <p><label><input type="checkbox" name="can_mint" ${app.canMint ? 'checked' : ''}> Allow minting (required for /v1/mint)</label></p>
       <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
       <p><button type="submit">Save settings</button></p>
     </form>
