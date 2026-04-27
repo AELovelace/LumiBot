@@ -365,6 +365,71 @@ Request:
 
 `403 forbidden` if your app doesn't have `can_mint`.
 
+#### `POST /v1/bridge/company/payout`  *(bridge token; no app scope)*
+
+Move coins from a dedicated bridge treasury account into a **real guild company** (Big Business) selected by stock identifier. This does **not** debit a linked user.
+
+Use this when a Minecraft mod or other game integration should fund a company's account directly by stock ticker or stock id, for example to reward a guild business after an in-game event.
+
+```json
+Request:
+{
+  "stock": "DOGP",
+  "amount": 25,
+  "note": "minecraft quest reward",
+  "idempotency_key": "quest:player123:dogp:reward42"
+}
+
+200 OK
+{
+  "ok": true,
+  "stock": {
+    "id": 7,
+    "ticker": "DOGP",
+    "business_name": "Dogpunk Records Inc",
+    "guild_id": "1170208430460514354"
+  },
+  "company_account": {
+    "user_id": "__BIG_BUSINESS_1170208430460514354__",
+    "balance": 1325
+  },
+  "source_account": {
+    "user_id": "__APP_minecraft_bridge__",
+    "balance": 8474
+  },
+  "amount": 25,
+  "fee": 1
+}
+```
+
+Notes:
+
+- Authenticate this route with `Authorization: Bearer <SGC_BRIDGE_TOKEN>`.
+- `stock` may be either a stock ticker such as `DOGP` or a numeric stock id.
+- Only **real guild companies** are eligible. Synthetic stocks are rejected.
+- Funds come from `SGC_BRIDGE_TREASURY_USER_ID`, not from a linked player.
+- Standard transfer fee rules still apply; the bridge treasury pays `amount + fee`.
+- Idempotency works the same way as the other coin-operation routes, but is keyed internally to the bridge endpoint rather than an API app id.
+
+Errors:
+
+| Status | `error.code` | Meaning |
+|---|---|---|
+| 400 | `bad_request` | Missing/invalid `stock` or `amount`. |
+| 400 | `amount_too_large` | Exceeds `SGC_BRIDGE_MAX_PAYOUT_AMOUNT`. |
+| 400 | `not_a_real_company` | The stock refers to a synthetic listing, not a guild company. |
+| 401 | `unauthorized` | Missing/invalid bridge bearer token. |
+| 402 | `insufficient_funds` | The bridge treasury cannot cover `amount + fee`. |
+| 404 | `stock_not_found` | No stock matched the provided ticker/id. |
+| 503 | `bridge_disabled` | `SGC_BRIDGE_TOKEN` is not configured on the server. |
+| 503 | `bridge_not_funded` | `SGC_BRIDGE_TREASURY_USER_ID` is not configured. |
+
+Bridge configuration:
+
+- `SGC_BRIDGE_TOKEN` — bearer token used by the mod or bridge client.
+- `SGC_BRIDGE_TREASURY_USER_ID` — source account that funds company payouts.
+- `SGC_BRIDGE_MAX_PAYOUT_AMOUNT` — optional per-request cap; defaults to `250000`.
+
 ---
 
 ## 6. Scopes
@@ -528,6 +593,31 @@ def on_buy(buyer_uuid, seller_uuid, item, price):
 
 `external_id` = the same Discord ID, but namespaced by the sister bot. Same flow: user runs `/lumi-link app:SadBot` in Lumi's Discord, gets a code, pastes it in SadBot. SadBot then `POST`s `/v1/charge` on every song-change with `idempotency_key = f"songchange:{guild_id}:{request_id}"`.
 
+### Example D — Minecraft mod pays a guild company by stock ticker
+
+This uses the bridge route, so it does not require a linked player and does not debit user funds. Instead, it pays from the configured bridge treasury into the real company's Big Business account.
+
+```python
+def reward_company(stock_ticker, amount, event_id):
+    idem = f"company-reward:{stock_ticker}:{event_id}"
+    r = http.post(f"{BASE}/v1/bridge/company/payout",
+                  headers={
+                      "Authorization": f"Bearer {BRIDGE_TOKEN}",
+                      "Idempotency-Key": idem,
+                  },
+                  json={
+                      "stock": stock_ticker,
+                      "amount": amount,
+                      "note": "minecraft seasonal objective",
+                  })
+    if r.status_code == 200:
+        company = r.json()["stock"]["business_name"]
+        balance = r.json()["company_account"]["balance"]
+        log.info("paid %s SGC to %s; new company balance=%s", amount, company, balance)
+    else:
+        log.error("company payout failed: %s %s", r.status_code, r.text)
+```
+
 ---
 
 ## 12. Operational checklist for your AI integration
@@ -542,6 +632,7 @@ Before going live:
 - [ ] Tell users clearly that linking grants spending consent until they `/lumi-link revoke` it.
 - [ ] Display per-action SGC costs **before** you charge, not after.
 - [ ] If you ever need to `/credit` users, fund your treasury account first (the bank owner does this with a regular Discord `/lumi-bank send` to your `treasury_user_id`).
+- [ ] If you use `/v1/bridge/company/payout`, fund `SGC_BRIDGE_TREASURY_USER_ID` first and keep `SGC_BRIDGE_TOKEN` in server-side secrets only.
 - [ ] Log `app_id`, `external_id`, `idempotency_key`, and HTTP status on every call (never log the API key or the response body of `/links/codes/redeem` if it might contain a real-world identity).
 
 ---
@@ -562,6 +653,9 @@ A: User funds are unaffected — they live in the user's own SGC account. Only y
 
 **Q: Can I refund a charge?**
 A: Use `POST /v1/credit` with the same `external_id` and `amount`. The audit trail is immutable; refunds appear as a separate transaction. Use a deterministic idempotency key like `refund:<original-idempotency-key>` to keep retries safe.
+
+**Q: Can a game integration pay a guild company like Dogpunk Records Inc directly?**
+A: Yes, via `POST /v1/bridge/company/payout`, using the company's stock ticker or stock id. This is a server-side bridge route funded by `SGC_BRIDGE_TREASURY_USER_ID`; it does not debit a linked user.
 
 **Q: Does `amount` support decimals?**
 A: No — SGC is integer-only. `amount` must be a positive integer ≤ 1,000,000,000.
