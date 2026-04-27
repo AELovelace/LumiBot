@@ -1967,10 +1967,14 @@ function getBridgeConfigView() {
   const token = String(getSystemState('bridge.token') || process.env.SGC_BRIDGE_TOKEN || '').trim();
   const treasuryUserId = String(getSystemState('bridge.treasury_user_id') || process.env.SGC_BRIDGE_TREASURY_USER_ID || '').trim();
   const maxPayoutAmount = String(getSystemState('bridge.max_payout_amount') || process.env.SGC_BRIDGE_MAX_PAYOUT_AMOUNT || '250000').trim();
+  const mode = String(getSystemState('bridge.mode') || process.env.SGC_BRIDGE_MODE || 'treasury').trim().toLowerCase() === 'mint'
+    ? 'mint'
+    : 'treasury';
   return {
     token,
     treasuryUserId,
     maxPayoutAmount,
+    mode,
     tokenPreview: token ? `${token.slice(0, 8)}...${token.slice(-6)}` : '(not configured)',
   };
 }
@@ -1999,6 +2003,12 @@ function renderApiAppList(flash = null) {
       <p style="color:#888;">Controls the runtime bearer token and funding source for <code>/v1/bridge/company/payout</code>.</p>
       <p><label>Bridge bearer token<br><input type="text" name="bridge_token" value="${escapeHtml(bridge.token)}" style="width:100%;font-family:monospace;" placeholder="paste a secret or use regenerate"></label></p>
       <p style="color:#888;">Current token preview: <code>${escapeHtml(bridge.tokenPreview)}</code></p>
+      <p><label>Bridge mode<br>
+        <select name="bridge_mode">
+          <option value="treasury" ${bridge.mode === 'treasury' ? 'selected' : ''}>treasury-backed payout</option>
+          <option value="mint" ${bridge.mode === 'mint' ? 'selected' : ''}>mint to company account</option>
+        </select>
+      </label></p>
       <p><label>Bridge treasury user id<br><input type="text" name="bridge_treasury_user_id" value="${escapeHtml(bridge.treasuryUserId)}" style="width:100%;font-family:monospace;" placeholder="__APP_your_bridge_app__"></label></p>
       <p><label>Bridge max payout amount<br><input type="number" name="bridge_max_payout_amount" value="${escapeHtml(bridge.maxPayoutAmount || '250000')}" min="1" max="1000000000"></label></p>
       <p>
@@ -3239,11 +3249,13 @@ async function handleRequest(req, res) {
           deleteSystemState('bridge.token');
           deleteSystemState('bridge.treasury_user_id');
           deleteSystemState('bridge.max_payout_amount');
+          deleteSystemState('bridge.mode');
           res.end(renderApiAppList({ type: 'success', message: 'Bridge runtime overrides cleared. Env values will be used if present.' }));
           return;
         }
 
         let bridgeToken = String(body.bridge_token || '').trim();
+        const bridgeMode = String(body.bridge_mode || 'treasury').trim().toLowerCase() === 'mint' ? 'mint' : 'treasury';
         const treasuryUserId = String(body.bridge_treasury_user_id || '').trim();
         const maxPayoutAmount = Math.max(1, Math.min(1_000_000_000, Math.floor(Number(body.bridge_max_payout_amount) || 250000)));
 
@@ -3257,7 +3269,7 @@ async function handleRequest(req, res) {
           res.end(renderApiAppList({ type: 'error', message: 'Bridge token is required unless you clear runtime overrides.' }));
           return;
         }
-        if (!treasuryUserId) {
+        if (bridgeMode === 'treasury' && !treasuryUserId) {
           res.end(renderApiAppList({ type: 'error', message: 'Bridge treasury user id is required.' }));
           return;
         }
@@ -3265,10 +3277,11 @@ async function handleRequest(req, res) {
         setSystemState('bridge.token', bridgeToken);
         setSystemState('bridge.treasury_user_id', treasuryUserId);
         setSystemState('bridge.max_payout_amount', String(maxPayoutAmount));
+        setSystemState('bridge.mode', bridgeMode);
 
         const msg = action === 'regenerate_token'
-          ? `Bridge settings saved. New token: ${bridgeToken}`
-          : 'Bridge settings saved.';
+          ? `Bridge settings saved in ${bridgeMode} mode. New token: ${bridgeToken}`
+          : `Bridge settings saved in ${bridgeMode} mode.`;
         res.end(renderApiAppList({ type: 'success', message: msg }));
         return;
       }

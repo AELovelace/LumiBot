@@ -24,7 +24,7 @@ const http = require('node:http');
 const { URL } = require('node:url');
 
 const { logger } = require('./logger');
-const { getBalance, ensureAccount, transferCoins, getSystemState } = require('./sadgirlEconomyStore');
+const { getBalance, ensureAccount, transferCoins, getSystemState, getEconomyDb, CENTRAL_BANK_USER_ID } = require('./sadgirlEconomyStore');
 const { getStockById, getStockByTicker } = require('./privateStockStore');
 const { getBigBusinessUserId } = require('./guildConfig');
 const {
@@ -227,6 +227,11 @@ function getBridgeTreasuryUserId() {
   return String(getSystemState('bridge.treasury_user_id') || process.env.SGC_BRIDGE_TREASURY_USER_ID || '').trim();
 }
 
+function getBridgeMode() {
+  const raw = String(getSystemState('bridge.mode') || process.env.SGC_BRIDGE_MODE || 'treasury').trim().toLowerCase();
+  return raw === 'mint' ? 'mint' : 'treasury';
+}
+
 function getBridgeMaxPayoutAmount() {
   const runtimeValue = getSystemState('bridge.max_payout_amount');
   const raw = Number(runtimeValue || process.env.SGC_BRIDGE_MAX_PAYOUT_AMOUNT || DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT);
@@ -263,6 +268,7 @@ function normalizeBridgePayoutBody(body) {
 async function handleBridgeCompanyPayout(req, res) {
   const bridgeToken = getBridgeToken();
   const bridgeTreasuryUserId = getBridgeTreasuryUserId();
+  const bridgeMode = getBridgeMode();
   const bridgeMaxPayoutAmount = getBridgeMaxPayoutAmount();
   if (!bridgeToken) {
     return sendError(res, 503, 'bridge_disabled', 'Bridge payout endpoint is not configured');
@@ -283,7 +289,7 @@ async function handleBridgeCompanyPayout(req, res) {
   if (payload.amount > bridgeMaxPayoutAmount) {
     return sendError(res, 400, 'amount_too_large', `Amount exceeds configured bridge max of ${bridgeMaxPayoutAmount}`);
   }
-  if (!bridgeTreasuryUserId) {
+  if (bridgeMode === 'treasury' && !bridgeTreasuryUserId) {
     return sendError(res, 503, 'bridge_not_funded', 'Bridge treasury source account is not configured');
   }
 
@@ -307,18 +313,42 @@ async function handleBridgeCompanyPayout(req, res) {
   const companyUserId = getBigBusinessUserId(stock.guild_id);
   ensureAccount(companyUserId, stock.business_name);
 
-  const transfer = transferCoins(
-    bridgeTreasuryUserId,
-    companyUserId,
-    payload.amount,
-    `bridge:${stock.ticker} ${payload.note}`.trim().slice(0, 200),
-  );
-  if (!transfer.success) {
-    return sendError(res, 402, 'insufficient_funds', transfer.error || 'Bridge treasury could not fund payout');
+  let fee = 0;
+  let minted = false;
+  if (bridgeMode === 'mint') {
+    const db = getEconomyDb();
+    const note = `bridge:${stock.ticker} ${payload.note}`.trim().slice(0, 200);
+    const txn = db.transaction(() => {
+      ensureAccount(companyUserId, stock.business_name);
+      db.prepare(
+        "UPDATE accounts SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime('now') WHERE user_id = ?",
+      ).run(payload.amount, payload.amount, companyUserId);
+      db.prepare(
+        "UPDATE accounts SET balance = balance - ?, updated_at = datetime('now') WHERE user_id = ?",
+      ).run(payload.amount, CENTRAL_BANK_USER_ID);
+      db.prepare(`
+        INSERT INTO transactions (from_user_id, to_user_id, amount, fee, type, note)
+        VALUES (?, ?, ?, 0, 'api:mint', ?)
+      `).run(CENTRAL_BANK_USER_ID, companyUserId, payload.amount, note);
+    });
+    txn();
+    minted = true;
+  } else {
+    const transfer = transferCoins(
+      bridgeTreasuryUserId,
+      companyUserId,
+      payload.amount,
+      `bridge:${stock.ticker} ${payload.note}`.trim().slice(0, 200),
+    );
+    if (!transfer.success) {
+      return sendError(res, 402, 'insufficient_funds', transfer.error || 'Bridge treasury could not fund payout');
+    }
+    fee = transfer.fee;
   }
 
   const responseBody = {
     ok: true,
+    mode: bridgeMode,
     stock: {
       id: stock.id,
       ticker: stock.ticker,
@@ -330,11 +360,12 @@ async function handleBridgeCompanyPayout(req, res) {
       balance: getBalance(companyUserId),
     },
     source_account: {
-      user_id: bridgeTreasuryUserId,
-      balance: getBalance(bridgeTreasuryUserId),
+      user_id: bridgeMode === 'mint' ? CENTRAL_BANK_USER_ID : bridgeTreasuryUserId,
+      balance: getBalance(bridgeMode === 'mint' ? CENTRAL_BANK_USER_ID : bridgeTreasuryUserId),
     },
     amount: payload.amount,
-    fee: transfer.fee,
+    fee,
+    minted,
   };
 
   if (idempotencyKey) {
