@@ -2212,6 +2212,13 @@ function renderApiAppDetail(appId, flash = null) {
       <li>Created: ${escapeHtml(app.createdAt)}</li>
     </ul>
 
+    <h3>App Settings</h3>
+    <form method="POST" action="${p(`/api-apps/${appId}/update`)}" style="max-width:480px;">
+      <p style="color:#888;">Adjust the per-app API request budget used by LumiBot's public API server.</p>
+      <p><label>Rate limit (req/min)<br><input type="number" name="rate_limit_per_min" value="${escapeHtml(String(app.rateLimitPerMin || 60))}" min="1" max="100000" required></label></p>
+      <p><button type="submit">Save settings</button></p>
+    </form>
+
     <h3>Keys</h3>
     <form method="POST" action="${p(`/api-apps/${appId}/keys`)}"><button type="submit">+ Issue new key</button></form>
     <table class="data-table"><thead><tr><th>Key ID</th><th>Prefix</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>${keyRows}</tbody></table>
@@ -3197,6 +3204,25 @@ async function handleRequest(req, res) {
       const detailMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)$/u);
       if (detailMatch && method === 'GET') {
         res.end(renderApiAppDetail(detailMatch[1]));
+        return;
+      }
+
+      const updateAppMatch = pathname.match(/^\/api-apps\/([a-z0-9_]+)\/update$/u);
+      if (updateAppMatch && method === 'POST') {
+        const appId = updateAppMatch[1];
+        const body = await parseFormBody(req);
+        const rateLimit = Math.max(1, Math.min(100000, Math.floor(Number(body.rate_limit_per_min) || 60)));
+        try {
+          const app = getApiApp(appId);
+          if (!app) {
+            res.end(renderApiAppList({ type: 'error', message: 'App not found.' }));
+            return;
+          }
+          updateApp(appId, { rateLimitPerMin: rateLimit });
+          res.end(renderApiAppDetail(appId, { type: 'success', message: `Rate limit updated to ${rateLimit}/min.` }));
+        } catch (err) {
+          res.end(renderApiAppDetail(appId, { type: 'error', message: err.message }));
+        }
         return;
       }
 
