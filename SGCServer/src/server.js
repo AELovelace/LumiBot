@@ -19,7 +19,7 @@ const http = require('node:http');
 const { URL } = require('node:url');
 
 const { logger } = require('./logger');
-const { getBalance } = require('./economyStore');
+const { getBalance, getEconomyDb, getSystemState, ensureAccount, transferCoins } = require('./economyStore');
 const {
   lookupApiKey,
   consumeLinkCode,
@@ -44,6 +44,8 @@ let internalServer = null;
 let purgeTimer = null;
 
 const MAX_BODY_BYTES = 16 * 1024;
+const BRIDGE_IDEMPOTENCY_APP_ID = '__bridge_company_payout__';
+const DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT = 250_000;
 const RATE_WINDOW_MS = 60_000;
 const rateBuckets = new Map();
 
@@ -224,6 +226,130 @@ function positiveAmount(value) {
   return n;
 }
 
+function getBridgeToken() {
+  return String(getSystemState('bridge.token') || process.env.SGC_BRIDGE_TOKEN || '').trim();
+}
+
+function getBridgeTreasuryUserId() {
+  return String(getSystemState('bridge.treasury_user_id') || process.env.SGC_BRIDGE_TREASURY_USER_ID || '').trim();
+}
+
+function getBridgeMaxPayoutAmount() {
+  const runtimeValue = getSystemState('bridge.max_payout_amount');
+  const raw = Number(runtimeValue || process.env.SGC_BRIDGE_MAX_PAYOUT_AMOUNT || DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_BRIDGE_MAX_PAYOUT_AMOUNT;
+}
+
+function authenticateBridge(req) {
+  const expected = getBridgeToken();
+  const supplied = bearerToken(req);
+  return Boolean(expected) && Boolean(supplied) && supplied === expected;
+}
+
+function resolveCompanyStock(stockRef) {
+  if (stockRef === undefined || stockRef === null) return null;
+  const raw = String(stockRef).trim();
+  if (!raw) return null;
+  const db = getEconomyDb();
+  if (!db) return null;
+  if (/^\d+$/u.test(raw)) {
+    return db.prepare('SELECT * FROM bb_stocks WHERE id = ?').get(Number(raw)) || null;
+  }
+  return db.prepare('SELECT * FROM bb_stocks WHERE lower(ticker) = lower(?)').get(raw) || null;
+}
+
+function normalizeBridgePayoutBody(body) {
+  const stock = body.stock ?? body.stock_id ?? body.ticker ?? '';
+  return {
+    stock,
+    amount: positiveAmount(body.amount),
+    note: String(body.note || '').trim().slice(0, 160),
+  };
+}
+
+async function handleBridgeCompanyPayout(req, res) {
+  const bridgeToken = getBridgeToken();
+  const bridgeTreasuryUserId = getBridgeTreasuryUserId();
+  const bridgeMaxPayoutAmount = getBridgeMaxPayoutAmount();
+
+  if (!bridgeToken) {
+    return sendError(res, 503, 'bridge_disabled', 'Bridge payout endpoint is not configured');
+  }
+  if (!authenticateBridge(req)) {
+    return sendError(res, 401, 'unauthorized', 'Missing or invalid bridge bearer token');
+  }
+
+  let body;
+  try { body = await readJsonBody(req); }
+  catch (err) { return sendError(res, err.statusCode || 400, 'bad_request', err.message); }
+
+  const payload = normalizeBridgePayoutBody(body);
+  if (!payload.stock || !payload.amount) {
+    return sendError(res, 400, 'bad_request', 'stock and positive integer amount required');
+  }
+  if (payload.amount > bridgeMaxPayoutAmount) {
+    return sendError(res, 400, 'amount_too_large', `Amount exceeds configured bridge max of ${bridgeMaxPayoutAmount}`);
+  }
+  if (!bridgeTreasuryUserId) {
+    return sendError(res, 503, 'bridge_not_funded', 'Bridge treasury source account is not configured');
+  }
+
+  const idempotencyKey = String(req.headers['idempotency-key'] || body.idempotency_key || '').slice(0, 128);
+  if (idempotencyKey) {
+    const cached = getIdempotentResponse(BRIDGE_IDEMPOTENCY_APP_ID, idempotencyKey);
+    if (cached) {
+      res.setHeader('idempotency-replayed', 'true');
+      return sendJson(res, cached.status, cached.body);
+    }
+  }
+
+  const stock = resolveCompanyStock(payload.stock);
+  if (!stock) {
+    return sendError(res, 404, 'stock_not_found', 'Stock identifier did not match a company');
+  }
+  if (stock.entity_type !== 'guild') {
+    return sendError(res, 400, 'not_a_real_company', 'Synthetic stocks cannot receive company payouts');
+  }
+
+  const companyUserId = `__BIG_BUSINESS_${stock.guild_id}__`;
+  ensureAccount(companyUserId, stock.business_name);
+
+  const transfer = transferCoins(
+    bridgeTreasuryUserId,
+    companyUserId,
+    payload.amount,
+    `bridge:${stock.ticker} ${payload.note}`.trim().slice(0, 200),
+  );
+  if (!transfer.success) {
+    return sendError(res, 402, 'insufficient_funds', transfer.error || 'Bridge treasury could not fund payout');
+  }
+
+  const responseBody = {
+    ok: true,
+    stock: {
+      id: stock.id,
+      ticker: stock.ticker,
+      business_name: stock.business_name,
+      guild_id: stock.guild_id,
+    },
+    company_account: {
+      user_id: companyUserId,
+      balance: getBalance(companyUserId),
+    },
+    source_account: {
+      user_id: bridgeTreasuryUserId,
+      balance: getBalance(bridgeTreasuryUserId),
+    },
+    amount: payload.amount,
+    fee: transfer.fee,
+  };
+
+  if (idempotencyKey) {
+    storeIdempotentResponse(BRIDGE_IDEMPOTENCY_APP_ID, idempotencyKey, 200, responseBody);
+  }
+  return sendJson(res, 200, responseBody);
+}
+
 // ---------------------------------------------------------------------------
 // Public route dispatch (API + OAuth)
 // ---------------------------------------------------------------------------
@@ -240,6 +366,10 @@ async function handlePublicRequest(req, res) {
   // Liveness
   if (pathname === '/v1/healthz' && method === 'GET') {
     return sendJson(res, 200, { ok: true, ts: new Date().toISOString(), service: 'SGCServer' });
+  }
+
+  if (pathname === '/v1/bridge/company/payout' && method === 'POST') {
+    return handleBridgeCompanyPayout(req, res);
   }
 
   // ----- OAuth endpoints -----
