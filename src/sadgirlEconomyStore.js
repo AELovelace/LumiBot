@@ -690,10 +690,10 @@ function getTopHolders(limit = 10) {
   return db.prepare(`
     SELECT user_id, username, balance, total_earned
     FROM accounts
-    WHERE user_id != ?
+    WHERE user_id NOT GLOB '__*__'
     ORDER BY balance DESC
     LIMIT ?
-  `).all(CENTRAL_BANK_USER_ID, limit);
+  `).all(limit);
 }
 
 /**
