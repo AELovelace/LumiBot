@@ -37,7 +37,10 @@ let runtimeSettings = {
   interestThreshold: config.chatbotInterestThreshold,
   contextMessages: config.chatbotContextMessages,
   cooldownMs: config.chatbotCooldownMs,
+  conversationWindowMs: config.chatbotConversationWindowMs,
   followupCooldownMs: config.chatbotFollowupCooldownMs,
+  momentumWindowMs: config.chatbotMomentumWindowMs,
+  momentumChanceBoost: config.chatbotMomentumChanceBoost,
   maxResponseChars: config.chatbotMaxResponseChars,
   momentumMaxReplyChance: config.chatbotMomentumMaxReplyChance,
 };
@@ -283,7 +286,16 @@ function reloadSettings() {
     runtimeSettings.interestThreshold = sanitizePositive(getSetting('chatbot.interestThreshold'), runtimeSettings.interestThreshold);
     runtimeSettings.contextMessages = sanitizePositive(getSetting('chatbot.contextMessages'), runtimeSettings.contextMessages);
     runtimeSettings.cooldownMs = sanitizePositive(getSetting('chatbot.cooldownMs'), runtimeSettings.cooldownMs);
+    runtimeSettings.conversationWindowMs = sanitizePositive(
+      getSetting('chatbot.conversationWindowMs'),
+      runtimeSettings.conversationWindowMs,
+    );
     runtimeSettings.followupCooldownMs = sanitizePositive(getSetting('chatbot.followupCooldownMs'), runtimeSettings.followupCooldownMs);
+    runtimeSettings.momentumWindowMs = sanitizePositive(
+      getSetting('chatbot.momentumWindowMs'),
+      runtimeSettings.momentumWindowMs,
+    );
+    runtimeSettings.momentumChanceBoost = sanitizeReplyChance(getSetting('chatbot.momentumChanceBoost'));
     runtimeSettings.maxResponseChars = sanitizePositive(getSetting('chatbot.maxResponseChars'), runtimeSettings.maxResponseChars);
   } catch {
     // Defaults from persisted chatbot runtime state/config remain in effect.

@@ -374,10 +374,18 @@ class VectorMemoryDatabase:
         self.db_path = db_path
         self._lock = threading.RLock()
         self.sqlite_path = os.path.join(os.path.dirname(db_path), 'chatbot-memory.sqlite3')
+        self.chroma_client = None
+        self.vector_backend = 'sqlite-only'
+        self.vector_backend_error = None
         
         # Initialize ChromaDB
         os.makedirs(CHROMA_DB_PATH, exist_ok=True)
-        self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+        try:
+            self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+            self.vector_backend = 'chromadb'
+        except Exception as error:
+            self.vector_backend_error = str(error)
+            log(f'Warning: vector memory backend unavailable, continuing in sqlite-only mode: {error}')
         
         # Initialize embedding model (lazy load)
         self.embedding_model = None
@@ -425,6 +433,11 @@ class VectorMemoryDatabase:
 
     def _get_user_collection(self, user_id):
         """Get or create a ChromaDB collection for a user."""
+        if self.chroma_client is None:
+            raise RuntimeError(
+                'Vector memory backend is unavailable.'
+                + (f' {self.vector_backend_error}' if self.vector_backend_error else '')
+            )
         collection_name = f'memories_{user_id}'.replace('-', '_').replace(' ', '_')
         return self.chroma_client.get_or_create_collection(
             name=collection_name,
@@ -525,6 +538,14 @@ class VectorMemoryDatabase:
         """Add a memory entry to ChromaDB vector database."""
         normalized = normalize_memory_entry_payload(payload)
         user_id = normalized['userId']
+
+        if self.chroma_client is None:
+            return {
+                'userId': user_id,
+                'documentId': None,
+                'timestamp': normalized['timestamp'],
+                'stored': 'disabled',
+            }
         
         try:
             collection = self._get_user_collection(user_id)
@@ -679,6 +700,8 @@ class VectorMemoryDatabase:
 
     def list_user_memory_users(self):
         """List all users with stored memories."""
+        if self.chroma_client is None:
+            return []
         try:
             collections = self.chroma_client.list_collections()
             users = []
@@ -702,6 +725,13 @@ class VectorMemoryDatabase:
             limit_int = max(1, min(limit_int, 1000))
         except (ValueError, TypeError):
             limit_int = 100
+
+        if self.chroma_client is None:
+            return {
+                'userId': user_id,
+                'count': 0,
+                'entries': [],
+            }
         
         try:
             collection = self._get_user_collection(user_id)
@@ -769,6 +799,8 @@ class VectorMemoryDatabase:
         )
 
     def _collect_profile_source_entries(self, user_id):
+        if self.chroma_client is None:
+            return 0, []
         collection = self._get_user_collection(user_id)
         count = collection.count()
         if count <= 0:
@@ -935,20 +967,22 @@ class VectorMemoryDatabase:
         """Reset all memories and state."""
         with self._lock:
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+            chroma_backup = None
             
             # Backup ChromaDB
-            chroma_backup = os.path.join(
-                os.path.dirname(CHROMA_DB_PATH),
-                f'chroma-db_backup_{timestamp}'
-            )
-            if os.path.exists(CHROMA_DB_PATH):
-                shutil.copytree(CHROMA_DB_PATH, chroma_backup)
-                log(f'Backed up ChromaDB to {chroma_backup}')
-                shutil.rmtree(CHROMA_DB_PATH)
-            
-            # Reset ChromaDB
-            os.makedirs(CHROMA_DB_PATH, exist_ok=True)
-            self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+            if self.chroma_client is not None:
+                chroma_backup = os.path.join(
+                    os.path.dirname(CHROMA_DB_PATH),
+                    f'chroma-db_backup_{timestamp}'
+                )
+                if os.path.exists(CHROMA_DB_PATH):
+                    shutil.copytree(CHROMA_DB_PATH, chroma_backup)
+                    log(f'Backed up ChromaDB to {chroma_backup}')
+                    shutil.rmtree(CHROMA_DB_PATH)
+                
+                # Reset ChromaDB
+                os.makedirs(CHROMA_DB_PATH, exist_ok=True)
+                self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
             
             # Reset SQLite
             with self._connect() as connection:
@@ -1055,7 +1089,9 @@ class MemoryRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {
                     'ok': True,
                     'service': SERVICE_NAME,
-                    'backend': 'chromadb',
+                    'backend': self.server.database.vector_backend,
+                    'degraded': self.server.database.chroma_client is None,
+                    'backendError': self.server.database.vector_backend_error,
                     'chromaPath': CHROMA_DB_PATH,
                     'pid': os.getpid(),
                 })

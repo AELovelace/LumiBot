@@ -24,9 +24,6 @@ SERVICE_NAME = 'chatbot-rag-service'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHROMA_DB_PATH = os.path.join(os.path.dirname(BASE_DIR), 'data', 'chroma-db')
 
-# ChromaDB client
-client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-
 
 def log(message):
     print(f'[{SERVICE_NAME}] {message}', flush=True)
@@ -48,11 +45,26 @@ class RAGDatabase:
     
     def __init__(self):
         self._lock = threading.RLock()
+        self.chroma_client = None
+        self.backend = 'degraded'
+        self.backend_error = None
+        os.makedirs(CHROMA_DB_PATH, exist_ok=True)
+        try:
+            self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+            self.backend = 'chromadb'
+        except Exception as error:
+            self.backend_error = str(error)
+            log(f'Warning: RAG backend unavailable, continuing in degraded mode: {error}')
     
     def _get_user_collection(self, user_id):
         """Get or create a ChromaDB collection for a user."""
+        if self.chroma_client is None:
+            raise RuntimeError(
+                'RAG vector backend is unavailable.'
+                + (f' {self.backend_error}' if self.backend_error else '')
+            )
         collection_name = f'memories_{user_id}'.replace('-', '_').replace(' ', '_')
-        return client.get_or_create_collection(
+        return self.chroma_client.get_or_create_collection(
             name=collection_name,
             metadata={'user_id': user_id, 'type': 'user_memories'}
         )
@@ -81,6 +93,13 @@ class RAGDatabase:
             limit = 5
         
         try:
+            if self.chroma_client is None:
+                return {
+                    'context': '',
+                    'retrievedCount': 0,
+                    'error': self.backend_error or 'RAG vector backend unavailable.',
+                    'method': 'disabled',
+                }
             collection = self._get_user_collection(user_id)
             
             # If no query, return recent memories
@@ -196,6 +215,9 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, {
                     'ok': True,
                     'service': SERVICE_NAME,
+                    'backend': self.server.rag_db.backend,
+                    'degraded': self.server.rag_db.chroma_client is None,
+                    'backendError': self.server.rag_db.backend_error,
                     'chromaPath': CHROMA_DB_PATH,
                     'pid': os.getpid(),
                 })
