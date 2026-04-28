@@ -278,10 +278,9 @@ function parseCsvList(value) {
 function reloadSettings() {
   try {
     runtimeSettings.enabled = parseBoolean(getSetting('chatbot.enabled'), runtimeSettings.enabled);
-    const channelIds = parseCsvList(getSetting('chatbot.channelIds'));
-    if (channelIds.length > 0) {
-      runtimeSettings.channelIds = channelIds;
-    }
+    // Runtime panel settings are authoritative for chatbot channel gating.
+    // Do not keep stale env/state channels when the panel value changes.
+    runtimeSettings.channelIds = parseCsvList(getSetting('chatbot.channelIds'));
     runtimeSettings.replyChance = sanitizeReplyChance(getSetting('chatbot.replyChance'));
     runtimeSettings.interestThreshold = sanitizePositive(getSetting('chatbot.interestThreshold'), runtimeSettings.interestThreshold);
     runtimeSettings.contextMessages = sanitizePositive(getSetting('chatbot.contextMessages'), runtimeSettings.contextMessages);
