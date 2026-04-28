@@ -353,7 +353,7 @@ Request:
 
 #### `POST /v1/mint`  *(scope `coins:mint` AND `app.can_mint = true`)*
 
-Create new SGC out of the Central Bank and credit a linked user. **Highly privileged**; logged with type `api:mint`.
+Privileged issuance from the Central Bank reserve to a linked user. This credits the user and debits `__CENTRAL_BANK__` by the same amount. **Highly privileged**; logged with type `api:mint`.
 
 ```json
 Request:
@@ -363,13 +363,28 @@ Request:
 { "ok": true, "amount": 100, "minted": true, "to": {...} }
 ```
 
-`403 forbidden` if your app doesn't have `can_mint`.
+Notes:
+
+- `coins:mint` scope alone is not enough; the app must also have `can_mint = true`.
+- Minting does **not** use your app treasury and does **not** charge a transfer fee.
+- Current implementation is reserve-backed: the Central Bank balance decreases by `amount`.
+
+Errors:
+
+| Status | `error.code` | Meaning |
+|---|---|---|
+| 400 | `bad_request` | Missing/invalid fields. |
+| 403 | `forbidden` / `mint_not_authorized` | App is not allowed to mint. |
+| 404 | `user_not_linked` | No active link for this `external_id`. |
 
 #### `POST /v1/bridge/company/payout`  *(bridge token; no app scope)*
 
-Move coins from a dedicated bridge treasury account into a **real guild company** (Big Business) selected by stock identifier. This does **not** debit a linked user.
+Pay a **real guild company** (Big Business) selected by stock identifier. This does **not** debit a linked user.
 
-Use this when a Minecraft mod or other game integration should fund a company's account directly by stock ticker or stock id, for example to reward a guild business after an in-game event.
+Use this when a Minecraft mod or other game integration should fund a company's account directly by stock ticker or stock id, for example to reward a guild business after an in-game event. The route supports two server-configured modes:
+
+- `treasury` — pay from `SGC_BRIDGE_TREASURY_USER_ID` using normal transfer rules and fees
+- `mint` — issue funds from the Central Bank reserve directly to the company account with `fee = 0`
 
 ```json
 Request:
@@ -383,6 +398,7 @@ Request:
 200 OK
 {
   "ok": true,
+  "mode": "treasury",
   "stock": {
     "id": 7,
     "ticker": "DOGP",
@@ -398,7 +414,8 @@ Request:
     "balance": 8474
   },
   "amount": 25,
-  "fee": 1
+  "fee": 1,
+  "minted": false
 }
 ```
 
@@ -407,8 +424,10 @@ Notes:
 - Authenticate this route with `Authorization: Bearer <SGC_BRIDGE_TOKEN>`.
 - `stock` may be either a stock ticker such as `DOGP` or a numeric stock id.
 - Only **real guild companies** are eligible. Synthetic stocks are rejected.
-- Funds come from `SGC_BRIDGE_TREASURY_USER_ID`, not from a linked player.
-- Standard transfer fee rules still apply; the bridge treasury pays `amount + fee`.
+- `mode` is returned in the response as either `treasury` or `mint`.
+- In `treasury` mode, funds come from `SGC_BRIDGE_TREASURY_USER_ID`, not from a linked player.
+- In `treasury` mode, standard transfer fee rules still apply; the bridge treasury pays `amount + fee`.
+- In `mint` mode, the company is credited directly from the Central Bank reserve and the response returns `"minted": true` and `"fee": 0`.
 - Idempotency works the same way as the other coin-operation routes, but is keyed internally to the bridge endpoint rather than an API app id.
 
 Errors:
@@ -419,15 +438,16 @@ Errors:
 | 400 | `amount_too_large` | Exceeds `SGC_BRIDGE_MAX_PAYOUT_AMOUNT`. |
 | 400 | `not_a_real_company` | The stock refers to a synthetic listing, not a guild company. |
 | 401 | `unauthorized` | Missing/invalid bridge bearer token. |
-| 402 | `insufficient_funds` | The bridge treasury cannot cover `amount + fee`. |
+| 402 | `insufficient_funds` | In `treasury` mode, the bridge treasury cannot cover `amount + fee`. |
 | 404 | `stock_not_found` | No stock matched the provided ticker/id. |
 | 503 | `bridge_disabled` | `SGC_BRIDGE_TOKEN` is not configured on the server. |
-| 503 | `bridge_not_funded` | `SGC_BRIDGE_TREASURY_USER_ID` is not configured. |
+| 503 | `bridge_not_funded` | In `treasury` mode, `SGC_BRIDGE_TREASURY_USER_ID` is not configured. |
 
 Bridge configuration:
 
 - `SGC_BRIDGE_TOKEN` — bearer token used by the mod or bridge client.
-- `SGC_BRIDGE_TREASURY_USER_ID` — source account that funds company payouts.
+- `SGC_BRIDGE_MODE` — `treasury` or `mint`; defaults to `treasury`.
+- `SGC_BRIDGE_TREASURY_USER_ID` — source account that funds company payouts in `treasury` mode.
 - `SGC_BRIDGE_MAX_PAYOUT_AMOUNT` — optional per-request cap; defaults to `250000`.
 
 ---
@@ -595,7 +615,7 @@ def on_buy(buyer_uuid, seller_uuid, item, price):
 
 ### Example D — Minecraft mod pays a guild company by stock ticker
 
-This uses the bridge route, so it does not require a linked player and does not debit user funds. Instead, it pays from the configured bridge treasury into the real company's Big Business account.
+This uses the bridge route, so it does not require a linked player and does not debit user funds. Depending on server configuration, it either pays from the configured bridge treasury or mints from the Central Bank reserve into the real company's Big Business account.
 
 ```python
 def reward_company(stock_ticker, amount, event_id):
@@ -632,7 +652,9 @@ Before going live:
 - [ ] Tell users clearly that linking grants spending consent until they `/lumi-link revoke` it.
 - [ ] Display per-action SGC costs **before** you charge, not after.
 - [ ] If you ever need to `/credit` users, fund your treasury account first (the bank owner does this with a regular Discord `/lumi-bank send` to your `treasury_user_id`).
-- [ ] If you use `/v1/bridge/company/payout`, fund `SGC_BRIDGE_TREASURY_USER_ID` first and keep `SGC_BRIDGE_TOKEN` in server-side secrets only.
+- [ ] If you use `/v1/mint`, verify both `coins:mint` scope and `can_mint = true` on the app before shipping.
+- [ ] If you use `/v1/bridge/company/payout` in `treasury` mode, fund `SGC_BRIDGE_TREASURY_USER_ID` first and keep `SGC_BRIDGE_TOKEN` in server-side secrets only.
+- [ ] If you use `/v1/bridge/company/payout` in `mint` mode, treat it like privileged issuance from the Central Bank reserve.
 - [ ] Log `app_id`, `external_id`, `idempotency_key`, and HTTP status on every call (never log the API key or the response body of `/links/codes/redeem` if it might contain a real-world identity).
 
 ---
@@ -655,7 +677,10 @@ A: User funds are unaffected — they live in the user's own SGC account. Only y
 A: Use `POST /v1/credit` with the same `external_id` and `amount`. The audit trail is immutable; refunds appear as a separate transaction. Use a deterministic idempotency key like `refund:<original-idempotency-key>` to keep retries safe.
 
 **Q: Can a game integration pay a guild company like Dogpunk Records Inc directly?**
-A: Yes, via `POST /v1/bridge/company/payout`, using the company's stock ticker or stock id. This is a server-side bridge route funded by `SGC_BRIDGE_TREASURY_USER_ID`; it does not debit a linked user.
+A: Yes, via `POST /v1/bridge/company/payout`, using the company's stock ticker or stock id. This is a server-side bridge route that does not debit a linked user. Depending on `SGC_BRIDGE_MODE`, it either uses `SGC_BRIDGE_TREASURY_USER_ID` or mints from the Central Bank reserve.
+
+**Q: Does `/v1/mint` create money out of thin air?**
+A: No. Current implementation is reserve-backed: it credits the target account and debits `__CENTRAL_BANK__` by the same amount.
 
 **Q: Does `amount` support decimals?**
 A: No — SGC is integer-only. `amount` must be a positive integer ≤ 1,000,000,000.
