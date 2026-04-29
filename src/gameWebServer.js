@@ -871,10 +871,10 @@ function renderBlackjackLobbyPage(session, lobbyId) {
       <h2>Actions</h2>
       <div id="blackjack-result"></div>
       <div class="stack">
-        <div class="item"><input id="blackjack-ante" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-play" type="button">Join Table</button></div>
-        <div class="item"><input id="blackjack-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-set-bet" type="button">Set Next Bet</button></div>
         <div class="item"><button class="primary" id="blackjack-hit" type="button">Hit</button> <button class="primary" id="blackjack-stay" type="button">Stay</button> <button class="primary" id="blackjack-surrender" type="button">Surrender</button></div>
         <div class="item"><button class="primary" id="blackjack-leave" type="button">Leave Table</button></div>
+        <div class="item"><input id="blackjack-ante" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-play" type="button">Join Table</button></div>
+        <div class="item"><input id="blackjack-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-set-bet" type="button">Set Next Bet</button></div>
       </div>
     </div>
   `, {
@@ -971,11 +971,11 @@ function renderHoldemLobbyPage(session, lobbyId) {
       <h2>Actions</h2>
       <div id="holdem-result"></div>
       <div class="stack">
-        <div class="item"><input id="holdem-ante" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-play" type="button">Join Table</button></div>
-        <div class="item"><input id="holdem-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-set-bet" type="button">Set Ante</button></div>
         <div class="item"><button class="primary" id="holdem-peek-btn" type="button">Peek</button> <button class="primary" id="holdem-check" type="button">Check/Call</button> <button class="primary" id="holdem-fold" type="button">Fold</button></div>
         <div class="item"><input id="holdem-raise-amount" type="number" min="1" step="1" value="1"><button class="primary" id="holdem-raise" type="button">Raise</button></div>
         <div class="item"><button class="primary" id="holdem-leave" type="button">Leave Table</button></div>
+        <div class="item"><input id="holdem-ante" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-play" type="button">Join Table</button></div>
+        <div class="item"><input id="holdem-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-set-bet" type="button">Set Ante</button></div>
       </div>
     </div>
   `, {
