@@ -20,7 +20,7 @@ const CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
 
 /** @type {Map<string, {discordId: string, username: string, avatar: string, roles: string[], isPanelAdmin: boolean, expiresAt: number}>} */
 const sessions = new Map();
-/** @type {Map<string, {expiresAt: number, accessLevel: 'panel'|'member', nextPath: string}>} */
+/** @type {Map<string, {expiresAt: number, accessLevel: 'panel'|'member', nextPath: string, popup: boolean}>} */
 const oauthStates = new Map();
 
 setInterval(() => {
@@ -172,23 +172,23 @@ function destroySession(req) {
   if (token) sessions.delete(token);
 }
 
-function buildSessionCookieHeader(signedToken) {
+function buildSessionCookieHeader(signedToken, opts = {}) {
   const { sessionTtlMs, secureCookies } = getPanelAuthConfig();
   return buildSetCookieHeader(SESSION_COOKIE_NAME, signedToken, {
     maxAgeSeconds: Math.floor(sessionTtlMs / 1000),
-    secure: secureCookies,
+    secure: opts.secure ?? secureCookies,
     httpOnly: true,
-    sameSite: 'Lax',
+    sameSite: opts.sameSite || 'Lax',
   });
 }
 
-function buildClearCookieHeader() {
+function buildClearCookieHeader(opts = {}) {
   const { secureCookies } = getPanelAuthConfig();
   return buildSetCookieHeader(SESSION_COOKIE_NAME, '', {
     maxAgeSeconds: 0,
-    secure: secureCookies,
+    secure: opts.secure ?? secureCookies,
     httpOnly: true,
-    sameSite: 'Lax',
+    sameSite: opts.sameSite || 'Lax',
   });
 }
 
@@ -198,12 +198,13 @@ function normalizeNextPath(nextPath) {
   return raw;
 }
 
-function generateOAuthState({ accessLevel = 'panel', nextPath = '/' } = {}) {
+function generateOAuthState({ accessLevel = 'panel', nextPath = '/', popup = false } = {}) {
   const state = crypto.randomBytes(24).toString('hex');
   oauthStates.set(state, {
     expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
     accessLevel: accessLevel === 'member' ? 'member' : 'panel',
     nextPath: normalizeNextPath(nextPath),
+    popup: Boolean(popup),
   });
   return state;
 }
@@ -310,7 +311,8 @@ function handleLoginRoute(req, res, opts = {}) {
 
   const nextPath = normalizeNextPath(parsedUrl.searchParams.get('next') || '/');
   const accessLevel = parsedUrl.searchParams.get('mode') === 'member' ? 'member' : 'panel';
-  const state = generateOAuthState({ accessLevel, nextPath });
+  const popup = parsedUrl.searchParams.get('popup') === '1';
+  const state = generateOAuthState({ accessLevel, nextPath, popup });
   res.writeHead(302, { Location: buildDiscordAuthorizeUrl(state, cfg) });
   res.end();
 }
@@ -374,8 +376,29 @@ async function handleCallbackRoute(req, res, parsedUrl, opts = {}) {
   });
   logger.info(`[auth] Login successful: ${discordUser.id} (${discordUser.username})`);
 
+  if (stateEntry.popup) {
+    const popupMessageType = opts.popupMessageType || 'auth-complete';
+    const popupTargetOrigin = opts.popupTargetOrigin || '*';
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Set-Cookie': buildSessionCookieHeader(signedToken, opts.cookieOptions),
+    });
+    res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Login Complete</title></head><body>
+<script>
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: ${JSON.stringify(popupMessageType)} }, ${JSON.stringify(popupTargetOrigin)});
+    }
+  } catch {}
+  window.close();
+</script>
+Login complete. You can close this window.
+</body></html>`);
+    return;
+  }
+
   res.writeHead(302, {
-    'Set-Cookie': buildSessionCookieHeader(signedToken),
+    'Set-Cookie': buildSessionCookieHeader(signedToken, opts.cookieOptions),
     Location: stateEntry.nextPath || '/',
   });
   res.end();
@@ -385,7 +408,7 @@ function handleLogoutRoute(req, res, opts = {}) {
   const loginPath = opts.loginPath || `${opts.basePath || ''}/auth/discord/login`;
   destroySession(req);
   res.writeHead(302, {
-    'Set-Cookie': buildClearCookieHeader(),
+    'Set-Cookie': buildClearCookieHeader(opts.cookieOptions),
     Location: loginPath,
   });
   res.end();

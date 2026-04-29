@@ -64,6 +64,14 @@ let WEB_APP_DISCORD_OAUTH_REDIRECT_URI =
   process.env.WEB_APP_DISCORD_OAUTH_REDIRECT_URI?.trim()
   || process.env.DISCORD_OAUTH_REDIRECT_URI?.trim()
   || '';
+const WEB_APP_POSTMESSAGE_TARGET_ORIGIN =
+  process.env.WEB_APP_POSTMESSAGE_TARGET_ORIGIN?.trim() || '*';
+const WEB_APP_SESSION_SAMESITE =
+  process.env.WEB_APP_SESSION_SAMESITE?.trim() || 'None';
+const WEB_APP_SESSION_SECURE =
+  String(process.env.WEB_APP_SESSION_SECURE || '').trim()
+    ? ['1', 'true', 'yes', 'on'].includes(String(process.env.WEB_APP_SESSION_SECURE).trim().toLowerCase())
+    : true;
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -160,7 +168,7 @@ async function readJsonBody(req) {
 }
 
 function renderLoginPage(nextPath = p('/')) {
-  const loginHref = `${p('/auth/discord/login')}?mode=member&next=${encodeURIComponent(nextPath)}`;
+  const loginHref = `${p('/auth/discord/login')}?mode=member&popup=1&next=${encodeURIComponent(nextPath)}`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -222,9 +230,54 @@ function renderLoginPage(nextPath = p('/')) {
   <main class="box">
     <h1>LUMI WEB</h1>
     <p>Sign in with Discord to open your SadGirlCoin wallet, bank history, and receipts.</p>
-    <a class="btn" href="${loginHref}">Sign In With Discord</a>
+    <button class="btn" id="popup-login" type="button">Sign In With Discord</button>
     <div class="meta">Member login uses the same Discord OAuth session system as the control panel.</div>
   </main>
+<script>
+  const loginUrl = ${JSON.stringify(loginHref)};
+  const appRoot = ${JSON.stringify(p('/'))};
+
+  function beginPopupLogin() {
+    const popup = window.open(
+      loginUrl,
+      'lumibot_discord_login',
+      'popup=yes,width=520,height=760,resizable=yes,scrollbars=yes'
+    );
+
+    if (!popup) {
+      window.open(loginUrl, '_blank', 'noopener');
+      return;
+    }
+
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+        if (res.ok) {
+          clearInterval(timer);
+          window.location.href = appRoot;
+        }
+      } catch {}
+      if (popup.closed) {
+        clearInterval(timer);
+      }
+    }, 1000);
+  }
+
+  window.addEventListener('message', async (event) => {
+    if (${JSON.stringify(WEB_APP_POSTMESSAGE_TARGET_ORIGIN)} !== '*' && event.origin !== ${JSON.stringify(WEB_APP_POSTMESSAGE_TARGET_ORIGIN)}) {
+      return;
+    }
+    if (event.data?.type !== 'lumibot-auth-complete') return;
+    try {
+      const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+      if (res.ok) {
+        window.location.href = appRoot;
+      }
+    } catch {}
+  });
+
+  document.getElementById('popup-login').addEventListener('click', beginPopupLogin);
+</script>
 </body>
 </html>`;
 }
@@ -1579,16 +1632,28 @@ async function handleRequest(req, res) {
       basePath: WEB_APP_BASE_PATH,
       loginPath: `${p('/login')}`,
       authConfig: { redirectUri: WEB_APP_DISCORD_OAUTH_REDIRECT_URI },
+      popupMessageType: 'lumibot-auth-complete',
+      popupTargetOrigin: WEB_APP_POSTMESSAGE_TARGET_ORIGIN,
+      cookieOptions: {
+        sameSite: WEB_APP_SESSION_SAMESITE,
+        secure: WEB_APP_SESSION_SECURE,
+      },
     });
     return;
   }
   if (pathname === '/auth/logout' && method === 'POST') {
     const originCheck = validateSameOrigin(req);
-    if (!originCheck.ok) {
-      sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
-      return;
-    }
-      handleLogoutRoute(req, res, { loginPath: `${p('/login')}` });
+      if (!originCheck.ok) {
+        sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+        return;
+      }
+      handleLogoutRoute(req, res, {
+        loginPath: `${p('/login')}`,
+        cookieOptions: {
+          sameSite: WEB_APP_SESSION_SAMESITE,
+          secure: WEB_APP_SESSION_SECURE,
+        },
+      });
       return;
     }
   if (pathname === '/login' && method === 'GET') {
