@@ -145,9 +145,9 @@ function renderLoginPage(nextPath = p('/')) {
     margin: 0;
     min-height: 100vh;
     background:
-      radial-gradient(circle at top left, rgba(255,170,68,0.22), transparent 32%),
-      radial-gradient(circle at bottom right, rgba(255,105,180,0.18), transparent 30%),
-      #0d0a10;
+      radial-gradient(circle at top left, rgba(255,0,0,0.24), transparent 32%),
+      radial-gradient(circle at bottom right, rgba(190,0,0,0.18), transparent 30%),
+      #120607;
     color: #e7deea;
     display: grid;
     place-items: center;
@@ -156,12 +156,12 @@ function renderLoginPage(nextPath = p('/')) {
   .box {
     width: min(460px, calc(100vw - 24px));
     padding: 28px;
-    border: 1px solid #ffaa44;
-    background: rgba(18, 12, 20, 0.96);
+    border: 1px solid #ff0000;
+    background: rgba(24, 8, 10, 0.96);
   }
-  h1 { margin: 0 0 8px; font: 44px 'VT323', monospace; color: #ffaa44; letter-spacing: 2px; }
+  h1 { margin: 0 0 8px; font: 44px 'VT323', monospace; color: #ff0000; letter-spacing: 2px; }
   p { margin: 0 0 18px; color: #b9acbc; }
-  .btn { width: 100%; padding: 14px 16px; background: #5865f2; color: #fff; border: 0; font: 24px 'VT323', monospace; cursor: pointer; }
+  .btn { width: 100%; padding: 14px 16px; background: #ff0000; color: #fff; border: 0; font: 24px 'VT323', monospace; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -223,39 +223,39 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     margin: 0;
     min-height: 100vh;
     background:
-      linear-gradient(180deg, rgba(255,170,68,0.08), transparent 18%),
-      linear-gradient(135deg, #09070d, #17111e 65%, #1a1414);
+      linear-gradient(180deg, rgba(255,0,0,0.12), transparent 18%),
+      linear-gradient(135deg, #0b0506, #1a0b0d 65%, #210709);
     color: #ebe4ef;
     font-family: 'Space Mono', monospace;
   }
   .wrap { width: min(920px, calc(100vw - 18px)); margin: 0 auto; padding: 10px 0 24px; }
   header {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 16px; padding: 16px; border: 1px solid #4b3340; background: rgba(20, 14, 22, 0.95);
+    margin-bottom: 16px; padding: 16px; border: 1px solid #7a1010; background: rgba(24, 8, 10, 0.95);
   }
-  h1 { margin: 0; font: 40px 'VT323', monospace; color: #ffaa44; letter-spacing: 2px; }
+  h1 { margin: 0; font: 40px 'VT323', monospace; color: #ff0000; letter-spacing: 2px; }
   .subtitle { color: #a394a7; font-size: 12px; }
   nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-  nav a { text-decoration: none; padding: 8px 12px; border: 1px solid #5d4655; color: #efe6f0; background: rgba(23, 16, 24, 0.9); }
-  nav a.active { border-color: #ffaa44; color: #ffaa44; }
-  .card { padding: 16px; border: 1px solid #3d2d35; background: rgba(17, 12, 18, 0.94); margin-bottom: 14px; }
+  nav a { text-decoration: none; padding: 8px 12px; border: 1px solid #6f2525; color: #efe6f0; background: rgba(27, 10, 12, 0.9); }
+  nav a.active { border-color: #ff0000; color: #ff0000; }
+  .card { padding: 16px; border: 1px solid #572020; background: rgba(20, 8, 10, 0.94); margin-bottom: 14px; }
   .stack { display: grid; gap: 14px; }
   .slots-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .item { padding: 12px; border: 1px solid #30242b; background: rgba(10, 8, 12, 0.86); }
-  h2 { margin: 0 0 10px; font: 30px 'VT323', monospace; color: #ffaa44; }
+  .item { padding: 12px; border: 1px solid #3d1719; background: rgba(12, 5, 7, 0.86); }
+  h2 { margin: 0 0 10px; font: 30px 'VT323', monospace; color: #ff0000; }
   .metric { font: 28px 'VT323', monospace; color: #fff; }
   .muted { color: #a394a7; font-size: 12px; }
   button.primary, .pill {
-    background: #ffaa44; border: 0; color: #111015; padding: 10px 14px; font: 22px 'VT323', monospace; cursor: pointer;
+    background: #ff0000; border: 0; color: #fff3f3; padding: 10px 14px; font: 22px 'VT323', monospace; cursor: pointer;
   }
   .pill { display: inline-block; text-decoration: none; }
   input, textarea {
-    width: 100%; padding: 10px; margin: 0 0 12px; color: #f6f1f9; background: #120f16; border: 1px solid #4b3340; font: inherit;
+    width: 100%; padding: 10px; margin: 0 0 12px; color: #f6f1f9; background: #16090b; border: 1px solid #7a1010; font: inherit;
   }
-  .flash { padding: 10px 12px; border: 1px solid #5d4655; background: rgba(32, 23, 29, 0.74); color: #f2e9f4; margin-bottom: 12px; }
-  .flash.error { border-color: #ff7f96; color: #ffe1e7; }
-  .flash.success { border-color: #76e0af; color: #e2fff1; }
-  .logout { background: transparent; border: 1px solid #5d4655; color: #efe6f0; padding: 8px 12px; font-family: inherit; cursor: pointer; }
+  .flash { padding: 10px 12px; border: 1px solid #6f2525; background: rgba(42, 12, 16, 0.78); color: #fbeff0; margin-bottom: 12px; }
+  .flash.error { border-color: #ff4d4d; color: #ffe3e3; }
+  .flash.success { border-color: #ff0000; color: #fff0f0; }
+  .logout { background: transparent; border: 1px solid #6f2525; color: #efe6f0; padding: 8px 12px; font-family: inherit; cursor: pointer; }
   @media (max-width: 700px) {
     .wrap { width: calc(100vw - 12px); }
     .slots-grid { grid-template-columns: 1fr; }
