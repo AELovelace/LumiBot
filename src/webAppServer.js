@@ -17,7 +17,26 @@ const {
   getTransferFeeRate,
   isLottoDay,
   searchAccounts,
+  createMarket,
+  getOpenMarkets,
+  getPendingMarkets,
+  getMarket,
+  getMarketOptions,
+  isYesNoMarket,
+  buyStockPosition,
+  getEconomyDb,
 } = require('./sadgirlEconomyStore');
+const {
+  getAllStocks,
+  getStockByTicker,
+  getStockById,
+  getStockSummary,
+  getStockTransactions,
+  getUserPortfolio,
+  getUserHolding,
+  buyShares,
+  sellShares,
+} = require('./privateStockStore');
 const {
   handleLoginRoute,
   handleCallbackRoute,
@@ -213,6 +232,9 @@ function renderPage(title, session, body, {
   const nav = [
     ['/', 'Dashboard'],
     ['/bank', 'Bank'],
+    ['/stocks', 'Stocks'],
+    ['/portfolio', 'Portfolio'],
+    ['/bets', 'Bets'],
     ['/bank/history', 'History'],
     ['/bank/send', 'Send'],
     ['/bank/raffle', 'Raffle'],
@@ -501,11 +523,13 @@ function renderDashboard(session) {
       <div class="card"><h2>Momiji Casino</h2><div class="metric">${wallet.casinoBalance.toLocaleString()}</div><div class="muted">House balance snapshot</div></div>
     </section>
     <div class="panel" style="margin-top:14px;">
-      <div class="card">
-        <h2>Quick Actions</h2>
-        <a class="pill" href="${p('/bank/send')}">Send SGC</a>
-        <a class="pill" href="${p('/bank/raffle')}" style="margin-left:8px;">Buy Raffle Ticket</a>
-      </div>
+        <div class="card">
+          <h2>Quick Actions</h2>
+          <a class="pill" href="${p('/bank/send')}">Send SGC</a>
+          <a class="pill" href="${p('/bank/raffle')}" style="margin-left:8px;">Buy Raffle Ticket</a>
+          <a class="pill" href="${p('/stocks')}" style="margin-left:8px;">Open Stocks</a>
+          <a class="pill" href="${p('/bets')}" style="margin-left:8px;">Open Bets</a>
+        </div>
       <div class="grid">
         <div class="card">
           <h2>Recent Transactions</h2>
@@ -702,6 +726,280 @@ raffleBtn.addEventListener('click', async () => {
   `, { active: '/bank/raffle', pageScripts });
 }
 
+function renderStocksPage(session) {
+  const stocks = buildStockListView();
+  return renderPage('LumiStocks', session, `
+    <div class="card">
+      <h2>Exchange</h2>
+      <p class="muted">Buy and sell with the same stock logic the Discord bot uses.</p>
+      <table>
+        <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th>Move</th><th>Market Cap</th><th>Holders</th></tr></thead>
+        <tbody>
+          ${stocks.map((entry) => `
+            <tr>
+              <td><a href="${p(`/stocks/${entry.ticker}`)}" style="color:#ff69b4;text-decoration:none;"><strong>${escapeHtml(entry.ticker)}</strong></a></td>
+              <td>${escapeHtml(entry.business_name)}</td>
+              <td>${Number(entry.share_price).toFixed(2)} SGC</td>
+              <td>${entry.priceChangePct >= 0 ? '+' : ''}${entry.priceChangePct.toFixed(1)}%</td>
+              <td>${Number(entry.summary?.marketCap || 0).toFixed(0)} SGC</td>
+              <td>${Number(entry.summary?.shareholderCount || 0)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `, { active: '/stocks' });
+}
+
+function renderStockDetailPage(session, ticker) {
+  const detail = buildStockDetailView(ticker, session.discordId);
+  if (!detail) {
+    return renderPage('Stock Not Found', session, `<div class="card"><h2>Not found</h2><p>Unknown ticker.</p></div>`, { active: '/stocks' });
+  }
+
+  const { stock, summary, transactions, viewerHolding } = detail;
+  const pageScripts = `<script>
+const stockActionResult = document.getElementById('stock-action-result');
+async function submitStockAction(path, payload) {
+  stockActionResult.innerHTML = '<div class="flash">Processing...</div>';
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    stockActionResult.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>';
+    return;
+  }
+  stockActionResult.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setTimeout(() => window.location.reload(), 800);
+}
+
+document.getElementById('stock-buy-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitStockAction(${JSON.stringify(p('/api/stocks/buy'))}, {
+    ticker: ${JSON.stringify(stock.ticker)},
+    amountSgc: Number(document.getElementById('buy-amount').value),
+    idempotencyKey: document.getElementById('buy-idempotency-key').value,
+  });
+});
+
+document.getElementById('stock-sell-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitStockAction(${JSON.stringify(p('/api/stocks/sell'))}, {
+    ticker: ${JSON.stringify(stock.ticker)},
+    shares: Number(document.getElementById('sell-shares').value),
+    idempotencyKey: document.getElementById('sell-idempotency-key').value,
+  });
+});
+</script>`;
+
+  return renderPage(`Stock ${stock.ticker}`, session, `
+    <div class="grid">
+      <div class="card">
+        <h2>${escapeHtml(stock.business_name)} (${escapeHtml(stock.ticker)})</h2>
+        <div class="metric">${Number(summary.share_price).toFixed(2)} SGC</div>
+        <div>Market cap: <strong>${Number(summary.marketCap).toFixed(0)} SGC</strong></div>
+        <div>Shareholders: <strong>${Number(summary.shareholderCount)}</strong></div>
+        <div>Dividend rate: <strong>${(Number(summary.dividend_rate) * 100).toFixed(1)}%</strong></div>
+        <div class="muted" style="margin-top:8px;">Sentiment: ${escapeHtml(summary.metrics?.sentiment || 'Stable')} • Revenue growth ${summary.metrics?.revenueGrowthPct >= 0 ? '+' : ''}${Number(summary.metrics?.revenueGrowthPct || 0).toFixed(1)}%</div>
+      </div>
+      <div class="card">
+        <h2>Your Position</h2>
+        <div>${viewerHolding ? `${Number(viewerHolding.shares).toFixed(4)} shares` : 'No position yet.'}</div>
+        <div class="muted">${viewerHolding ? `Total invested: ${Number(viewerHolding.total_invested).toFixed(2)} SGC` : 'Buy to open a position.'}</div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:14px;">
+      <div class="card">
+        <h2>Trade</h2>
+        <div id="stock-action-result"></div>
+        <form id="stock-buy-form">
+          <label>Buy amount (SGC)</label>
+          <input id="buy-amount" type="number" min="1" step="1" required>
+          <input id="buy-idempotency-key" placeholder="Optional buy idempotency key">
+          <button class="primary" type="submit">Buy Shares</button>
+        </form>
+        <hr style="border-color:#23283a;margin:14px 0;">
+        <form id="stock-sell-form">
+          <label>Sell shares</label>
+          <input id="sell-shares" type="number" min="0.01" step="0.01" required>
+          <input id="sell-idempotency-key" placeholder="Optional sell idempotency key">
+          <button class="primary" type="submit">Sell Shares</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Recent Stock Activity</h2>
+        ${renderStockTransactionsTable(transactions)}
+      </div>
+    </div>
+  `, { active: '/stocks', pageScripts });
+}
+
+function renderPortfolioPage(session) {
+  const holdings = getUserPortfolio(session.discordId);
+  return renderPage('Portfolio', session, `
+    <div class="card">
+      <h2>Your Portfolio</h2>
+      ${holdings.length === 0 ? '<p class="muted">No holdings yet.</p>' : `
+        <table>
+          <thead><tr><th>Ticker</th><th>Name</th><th>Shares</th><th>Avg Cost</th><th>Current</th><th>Invested</th><th>Dividends</th></tr></thead>
+          <tbody>
+            ${holdings.map((holding) => `
+              <tr>
+                <td><a href="${p(`/stocks/${holding.ticker}`)}" style="color:#ff69b4;text-decoration:none;">${escapeHtml(holding.ticker)}</a></td>
+                <td>${escapeHtml(holding.business_name)}</td>
+                <td>${Number(holding.shares).toFixed(4)}</td>
+                <td>${Number(holding.avg_cost_basis).toFixed(2)}</td>
+                <td>${Number(holding.share_price).toFixed(2)}</td>
+                <td>${Number(holding.total_invested).toFixed(2)}</td>
+                <td>${Number(holding.total_dividends).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `, { active: '/portfolio' });
+}
+
+function renderBetsPage(session) {
+  const openMarkets = getOpenMarkets();
+  const pendingMarkets = getPendingMarkets();
+  return renderPage('LumiBets', session, `
+    <div class="grid">
+      <div class="card">
+        <h2>Open Markets</h2>
+        ${renderMarketCards(openMarkets, session.discordId)}
+      </div>
+      <div class="card">
+        <h2>Pending Markets</h2>
+        ${renderMarketCards(pendingMarkets, session.discordId)}
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h2>Create Market</h2>
+      <form id="create-market-form">
+        <input id="market-title" placeholder="Market title" required>
+        <textarea id="market-description" placeholder="Description"></textarea>
+        <input id="market-options" placeholder="Optional options, comma-separated. Leave blank for yes/no.">
+        <button class="primary" type="submit">Create Market</button>
+      </form>
+      <div id="create-market-result"></div>
+    </div>
+  `, {
+    active: '/bets',
+    pageScripts: `<script>
+document.getElementById('create-market-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const result = document.getElementById('create-market-result');
+  result.innerHTML = '<div class="flash">Creating...</div>';
+  const res = await fetch(${JSON.stringify(p('/api/bets'))}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      title: document.getElementById('market-title').value,
+      description: document.getElementById('market-description').value,
+      options: document.getElementById('market-options').value,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    return;
+  }
+  result.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setTimeout(() => window.location.href = ${JSON.stringify(p('/bets/'))} + data.marketId, 700);
+});
+</script>`,
+  });
+}
+
+function renderBetDetailPage(session, marketId) {
+  const market = getMarket(Number(marketId));
+  if (!market) {
+    return renderPage('Market Not Found', session, `<div class="card"><h2>Not found</h2><p>Unknown market.</p></div>`, { active: '/bets' });
+  }
+  const view = buildMarketView(market, session.discordId);
+  const pageScripts = `<script>
+document.getElementById('bet-buy-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const result = document.getElementById('bet-buy-result');
+  result.innerHTML = '<div class="flash">Buying position...</div>';
+  const res = await fetch(${JSON.stringify(p(`/api/bets/${market.id}/buy`))}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      side: document.getElementById('bet-side').value,
+      amountSgc: Number(document.getElementById('bet-amount').value),
+      idempotencyKey: document.getElementById('bet-idempotency-key').value,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Buy failed.') + '</div>';
+    return;
+  }
+  result.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setTimeout(() => window.location.reload(), 700);
+});
+</script>`;
+
+  return renderPage(`Bet #${market.id}`, session, `
+    <div class="grid">
+      <div class="card">
+        <h2>#${market.id} ${escapeHtml(market.title)}</h2>
+        <div>${escapeHtml(market.description || '')}</div>
+        <div class="muted" style="margin-top:8px;">Status: ${escapeHtml(market.status)} • Pool: ${Number(market.pool || 0).toLocaleString()} SGC • Stars: ${Number(market.star_count || 0)}</div>
+      </div>
+      <div class="card">
+        <h2>Market Options</h2>
+        ${view.options.map((option) => `
+          <div class="item" style="margin-bottom:8px;">
+            <strong>${escapeHtml(option.name)}</strong><br>
+            ${Number(option.totalAmount).toLocaleString()} SGC across ${option.positionCount} position(s)
+            <div class="muted">${option.sharePct.toFixed(1)}% of staked volume</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="grid" style="margin-top:14px;">
+      <div class="card">
+        <h2>Buy Position</h2>
+        <div id="bet-buy-result"></div>
+        <form id="bet-buy-form">
+          <label>Option</label>
+          <input id="bet-side" placeholder="Option name or number" required>
+          <label>Amount (SGC)</label>
+          <input id="bet-amount" type="number" min="1" step="1" required>
+          <input id="bet-idempotency-key" placeholder="Optional idempotency key">
+          <button class="primary" type="submit">Buy Position</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Your Positions</h2>
+        ${view.viewerPositions.length === 0 ? '<p class="muted">No positions on this market yet.</p>' : `
+          <table>
+            <thead><tr><th>When</th><th>Side</th><th>Amount</th><th>Settled</th><th>Payout</th></tr></thead>
+            <tbody>
+              ${view.viewerPositions.map((position) => `
+                <tr>
+                  <td>${escapeHtml(position.created_at)}</td>
+                  <td>${escapeHtml(position.side)}</td>
+                  <td>${Number(position.amount).toLocaleString()}</td>
+                  <td>${position.settled ? 'Yes' : 'No'}</td>
+                  <td>${Number(position.payout || 0).toLocaleString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+    </div>
+  `, { active: '/bets', pageScripts });
+}
+
 function requireMemberSession(req, res, {
   api = false,
   nextPath = null,
@@ -740,6 +1038,123 @@ function walletPayloadFor(session) {
     },
     leaderboard: summary.leaderboard,
   };
+}
+
+function getMarketPositionStats(marketId) {
+  const db = getEconomyDb();
+  const rows = db.prepare(`
+    SELECT side, COUNT(*) AS position_count, COALESCE(SUM(amount), 0) AS total_amount
+    FROM stock_positions
+    WHERE market_id = ?
+    GROUP BY side
+    ORDER BY total_amount DESC, side ASC
+  `).all(Number(marketId));
+  const totalAmount = rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
+  return {
+    totalAmount,
+    options: rows.map((row) => ({
+      side: row.side,
+      totalAmount: Number(row.total_amount || 0),
+      positionCount: Number(row.position_count || 0),
+      sharePct: totalAmount > 0 ? ((Number(row.total_amount || 0) / totalAmount) * 100) : 0,
+    })),
+  };
+}
+
+function getViewerMarketPositions(userId, marketId) {
+  const db = getEconomyDb();
+  return db.prepare(`
+    SELECT id, side, amount, settled, payout, created_at
+    FROM stock_positions
+    WHERE user_id = ? AND market_id = ?
+    ORDER BY id DESC
+  `).all(String(userId), Number(marketId));
+}
+
+function buildMarketView(market, viewerId = null) {
+  if (!market) return null;
+  const options = getMarketOptions(market);
+  const stats = getMarketPositionStats(market.id);
+  const statsBySide = new Map(stats.options.map((entry) => [entry.side.toLowerCase(), entry]));
+  return {
+    ...market,
+    options: options.map((option) => {
+      const stat = statsBySide.get(String(option).toLowerCase());
+      return {
+        name: option,
+        totalAmount: stat?.totalAmount || 0,
+        positionCount: stat?.positionCount || 0,
+        sharePct: stat?.sharePct || 0,
+      };
+    }),
+    isYesNo: isYesNoMarket(market),
+    viewerPositions: viewerId ? getViewerMarketPositions(viewerId, market.id) : [],
+  };
+}
+
+function buildStockListView() {
+  return getAllStocks().map((stock) => {
+    const summary = getStockSummary(stock.id);
+    const priceChangePct = summary && Number(summary.initial_price) > 0
+      ? (((Number(summary.share_price) - Number(summary.initial_price)) / Number(summary.initial_price)) * 100)
+      : 0;
+    return {
+      ...stock,
+      summary,
+      priceChangePct,
+    };
+  });
+}
+
+function buildStockDetailView(stockRef, userId = null) {
+  const stock = typeof stockRef === 'object' && stockRef
+    ? stockRef
+    : (/^\d+$/u.test(String(stockRef || '')) ? getStockById(Number(stockRef)) : getStockByTicker(String(stockRef || '')));
+  if (!stock) return null;
+  const summary = getStockSummary(stock.id);
+  const transactions = getStockTransactions(stock.id, 20);
+  const viewerHolding = userId ? getUserHolding(userId, stock.id) : null;
+  return {
+    stock,
+    summary,
+    transactions,
+    viewerHolding,
+  };
+}
+
+function renderStockTransactionsTable(transactions) {
+  if (!transactions.length) return '<p class="muted">No stock transactions yet.</p>';
+  return `<table>
+    <thead><tr><th>When</th><th>Type</th><th>Shares</th><th>Price</th><th>Total</th><th>Note</th></tr></thead>
+    <tbody>
+      ${transactions.map((txn) => `
+        <tr>
+          <td>${escapeHtml(txn.created_at)}</td>
+          <td>${escapeHtml(txn.type)}</td>
+          <td>${Number(txn.shares || 0).toFixed(4)}</td>
+          <td>${Number(txn.price_per_share || 0).toFixed(2)}</td>
+          <td>${Number(txn.total_amount || 0).toFixed(2)}</td>
+          <td>${escapeHtml(txn.note || '')}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>`;
+}
+
+function renderMarketCards(markets, viewerId) {
+  if (!markets.length) return '<p class="muted">No markets here yet.</p>';
+  return `<div class="list">${markets.map((market) => {
+    const view = buildMarketView(market, viewerId);
+    const optionLines = view.options.map((option) =>
+      `<div>${escapeHtml(option.name)}: <strong>${Number(option.totalAmount).toLocaleString()} SGC</strong> <span class="muted">(${option.sharePct.toFixed(1)}%)</span></div>`
+    ).join('');
+    return `<div class="item">
+      <div><strong><a href="${p(`/bets/${market.id}`)}" style="color:#ff69b4;text-decoration:none;">#${market.id} ${escapeHtml(market.title)}</a></strong></div>
+      <div>${escapeHtml(market.description || '')}</div>
+      <div class="muted">Status: ${escapeHtml(market.status)} • Pool: ${Number(market.pool || 0).toLocaleString()} SGC</div>
+      <div style="margin-top:8px;">${optionLines}</div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 async function handleRequest(req, res) {
@@ -860,6 +1275,215 @@ async function handleRequest(req, res) {
         balance: row.balance,
       }));
     sendJson(res, 200, { results });
+    return;
+  }
+
+  if (pathname === '/api/stocks' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, {
+      stocks: buildStockListView(),
+      portfolio: getUserPortfolio(session.discordId),
+    });
+    return;
+  }
+
+  const stockDetailApiMatch = pathname.match(/^\/api\/stocks\/([^/]+)$/u);
+  if (stockDetailApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const detail = buildStockDetailView(decodeURIComponent(stockDetailApiMatch[1]), session.discordId);
+    if (!detail) return sendError(res, 404, 'not_found', 'Stock not found');
+    sendJson(res, 200, detail);
+    return;
+  }
+
+  if (pathname === '/api/stocks/buy' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    let body;
+    try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
+    const ticker = String(body.ticker || '').trim().toUpperCase();
+    const amountSgc = Number(body.amountSgc);
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 160);
+    if (!ticker) return sendError(res, 400, 'bad_request', 'ticker is required');
+    if (!Number.isFinite(amountSgc) || amountSgc <= 0 || Math.floor(amountSgc) !== amountSgc) {
+      return sendError(res, 400, 'bad_request', 'amountSgc must be a positive integer');
+    }
+    const existingReceipt = getActionReceiptByKey(session.discordId, 'stocks.buy', idempotencyKey);
+    if (existingReceipt) {
+      return sendJson(res, 200, { ok: true, replayed: true, message: existingReceipt.summary, receipt: existingReceipt });
+    }
+    const stock = getStockByTicker(ticker);
+    if (!stock) return sendError(res, 404, 'not_found', 'Stock not found');
+    const result = buyShares(session.discordId, session.username, stock.id, amountSgc);
+    if (!result.success) return sendError(res, 400, 'buy_failed', result.error);
+    const summary = `Bought ${result.shares.toFixed(4)} shares of ${ticker} for ${amountSgc.toLocaleString()} SGC.`;
+    const receipt = createActionReceipt(session.discordId, {
+      actionType: 'stocks.buy',
+      idempotencyKey,
+      summary,
+      payload: { ticker, amountSgc, shares: result.shares, newPrice: result.newPrice },
+    });
+    createNotification(session.discordId, {
+      kind: 'stocks',
+      title: `Bought ${ticker}`,
+      body: summary,
+      link: p(`/stocks/${ticker}`),
+    });
+    sendJson(res, 200, {
+      ok: true,
+      message: summary,
+      balance: getBalance(session.discordId),
+      receipt,
+      result,
+    });
+    return;
+  }
+
+  if (pathname === '/api/stocks/sell' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    let body;
+    try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
+    const ticker = String(body.ticker || '').trim().toUpperCase();
+    const shares = Number(body.shares);
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 160);
+    if (!ticker) return sendError(res, 400, 'bad_request', 'ticker is required');
+    if (!Number.isFinite(shares) || shares <= 0) {
+      return sendError(res, 400, 'bad_request', 'shares must be a positive number');
+    }
+    const existingReceipt = getActionReceiptByKey(session.discordId, 'stocks.sell', idempotencyKey);
+    if (existingReceipt) {
+      return sendJson(res, 200, { ok: true, replayed: true, message: existingReceipt.summary, receipt: existingReceipt });
+    }
+    const stock = getStockByTicker(ticker);
+    if (!stock) return sendError(res, 404, 'not_found', 'Stock not found');
+    const result = sellShares(session.discordId, session.username, stock.id, shares);
+    if (!result.success) return sendError(res, 400, 'sell_failed', result.error);
+    const summary = `Sold ${Number(shares).toFixed(4)} shares of ${ticker} for ${Number(result.proceeds).toLocaleString()} SGC.`;
+    const receipt = createActionReceipt(session.discordId, {
+      actionType: 'stocks.sell',
+      idempotencyKey,
+      summary,
+      payload: { ticker, shares, proceeds: result.proceeds, newPrice: result.newPrice },
+    });
+    createNotification(session.discordId, {
+      kind: 'stocks',
+      title: `Sold ${ticker}`,
+      body: summary,
+      link: p(`/stocks/${ticker}`),
+    });
+    sendJson(res, 200, {
+      ok: true,
+      message: summary,
+      balance: getBalance(session.discordId),
+      receipt,
+      result,
+    });
+    return;
+  }
+
+  if (pathname === '/api/bets/open' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, {
+      open: getOpenMarkets().map((market) => buildMarketView(market, session.discordId)),
+      pending: getPendingMarkets().map((market) => buildMarketView(market, session.discordId)),
+    });
+    return;
+  }
+
+  const betDetailApiMatch = pathname.match(/^\/api\/bets\/(\d+)$/u);
+  if (betDetailApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const market = getMarket(Number(betDetailApiMatch[1]));
+    if (!market) return sendError(res, 404, 'not_found', 'Market not found');
+    sendJson(res, 200, { market: buildMarketView(market, session.discordId) });
+    return;
+  }
+
+  if (pathname === '/api/bets' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    let body;
+    try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
+    const title = String(body.title || '').trim();
+    const description = String(body.description || '').trim();
+    const options = String(body.options || '').trim() || null;
+    if (!title) return sendError(res, 400, 'bad_request', 'title is required');
+    const result = createMarket(session.discordId, title, description, options, { adminAutoLive: false, guildId: '' });
+    if (!result.success) return sendError(res, 400, 'create_failed', result.error);
+    const summary = `Created market #${result.marketId}: ${title}`;
+    const receipt = createActionReceipt(session.discordId, {
+      actionType: 'bets.create',
+      summary,
+      payload: { marketId: result.marketId, title, options: result.options },
+    });
+    createNotification(session.discordId, {
+      kind: 'bets',
+      title: 'Market created',
+      body: summary,
+      link: p(`/bets/${result.marketId}`),
+    });
+    sendJson(res, 200, {
+      ok: true,
+      marketId: result.marketId,
+      message: summary,
+      receipt,
+    });
+    return;
+  }
+
+  const betBuyApiMatch = pathname.match(/^\/api\/bets\/(\d+)\/buy$/u);
+  if (betBuyApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    let body;
+    try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
+    const marketId = Number(betBuyApiMatch[1]);
+    const side = String(body.side || '').trim();
+    const amountSgc = Number(body.amountSgc);
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 160);
+    if (!side) return sendError(res, 400, 'bad_request', 'side is required');
+    if (!Number.isFinite(amountSgc) || amountSgc <= 0 || Math.floor(amountSgc) !== amountSgc) {
+      return sendError(res, 400, 'bad_request', 'amountSgc must be a positive integer');
+    }
+    const existingReceipt = getActionReceiptByKey(session.discordId, 'bets.buy', idempotencyKey);
+    if (existingReceipt) {
+      return sendJson(res, 200, { ok: true, replayed: true, message: existingReceipt.summary, receipt: existingReceipt });
+    }
+    const result = buyStockPosition(session.discordId, session.username, marketId, side, amountSgc);
+    if (!result.success) return sendError(res, 400, 'buy_failed', result.error);
+    const market = getMarket(marketId);
+    const summary = `Bought ${amountSgc.toLocaleString()} SGC on ${result.matchedSide || side} for market #${marketId}.`;
+    const receipt = createActionReceipt(session.discordId, {
+      actionType: 'bets.buy',
+      idempotencyKey,
+      summary,
+      payload: { marketId, title: market?.title || '', side: result.matchedSide || side, amountSgc },
+    });
+    createNotification(session.discordId, {
+      kind: 'bets',
+      title: `Bought market position #${marketId}`,
+      body: summary,
+      link: p(`/bets/${marketId}`),
+    });
+    sendJson(res, 200, {
+      ok: true,
+      message: summary,
+      balance: getBalance(session.discordId),
+      receipt,
+    });
     return;
   }
 
@@ -1027,6 +1651,43 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { nextPath: p('/bank/raffle') });
     if (!session) return;
     sendHtml(res, 200, renderRafflePage(session));
+    return;
+  }
+
+  if (pathname === '/stocks' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/stocks') });
+    if (!session) return;
+    sendHtml(res, 200, renderStocksPage(session));
+    return;
+  }
+
+  const stockPageMatch = pathname.match(/^\/stocks\/([^/]+)$/u);
+  if (stockPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/stocks/${decodeURIComponent(stockPageMatch[1])}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderStockDetailPage(session, decodeURIComponent(stockPageMatch[1])));
+    return;
+  }
+
+  if (pathname === '/portfolio' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/portfolio') });
+    if (!session) return;
+    sendHtml(res, 200, renderPortfolioPage(session));
+    return;
+  }
+
+  if (pathname === '/bets' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/bets') });
+    if (!session) return;
+    sendHtml(res, 200, renderBetsPage(session));
+    return;
+  }
+
+  const betPageMatch = pathname.match(/^\/bets\/(\d+)$/u);
+  if (betPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/bets/${betPageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderBetDetailPage(session, betPageMatch[1]));
     return;
   }
 
