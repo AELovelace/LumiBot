@@ -292,7 +292,6 @@ function renderPage(title, session, body, {
     ['/stocks', 'Stocks'],
     ['/portfolio', 'Portfolio'],
     ['/bets', 'Bets'],
-    ['/casino/slots', 'Slots'],
     ['/bank/history', 'History'],
     ['/bank/send', 'Send'],
     ['/bank/raffle', 'Raffle'],
@@ -588,7 +587,6 @@ function renderDashboard(session) {
         <a class="pill" href="${p('/bank/raffle')}" style="margin-left:8px;">Buy Raffle Ticket</a>
         <a class="pill" href="${p('/stocks')}" style="margin-left:8px;">Open Stocks</a>
         <a class="pill" href="${p('/bets')}" style="margin-left:8px;">Open Bets</a>
-        <a class="pill" href="${p('/casino/slots')}" style="margin-left:8px;">Open Slots</a>
       </div>
       <div class="card">
         <h2>Recent Transactions</h2>

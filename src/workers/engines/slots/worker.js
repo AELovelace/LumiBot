@@ -309,3 +309,23 @@ registerCommand('getLobby', async ({ channelId } = {}) => {
   if (!lobby) return { ok: false, exists: false };
   return { ok: true, exists: true, ...buildLobbyPayload(lobby) };
 });
+
+registerCommand('listLobbies', async () => ({
+  ok: true,
+  lobbies: [...lobbies.values()].map((lobby) => {
+    const players = [...lobby.players.values()];
+    return {
+      channelId: lobby.channelId,
+      playerCount: players.length,
+      maxPlayers: settings.maxPlayers,
+      lastEvent: lobby.lastEvent || 'Pick a bet, then pull the lever.',
+      players: players.map((player) => ({
+        userId: player.userId,
+        username: player.username,
+        bet: player.bet,
+        spinning: player.spinning,
+        statusText: player.statusText,
+      })),
+    };
+  }),
+}));

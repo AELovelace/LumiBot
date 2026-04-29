@@ -1,0 +1,895 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const http = require('node:http');
+const { URL } = require('node:url');
+
+const { logger } = require('./logger');
+const { ensureAccount } = require('./sadgirlEconomyStore');
+const { manager } = require('./workers/workerManager');
+const {
+  handleLoginRoute,
+  handleCallbackRoute,
+  handleLogoutRoute,
+  requireUserAuth,
+  validateSameOrigin,
+} = require('./webPanelAuth');
+
+let GAME_WEB_PORT = Number(process.env.GAME_WEB_PORT) || 7172;
+let GAME_WEB_HOST = process.env.GAME_WEB_HOST || '0.0.0.0';
+const GAME_WEB_BASE_PATH = (process.env.GAME_WEB_BASE_PATH || '/games').replace(/\/+$/u, '');
+let GAME_WEB_DISCORD_OAUTH_REDIRECT_URI =
+  process.env.GAME_WEB_DISCORD_OAUTH_REDIRECT_URI?.trim()
+  || process.env.WEB_APP_DISCORD_OAUTH_REDIRECT_URI?.trim()
+  || process.env.DISCORD_OAUTH_REDIRECT_URI?.trim()
+  || '';
+const GAME_WEB_POSTMESSAGE_TARGET_ORIGIN =
+  process.env.GAME_WEB_POSTMESSAGE_TARGET_ORIGIN?.trim()
+  || process.env.WEB_APP_POSTMESSAGE_TARGET_ORIGIN?.trim()
+  || '*';
+const GAME_WEB_SESSION_SAMESITE =
+  process.env.GAME_WEB_SESSION_SAMESITE?.trim()
+  || process.env.WEB_APP_SESSION_SAMESITE?.trim()
+  || 'None';
+const GAME_WEB_SESSION_SECURE =
+  String(process.env.GAME_WEB_SESSION_SECURE || process.env.WEB_APP_SESSION_SECURE || '').trim()
+    ? ['1', 'true', 'yes', 'on'].includes(String(process.env.GAME_WEB_SESSION_SECURE || process.env.WEB_APP_SESSION_SECURE).trim().toLowerCase())
+    : true;
+
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'permissions-policy': 'interest-cohort=(), browsing-topics=()',
+  'cache-control': 'no-store',
+};
+
+let server = null;
+let wsListenerInstalled = false;
+const wsClients = new Set();
+const wsSubscriptions = new Map();
+
+function p(path) {
+  return `${GAME_WEB_BASE_PATH}${path}`;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
+}
+
+function applySecurityHeaders(res) {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    res.setHeader(key, value);
+  }
+}
+
+function sendHtml(res, status, html) {
+  if (res.headersSent || res.writableEnded) return;
+  applySecurityHeaders(res);
+  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
+  res.end(html);
+}
+
+function sendJson(res, status, body) {
+  if (res.headersSent || res.writableEnded) return;
+  applySecurityHeaders(res);
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(body));
+}
+
+function sendError(res, status, code, message) {
+  sendJson(res, status, { error: { code, message } });
+}
+
+function parseUrl(req) {
+  const host = req.headers['x-forwarded-host']?.split(',')[0].trim() || req.headers.host || 'localhost';
+  const proto = req.headers['x-forwarded-proto'] || 'http';
+  return new URL(req.url, `${proto}://${host}`);
+}
+
+function routePath(pathname) {
+  if (!GAME_WEB_BASE_PATH) return pathname;
+  if (pathname === GAME_WEB_BASE_PATH) return '/';
+  if (pathname.startsWith(`${GAME_WEB_BASE_PATH}/`)) return pathname.slice(GAME_WEB_BASE_PATH.length);
+  return null;
+}
+
+function readBody(req, maxBytes = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        reject(new Error('payload_too_large'));
+        try { req.destroy(); } catch { /* ignore */ }
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+async function readJsonBody(req) {
+  const raw = await readBody(req);
+  if (!raw.trim()) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('invalid_json');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('body_not_object');
+  }
+  return parsed;
+}
+
+function renderLoginPage(nextPath = p('/')) {
+  const loginHref = `${p('/auth/discord/login')}?mode=member&popup=1&next=${encodeURIComponent(nextPath)}`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumi Games Login</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Space+Mono:wght@400;700&display=swap');
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top left, rgba(255,170,68,0.22), transparent 32%),
+      radial-gradient(circle at bottom right, rgba(255,105,180,0.18), transparent 30%),
+      #0d0a10;
+    color: #e7deea;
+    display: grid;
+    place-items: center;
+    font-family: 'Space Mono', monospace;
+  }
+  .box {
+    width: min(460px, calc(100vw - 24px));
+    padding: 28px;
+    border: 1px solid #ffaa44;
+    background: rgba(18, 12, 20, 0.96);
+  }
+  h1 { margin: 0 0 8px; font: 44px 'VT323', monospace; color: #ffaa44; letter-spacing: 2px; }
+  p { margin: 0 0 18px; color: #b9acbc; }
+  .btn { width: 100%; padding: 14px 16px; background: #5865f2; color: #fff; border: 0; font: 24px 'VT323', monospace; cursor: pointer; }
+</style>
+</head>
+<body>
+  <main class="box">
+    <h1>LUMI GAMES</h1>
+    <p>Sign in with Discord to play the casino games in a dedicated interface.</p>
+    <button class="btn" id="popup-login" type="button">Sign In With Discord</button>
+  </main>
+<script>
+  const loginUrl = ${JSON.stringify(loginHref)};
+  const appRoot = ${JSON.stringify(p('/'))};
+  function beginPopupLogin() {
+    const popup = window.open(loginUrl, 'lumigames_discord_login', 'popup=yes,width=520,height=760,resizable=yes,scrollbars=yes');
+    if (!popup) {
+      window.open(loginUrl, '_blank', 'noopener');
+      return;
+    }
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+        if (res.ok) {
+          clearInterval(timer);
+          window.location.href = appRoot;
+        }
+      } catch {}
+      if (popup.closed) clearInterval(timer);
+    }, 1000);
+  }
+  window.addEventListener('message', async (event) => {
+    if (${JSON.stringify(GAME_WEB_POSTMESSAGE_TARGET_ORIGIN)} !== '*' && event.origin !== ${JSON.stringify(GAME_WEB_POSTMESSAGE_TARGET_ORIGIN)}) return;
+    if (event.data?.type !== 'lumigames-auth-complete') return;
+    try {
+      const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+      if (res.ok) window.location.href = appRoot;
+    } catch {}
+  });
+  document.getElementById('popup-login').addEventListener('click', beginPopupLogin);
+</script>
+</body>
+</html>`;
+}
+
+function renderPage(title, session, body, { active = '', pageScripts = '' } = {}) {
+  const nav = [
+    ['/', 'Lobby'],
+    ['/slots', 'Slots'],
+  ].map(([href, label]) => `<a class="${active === href ? 'active' : ''}" href="${p(href)}">${label}</a>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Space+Mono:wght@400;700&display=swap');
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      linear-gradient(180deg, rgba(255,170,68,0.08), transparent 18%),
+      linear-gradient(135deg, #09070d, #17111e 65%, #1a1414);
+    color: #ebe4ef;
+    font-family: 'Space Mono', monospace;
+  }
+  .wrap { width: min(920px, calc(100vw - 18px)); margin: 0 auto; padding: 10px 0 24px; }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 16px; padding: 16px; border: 1px solid #4b3340; background: rgba(20, 14, 22, 0.95);
+  }
+  h1 { margin: 0; font: 40px 'VT323', monospace; color: #ffaa44; letter-spacing: 2px; }
+  .subtitle { color: #a394a7; font-size: 12px; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  nav a { text-decoration: none; padding: 8px 12px; border: 1px solid #5d4655; color: #efe6f0; background: rgba(23, 16, 24, 0.9); }
+  nav a.active { border-color: #ffaa44; color: #ffaa44; }
+  .card { padding: 16px; border: 1px solid #3d2d35; background: rgba(17, 12, 18, 0.94); margin-bottom: 14px; }
+  .stack { display: grid; gap: 14px; }
+  .slots-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .item { padding: 12px; border: 1px solid #30242b; background: rgba(10, 8, 12, 0.86); }
+  h2 { margin: 0 0 10px; font: 30px 'VT323', monospace; color: #ffaa44; }
+  .metric { font: 28px 'VT323', monospace; color: #fff; }
+  .muted { color: #a394a7; font-size: 12px; }
+  button.primary, .pill {
+    background: #ffaa44; border: 0; color: #111015; padding: 10px 14px; font: 22px 'VT323', monospace; cursor: pointer;
+  }
+  .pill { display: inline-block; text-decoration: none; }
+  input, textarea {
+    width: 100%; padding: 10px; margin: 0 0 12px; color: #f6f1f9; background: #120f16; border: 1px solid #4b3340; font: inherit;
+  }
+  .flash { padding: 10px 12px; border: 1px solid #5d4655; background: rgba(32, 23, 29, 0.74); color: #f2e9f4; margin-bottom: 12px; }
+  .flash.error { border-color: #ff7f96; color: #ffe1e7; }
+  .flash.success { border-color: #76e0af; color: #e2fff1; }
+  .logout { background: transparent; border: 1px solid #5d4655; color: #efe6f0; padding: 8px 12px; font-family: inherit; cursor: pointer; }
+  @media (max-width: 700px) {
+    .wrap { width: calc(100vw - 12px); }
+    .slots-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>LUMI GAMES</h1>
+        <div class="subtitle">Dedicated casino interface</div>
+      </div>
+      <div>
+        <div>${escapeHtml(session.username)}</div>
+        <form method="POST" action="${p('/auth/logout')}"><button class="logout" type="submit">Logout</button></form>
+      </div>
+    </header>
+    <nav>${nav}</nav>
+    ${body}
+  </div>
+  ${pageScripts}
+</body>
+</html>`;
+}
+
+function generateLobbyId(prefix = 'slots') {
+  return `${prefix}-${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function getWebSlotsChannelId(lobbyId) {
+  return `games:web:slots:${String(lobbyId)}`;
+}
+
+function serializeSlotsPayload(payload) {
+  if (!payload || !payload.embed) return null;
+  return {
+    channelId: payload.channelId,
+    title: payload.embed.title || 'Slots Lobby',
+    description: payload.embed.description || '',
+    footer: payload.embed.footer || '',
+    players: Array.isArray(payload.embed.fields) ? payload.embed.fields.map((field) => ({
+      name: field.name,
+      value: field.value,
+    })) : [],
+  };
+}
+
+function parseLobbyIdFromChannelId(channelId) {
+  return String(channelId || '').replace(/^games:web:slots:/u, '');
+}
+
+function serializeSlotsLobbyList(result) {
+  if (!result || !Array.isArray(result.lobbies)) return [];
+  return result.lobbies.map((lobby) => ({
+    lobbyId: parseLobbyIdFromChannelId(lobby.channelId),
+    channelId: lobby.channelId,
+    playerCount: Number(lobby.playerCount) || 0,
+    maxPlayers: Number(lobby.maxPlayers) || 0,
+    lastEvent: lobby.lastEvent || 'Pick a bet, then pull the lever.',
+    players: Array.isArray(lobby.players) ? lobby.players.map((player) => ({
+      username: player.username,
+      bet: player.bet,
+      spinning: Boolean(player.spinning),
+      statusText: player.statusText || '',
+    })) : [],
+  }));
+}
+
+function buildWsFrame(data) {
+  const payload = Buffer.from(data, 'utf8');
+  const length = payload.length;
+  if (length < 126) return Buffer.concat([Buffer.from([0x81, length]), payload]);
+  if (length < 65536) {
+    const header = Buffer.alloc(4);
+    header[0] = 0x81; header[1] = 126; header.writeUInt16BE(length, 2);
+    return Buffer.concat([header, payload]);
+  }
+  const header = Buffer.alloc(10);
+  header[0] = 0x81; header[1] = 127; header.writeUInt32BE(0, 2); header.writeUInt32BE(length, 6);
+  return Buffer.concat([header, payload]);
+}
+
+function parseWsFrames(buffer) {
+  const messages = [];
+  let offset = 0;
+  while (offset + 2 <= buffer.length) {
+    const firstByte = buffer[offset];
+    const secondByte = buffer[offset + 1];
+    const opcode = firstByte & 0x0f;
+    const masked = (secondByte & 0x80) !== 0;
+    let payloadLength = secondByte & 0x7f;
+    let headerLength = 2;
+    if (payloadLength === 126) {
+      if (offset + 4 > buffer.length) break;
+      payloadLength = buffer.readUInt16BE(offset + 2);
+      headerLength = 4;
+    } else if (payloadLength === 127) {
+      if (offset + 10 > buffer.length) break;
+      const high = buffer.readUInt32BE(offset + 2);
+      if (high !== 0) throw new Error('Large websocket frames are not supported');
+      payloadLength = buffer.readUInt32BE(offset + 6);
+      headerLength = 10;
+    }
+    const maskLength = masked ? 4 : 0;
+    const frameLength = headerLength + maskLength + payloadLength;
+    if (offset + frameLength > buffer.length) break;
+    const maskOffset = offset + headerLength;
+    const payloadOffset = maskOffset + maskLength;
+    let payload = buffer.subarray(payloadOffset, payloadOffset + payloadLength);
+    if (masked) {
+      const mask = buffer.subarray(maskOffset, maskOffset + 4);
+      const unmasked = Buffer.alloc(payloadLength);
+      for (let i = 0; i < payloadLength; i += 1) unmasked[i] = payload[i] ^ mask[i % 4];
+      payload = unmasked;
+    }
+    messages.push({ opcode, payload: payload.toString('utf8') });
+    offset += frameLength;
+  }
+  return { messages, remaining: buffer.subarray(offset) };
+}
+
+function sendWsJson(client, payload) {
+  if (!client || client.socket.destroyed) return;
+  try { client.socket.write(buildWsFrame(JSON.stringify(payload))); } catch {}
+}
+
+function subscribeClient(client, channel) {
+  if (!channel) return;
+  client.channels.add(channel);
+  if (!wsSubscriptions.has(channel)) wsSubscriptions.set(channel, new Set());
+  wsSubscriptions.get(channel).add(client);
+}
+
+function unsubscribeClient(client, channel) {
+  if (!channel) return;
+  client.channels.delete(channel);
+  const bucket = wsSubscriptions.get(channel);
+  if (!bucket) return;
+  bucket.delete(client);
+  if (bucket.size === 0) wsSubscriptions.delete(channel);
+}
+
+function removeWsClient(client) {
+  wsClients.delete(client);
+  for (const channel of [...client.channels]) unsubscribeClient(client, channel);
+}
+
+function broadcastToChannel(channel, payload) {
+  const bucket = wsSubscriptions.get(channel);
+  if (!bucket) return;
+  for (const client of bucket) sendWsJson(client, payload);
+}
+
+function handleWsMessage(client, raw) {
+  let message;
+  try { message = JSON.parse(raw); } catch {
+    sendWsJson(client, { type: 'error', message: 'Invalid JSON frame' });
+    return;
+  }
+  if (message.type === 'ping') return sendWsJson(client, { type: 'pong', ts: Date.now() });
+  if (message.type === 'subscribe') {
+    subscribeClient(client, String(message.channel || ''));
+    return sendWsJson(client, { type: 'subscribed', channel: String(message.channel || '') });
+  }
+  if (message.type === 'unsubscribe') {
+    unsubscribeClient(client, String(message.channel || ''));
+    return sendWsJson(client, { type: 'unsubscribed', channel: String(message.channel || '') });
+  }
+  sendWsJson(client, { type: 'error', message: 'Unknown websocket message type' });
+}
+
+function installWsBridge() {
+  if (wsListenerInstalled) return;
+  wsListenerInstalled = true;
+  manager.onEngineEvent('slots', (evt) => {
+    if (!evt || typeof evt.channelId !== 'string' || !evt.channelId.startsWith('games:web:slots:')) return;
+    const lobbyId = evt.channelId.replace(/^games:web:slots:/u, '');
+    if (evt.name === 'render') {
+      broadcastToChannel(`slots:lobby:${lobbyId}`, { type: 'slots.render', lobbyId, state: serializeSlotsPayload(evt) });
+      return;
+    }
+    if (evt.name === 'lobbyClosed') {
+      broadcastToChannel(`slots:lobby:${lobbyId}`, { type: 'slots.closed', lobbyId, content: evt.content || 'Lobby closed' });
+      return;
+    }
+    if (evt.name === 'spinComplete') {
+      broadcastToChannel(`slots:lobby:${lobbyId}`, { type: 'slots.spinComplete', lobbyId, result: evt });
+    }
+  });
+}
+
+function handleWsUpgrade(req, socket) {
+  const parsedUrl = parseUrl(req);
+  const pathname = routePath(parsedUrl.pathname);
+  if (pathname !== '/ws') return socket.destroy();
+  const session = requireUserAuth(req);
+  if (!session) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    return socket.destroy();
+  }
+  const key = req.headers['sec-websocket-key'];
+  if (!key || typeof key !== 'string') {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    return socket.destroy();
+  }
+  const accept = crypto.createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+  socket.write(['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${accept}`, '\r\n'].join('\r\n'));
+  const client = { socket, session, channels: new Set(), buffer: Buffer.alloc(0) };
+  wsClients.add(client);
+  sendWsJson(client, { type: 'hello', userId: session.discordId, username: session.username });
+  socket.on('data', (chunk) => {
+    try {
+      client.buffer = Buffer.concat([client.buffer, chunk]);
+      const { messages, remaining } = parseWsFrames(client.buffer);
+      client.buffer = remaining;
+      for (const message of messages) {
+        if (message.opcode === 0x8) return socket.end();
+        if (message.opcode === 0x9) { socket.write(Buffer.from([0x8a, 0x00])); continue; }
+        if (message.opcode === 0x1) handleWsMessage(client, message.payload);
+      }
+    } catch {
+      socket.destroy();
+    }
+  });
+  socket.on('close', () => removeWsClient(client));
+  socket.on('end', () => removeWsClient(client));
+  socket.on('error', () => removeWsClient(client));
+}
+
+function requireMemberSession(req, res, { api = false, nextPath = null } = {}) {
+  const session = requireUserAuth(req);
+  if (session) {
+    ensureAccount(session.discordId, session.username);
+    return session;
+  }
+  if (api) {
+    sendError(res, 401, 'unauthorized', 'Login required');
+    return null;
+  }
+  res.writeHead(302, { Location: `${p('/login')}?next=${encodeURIComponent(nextPath || p('/'))}` });
+  res.end();
+  return null;
+}
+
+function renderHomePage(session) {
+  return renderPage('Games Lobby', session, `
+    <div class="card">
+      <h2>Game Lobby</h2>
+      <p>Use the dedicated games interface for realtime casino tables.</p>
+      <a class="pill" href="${p('/slots')}">Open Slots</a>
+    </div>
+  `, { active: '/' });
+}
+
+function renderSlotsIndexPage(session) {
+  const slotsApiPath = JSON.stringify(p('/api/slots/lobbies'));
+  const slotsPageBase = JSON.stringify(p('/slots/'));
+  return renderPage('Slots', session, `
+    <div class="card">
+      <h2>Slots Lobbies</h2>
+      <p class="muted">Create a new worker-backed slots lobby or join an existing table below.</p>
+      <button class="primary" id="create-slots-lobby" type="button">Create Slots Lobby</button>
+      <div id="slots-create-result" style="margin-top:12px;"></div>
+    </div>
+    <div class="card">
+      <h2>Open Lobbies</h2>
+      <div id="slots-lobby-list"><div class="item">Loading open lobbies...</div></div>
+    </div>
+  `, {
+    active: '/slots',
+    pageScripts: `<script>
+const listEl = document.getElementById('slots-lobby-list');
+const slotsApiPath = ${slotsApiPath};
+const slotsPageBase = ${slotsPageBase};
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function renderLobbyList(lobbies) {
+  if (!Array.isArray(lobbies) || lobbies.length === 0) {
+    listEl.innerHTML = '<div class="item">No open slots lobbies yet. Create one to get things rolling.</div>';
+    return;
+  }
+  listEl.innerHTML = lobbies.map((lobby) => {
+    const players = Array.isArray(lobby.players) ? lobby.players : [];
+    const playerSummary = players.length
+      ? players.map((player) => escapeHtml(player.username) + ' - ' + escapeHtml(player.statusText || ('Bet ' + player.bet))).join('<br>')
+      : 'No players yet';
+    const joinUrl = slotsPageBase + encodeURIComponent(lobby.lobbyId);
+    return [
+      '<div class="item">',
+      '<strong>Lobby ' + escapeHtml(lobby.lobbyId) + '</strong>',
+      '<div>' + escapeHtml(String(lobby.playerCount)) + '/' + escapeHtml(String(lobby.maxPlayers)) + ' seats filled</div>',
+      '<div class="muted" style="margin:8px 0;">' + escapeHtml(lobby.lastEvent || '') + '</div>',
+      '<div class="muted" style="margin-bottom:10px;">' + playerSummary + '</div>',
+      '<a class="pill" href="' + escapeHtml(joinUrl) + '">Open Lobby</a>',
+      '</div>',
+    ].join('');
+  }).join('');
+}
+async function refreshLobbyList() {
+  try {
+    const res = await fetch(slotsApiPath);
+    const data = await res.json();
+    if (!res.ok) {
+      listEl.innerHTML = '<div class="item">Could not load open lobbies.</div>';
+      return;
+    }
+    renderLobbyList(data.lobbies || []);
+  } catch {
+    listEl.innerHTML = '<div class="item">Could not load open lobbies.</div>';
+  }
+}
+document.getElementById('create-slots-lobby').addEventListener('click', async () => {
+  const result = document.getElementById('slots-create-result');
+  result.innerHTML = '<div class="flash">Creating lobby...</div>';
+  const res = await fetch(slotsApiPath, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    return;
+  }
+  window.location.href = slotsPageBase + data.lobbyId;
+});
+refreshLobbyList();
+setInterval(refreshLobbyList, 5000);
+</script>`,
+  });
+}
+
+function renderSlotsLobbyPage(session, lobbyId) {
+  return renderPage(`Slots ${lobbyId}`, session, `
+    <div class="card">
+      <h2>Slots Lobby ${escapeHtml(lobbyId)}</h2>
+      <div class="muted">Worker channel: <span class="mono">${escapeHtml(getWebSlotsChannelId(lobbyId))}</span></div>
+    </div>
+    <div class="card">
+      <h2>Lobby State</h2>
+      <div id="slots-lobby-state"><div class="item">Connecting...</div></div>
+    </div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="slots-action-result"></div>
+      <div class="stack">
+        <div class="item"><button class="primary" id="slots-join" type="button">Join Lobby</button></div>
+        <div class="item">
+          <input id="slots-bet-amount" type="number" min="1" step="1" value="1">
+          <button class="primary" id="slots-set-bet" type="button">Set Bet</button>
+        </div>
+        <div class="item"><button class="primary" id="slots-spin" type="button">Spin</button></div>
+        <div class="item"><button class="primary" id="slots-leave" type="button">Leave Lobby</button></div>
+      </div>
+    </div>
+  `, {
+    active: '/slots',
+    pageScripts: `<script>
+const lobbyId = ${JSON.stringify(lobbyId)};
+const stateEl = document.getElementById('slots-lobby-state');
+const resultEl = document.getElementById('slots-action-result');
+let socket;
+function renderSlotsState(state) {
+  if (!state) {
+    stateEl.innerHTML = '<div class="item">Lobby is empty.</div>';
+    return;
+  }
+  const players = Array.isArray(state.players) ? state.players : [];
+  stateEl.innerHTML = [
+    '<div class="item"><strong>' + (state.title || 'Slots Lobby') + '</strong><div>' + (state.description || '') + '</div><div class="muted">' + (state.footer || '') + '</div></div>',
+    '<div class="slots-grid">' + players.map((player) => '<div class="item"><strong>' + player.name + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + player.value + '</pre></div>').join('') + '</div>'
+  ].join('');
+}
+async function postAction(path, payload) {
+  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>';
+    return null;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (data.state) renderSlotsState(data.state);
+  return data;
+}
+async function refreshLobby() {
+  const res = await fetch(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId);
+  const data = await res.json();
+  if (!res.ok) {
+    stateEl.innerHTML = '<div class="item">Lobby unavailable.</div>';
+    return;
+  }
+  renderSlotsState(data.state);
+}
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket.addEventListener('open', () => {
+    socket.send(JSON.stringify({ type: 'subscribe', channel: 'slots:lobby:' + lobbyId }));
+  });
+  socket.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'slots.render' && msg.lobbyId === lobbyId) renderSlotsState(msg.state);
+    if (msg.type === 'slots.closed' && msg.lobbyId === lobbyId) {
+      stateEl.innerHTML = '<div class="item"><strong>Lobby closed</strong><div>' + (msg.content || '') + '</div></div>';
+    }
+  });
+}
+document.getElementById('slots-join').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/join'));
+document.getElementById('slots-set-bet').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/bet', { amount: Number(document.getElementById('slots-bet-amount').value) }));
+document.getElementById('slots-spin').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/spin'));
+document.getElementById('slots-leave').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/leave'));
+connectWs();
+refreshLobby();
+</script>`,
+  });
+}
+
+async function handleRequest(req, res) {
+  const parsedUrl = parseUrl(req);
+  const pathname = routePath(parsedUrl.pathname);
+  const method = (req.method || 'GET').toUpperCase();
+  if (pathname === null) return sendError(res, 404, 'not_found', 'Unknown route');
+
+  if (pathname === '/auth/discord/login' && method === 'GET') {
+    handleLoginRoute(req, res, { authConfig: { redirectUri: GAME_WEB_DISCORD_OAUTH_REDIRECT_URI } });
+    return;
+  }
+  if (pathname === '/auth/discord/callback' && method === 'GET') {
+    await handleCallbackRoute(req, res, parsedUrl, {
+      basePath: GAME_WEB_BASE_PATH,
+      loginPath: `${p('/login')}`,
+      authConfig: { redirectUri: GAME_WEB_DISCORD_OAUTH_REDIRECT_URI },
+      popupMessageType: 'lumigames-auth-complete',
+      popupTargetOrigin: GAME_WEB_POSTMESSAGE_TARGET_ORIGIN,
+      cookieOptions: { sameSite: GAME_WEB_SESSION_SAMESITE, secure: GAME_WEB_SESSION_SECURE },
+    });
+    return;
+  }
+  if (pathname === '/auth/logout' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    handleLogoutRoute(req, res, {
+      loginPath: `${p('/login')}`,
+      cookieOptions: { sameSite: GAME_WEB_SESSION_SAMESITE, secure: GAME_WEB_SESSION_SECURE },
+    });
+    return;
+  }
+  if (pathname === '/login' && method === 'GET') {
+    return sendHtml(res, 200, renderLoginPage(String(parsedUrl.searchParams.get('next') || p('/'))));
+  }
+
+  if (pathname === '/api/me' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, { viewer: { discordId: session.discordId, username: session.username } });
+    return;
+  }
+
+  if (pathname === '/api/slots/lobbies' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    try {
+      const result = await manager.sendCommand('slots', 'listLobbies', {}, { channelId: 'games:web:slots:lobby-directory' });
+      sendJson(res, 200, { ok: true, lobbies: serializeSlotsLobbyList(result) });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/slots/lobbies' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = generateLobbyId('slots');
+    sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/slots/${lobbyId}`) });
+    return;
+  }
+
+  const slotsLobbyApiMatch = pathname.match(/^\/api\/slots\/lobbies\/([^/]+)$/u);
+  if (slotsLobbyApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsLobbyApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'getLobby', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, lobbyId, state: result && result.ok ? serializeSlotsPayload(result) : null });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsJoinApiMatch = pathname.match(/^\/api\/slots\/lobbies\/([^/]+)\/join$/u);
+  if (slotsJoinApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsJoinApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'join', { channelId, userId: session.discordId, username: session.username }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'join_failed', 'Could not join slots lobby');
+      sendJson(res, 200, { ok: true, message: 'Joined slots lobby.', state: serializeSlotsPayload(result) });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsBetApiMatch = pathname.match(/^\/api\/slots\/lobbies\/([^/]+)\/bet$/u);
+  if (slotsBetApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0 || Math.floor(amount) !== amount) {
+      return sendError(res, 400, 'bad_request', 'amount must be a positive integer');
+    }
+    const lobbyId = decodeURIComponent(slotsBetApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'setBet', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set bet');
+      sendJson(res, 200, { ok: true, message: `Set bet to ${amount} SGC.`, state: serializeSlotsPayload(result) });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsSpinApiMatch = pathname.match(/^\/api\/slots\/lobbies\/([^/]+)\/spin$/u);
+  if (slotsSpinApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsSpinApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'spin', { channelId, userId: session.discordId, username: session.username }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'spin_failed', 'Could not spin');
+      sendJson(res, 200, { ok: true, message: 'Spin started.', state: serializeSlotsPayload(result) });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsLeaveApiMatch = pathname.match(/^\/api\/slots\/lobbies\/([^/]+)\/leave$/u);
+  if (slotsLeaveApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsLeaveApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'leave', { channelId, userId: session.discordId }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'leave_failed', 'Could not leave lobby');
+      sendJson(res, 200, { ok: true, message: 'Left slots lobby.', state: result.closed ? null : serializeSlotsPayload(result) });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/') });
+    if (!session) return;
+    sendHtml(res, 200, renderHomePage(session));
+    return;
+  }
+  if (pathname === '/slots' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/slots') });
+    if (!session) return;
+    sendHtml(res, 200, renderSlotsIndexPage(session));
+    return;
+  }
+  const slotsLobbyPageMatch = pathname.match(/^\/slots\/([^/]+)$/u);
+  if (slotsLobbyPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/slots/${slotsLobbyPageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderSlotsLobbyPage(session, decodeURIComponent(slotsLobbyPageMatch[1])));
+    return;
+  }
+
+  sendError(res, 404, 'not_found', 'Unknown route');
+}
+
+function startGameWebServer(opts = {}) {
+  if (server) return;
+  GAME_WEB_PORT = Number(opts.port) || GAME_WEB_PORT;
+  GAME_WEB_HOST = opts.host || GAME_WEB_HOST;
+  GAME_WEB_DISCORD_OAUTH_REDIRECT_URI = opts.authRedirectUri || GAME_WEB_DISCORD_OAUTH_REDIRECT_URI;
+  installWsBridge();
+  server = http.createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+      logger.error(`Game web request failed: ${error.message}`);
+      sendError(res, 500, 'internal_error', 'Internal server error');
+    });
+  });
+  server.on('upgrade', (req, socket) => {
+    try { handleWsUpgrade(req, socket); } catch { try { socket.destroy(); } catch {} }
+  });
+  server.listen(GAME_WEB_PORT, GAME_WEB_HOST, () => {
+    logger.info(`Lumi Games web app running at http://${GAME_WEB_HOST}:${GAME_WEB_PORT}${GAME_WEB_BASE_PATH || '/'}`);
+  });
+  server.on('error', (error) => logger.error(`Lumi Games web server error: ${error.message}`));
+}
+
+function stopGameWebServer() {
+  if (!server) return;
+  try { server.close(); } catch {}
+  server = null;
+}
+
+module.exports = {
+  startGameWebServer,
+  stopGameWebServer,
+};

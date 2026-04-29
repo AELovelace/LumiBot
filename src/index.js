@@ -22,6 +22,7 @@ const { initBigBusiness, stopBigBusiness } = require('./bigBusiness');
 const { initGuildConfig } = require('./guildConfig');
 const { startWebPanel, stopWebPanel } = require('./webPanel');
 const { startWebAppServer, stopWebAppServer } = require('./webAppServer');
+const { startGameWebServer, stopGameWebServer } = require('./gameWebServer');
 const { startLeaderboardServer, stopLeaderboardServer } = require('./leaderboardServer');
 const { startApiServer, stopApiServer } = require('./apiServer');
 const { initPrivateStockStore } = require('./privateStockStore');
@@ -128,6 +129,7 @@ async function shutdown(signal) {
   try {
     stopWebPanel();
     stopWebAppServer();
+    stopGameWebServer();
     stopLeaderboardServer();
     stopApiServer();
   } catch (error) {
@@ -305,6 +307,18 @@ client.once(Events.ClientReady, async (readyClient) => {
         });
       } catch (error) {
         logger.error('Failed to start Lumi Web app.', error.message);
+      }
+    }
+
+    if (config.gameWebEnabled) {
+      try {
+        startGameWebServer({
+          port: config.gameWebPort,
+          host: config.gameWebHost,
+          authRedirectUri: config.gameWebDiscordOAuthRedirectUri,
+        });
+      } catch (error) {
+        logger.error('Failed to start Lumi Games web app.', error.message);
       }
     }
 
