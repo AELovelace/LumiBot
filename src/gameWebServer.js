@@ -326,6 +326,10 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .slots-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .games-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .item { padding: 8px; border: 1px solid #3d1719; background: rgba(12, 5, 7, 0.86); }
+  .inline-action { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .inline-action input, .inline-action select, .inline-action textarea { flex: 1 1 180px; margin: 0; }
+  .inline-action .pill, .inline-action button.primary { flex: 0 0 auto; }
+  .inline-action .compact-input { flex: 0 0 88px; }
   .board { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   h2 { margin: 0 0 6px; font: 24px 'VT323', monospace; color: #ff0000; line-height: 1; }
   .metric { font: 22px 'VT323', monospace; color: #fff; }
@@ -1460,23 +1464,28 @@ refreshAll();
 function renderTouhouPage(session) {
   return renderPage('Touhou', session, `
     <div class="card"><h2>Lumi Touhou</h2><p class="muted">Adopt Touhous, browse the market, manage listings, and stock up on potions.</p></div>
-    <div class="card"><a class="pill" href="${p('/touhou/battle')}">Open Battle Arena</a></div>
+    <div class="card"><h2>Your Touhou</h2><pre id="touhou-collection" class="board">Loading collection...</pre></div>
     <div class="card">
-      <h2>Actions</h2>
       <div id="touhou-result"></div>
-      <div class="stack">
-        <div class="item"><button class="primary" id="touhou-adopt" type="button">Adopt Random Touhou (${BASE_ADOPT_PRICE} SGC)</button></div>
-        <div class="item"><input id="touhou-buy-name" type="text" placeholder="Touhou name to buy"><button class="primary" id="touhou-buy" type="button">Buy Listing</button></div>
-        <div class="item"><input id="touhou-sell-name" type="text" placeholder="Your Touhou name"><input id="touhou-sell-price" type="number" min="1" step="1" value="25"><button class="primary" id="touhou-sell" type="button">List For Sale</button></div>
-        <div class="item"><input id="touhou-delist-name" type="text" placeholder="Touhou name to delist"><button class="primary" id="touhou-delist" type="button">Delist</button></div>
-        <div class="item"><input id="touhou-buyback-name" type="text" placeholder="Touhou name to buy back"><button class="primary" id="touhou-buyback" type="button">Sell Back To Market</button></div>
-        <div class="item"><input id="touhou-send-name" type="text" placeholder="Touhou name to send"><input id="touhou-send-user" type="text" placeholder="Recipient Discord user id"><button class="primary" id="touhou-send" type="button">Send Touhou</button></div>
-        <div class="item"><input id="touhou-potion-amount" type="number" min="1" step="1" value="1"><button class="primary" id="touhou-potion" type="button">Buy Potions</button></div>
+      <div class="item inline-action">
+        <a class="pill" href="${p('/touhou/battle')}">Open Battle Arena</a>
+        <input id="touhou-potion-amount" class="compact-input" type="number" min="1" step="1" value="1" aria-label="Potion amount">
+        <button class="primary" id="touhou-potion" type="button">Buy Potions</button>
       </div>
     </div>
-    <div class="card"><h2>Your Collection</h2><pre id="touhou-collection" class="board">Loading collection...</pre></div>
-    <div class="card"><h2>Market Pool</h2><pre id="touhou-market" class="board">Loading adoption pool...</pre></div>
     <div class="card"><h2>Listings</h2><pre id="touhou-listings" class="board">Loading listings...</pre></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div class="stack">
+        <div class="item inline-action"><button class="primary" id="touhou-adopt" type="button">Adopt Random Touhou (${BASE_ADOPT_PRICE} SGC)</button></div>
+        <div class="item inline-action"><input id="touhou-buy-name" type="text" placeholder="Touhou name to buy"><button class="primary" id="touhou-buy" type="button">Buy Listing</button></div>
+        <div class="item inline-action"><input id="touhou-sell-name" type="text" placeholder="Your Touhou name"><input id="touhou-sell-price" class="compact-input" type="number" min="1" step="1" value="25" aria-label="Listing price"><button class="primary" id="touhou-sell" type="button">List For Sale</button></div>
+        <div class="item inline-action"><input id="touhou-delist-name" type="text" placeholder="Touhou name to delist"><button class="primary" id="touhou-delist" type="button">Delist</button></div>
+        <div class="item inline-action"><input id="touhou-buyback-name" type="text" placeholder="Touhou name to buy back"><button class="primary" id="touhou-buyback" type="button">Sell Back To Market</button></div>
+        <div class="item inline-action"><input id="touhou-send-name" type="text" placeholder="Touhou name to send"><input id="touhou-send-user" type="text" placeholder="Recipient Discord user id"><button class="primary" id="touhou-send" type="button">Send Touhou</button></div>
+      </div>
+    </div>
+    <div class="card"><h2>Available Pool</h2><pre id="touhou-market" class="board">Loading adoption pool...</pre></div>
     <div class="card"><h2>Stats</h2><pre id="touhou-stats" class="board">Loading stats...</pre></div>
   `, {
     active: '/touhou',
