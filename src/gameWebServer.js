@@ -349,6 +349,17 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .inline-action .compact-input { flex: 0 0 88px; }
   .portrait-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .portrait-card { display: grid; gap: 6px; }
+  .party-card { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+  .party-card img {
+    width: 100%;
+    max-height: 112px;
+    object-fit: contain;
+    border: 1px solid #572020;
+    background: rgba(8, 3, 4, 0.92);
+  }
+  .party-actions { display: grid; gap: 6px; justify-items: end; min-width: 132px; }
+  .party-actions select { min-width: 132px; margin: 0; }
+  .party-actions button.primary { width: 100%; }
   .portrait-card img {
     width: 100%;
     max-height: 220px;
@@ -391,6 +402,8 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     .slots-grid { grid-template-columns: 1fr; }
     .games-grid { grid-template-columns: 1fr; }
     .portrait-strip { grid-template-columns: 1fr; }
+    .party-card { grid-template-columns: 1fr; }
+    .party-actions { justify-items: stretch; min-width: 0; }
   }
 </style>
 </head>
@@ -1508,7 +1521,15 @@ refreshAll();
 function renderTouhouPage(session) {
   return renderPage('Touhou', session, `
     <div class="card"><h2>Lumi Touhou</h2><p class="muted">Adopt Touhous, browse the market, manage listings, and stock up on potions.</p></div>
-    <div class="card"><h2>Your Touhou</h2><pre id="touhou-collection" class="board">Loading collection...</pre></div>
+    <div class="card">
+      <h2>Your Touhou</h2>
+      <pre id="touhou-collection" class="board">Loading collection...</pre>
+      <div class="item inline-action" style="margin-top:8px;">
+        <input id="touhou-heal-name" type="text" placeholder="Touhou name to heal">
+        <button class="primary" id="touhou-heal-free" type="button">Heal / Check Cooldown</button>
+        <button class="primary" id="touhou-heal-pay" type="button">Instant Heal (50 SGC)</button>
+      </div>
+    </div>
     <div class="card">
       <div id="touhou-result"></div>
       <div class="item inline-action">
@@ -1601,6 +1622,8 @@ document.getElementById('touhou-delist').addEventListener('click', () => doPost(
 document.getElementById('touhou-buyback').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/buyback'))}, { name: document.getElementById('touhou-buyback-name').value }, 'Buyback failed.'));
 document.getElementById('touhou-send').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/send'))}, { name: document.getElementById('touhou-send-name').value, recipientUserId: document.getElementById('touhou-send-user').value.trim() }, 'Send failed.'));
 document.getElementById('touhou-potion').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/potions'))}, { amount: Number(document.getElementById('touhou-potion-amount').value) }, 'Potion purchase failed.'));
+document.getElementById('touhou-heal-free').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/heal'))}, { name: document.getElementById('touhou-heal-name').value, pay: false }, 'Heal failed.'));
+document.getElementById('touhou-heal-pay').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/heal'))}, { name: document.getElementById('touhou-heal-name').value, pay: true }, 'Heal failed.'));
 refreshAll();
 </script>`,
   });
@@ -1608,27 +1631,9 @@ refreshAll();
 
 function renderTouhouBattleIndexPage(session) {
   return renderPage('Touhou Battle', session, `
-    <div class="card"><h2>Touhou Battle Arena</h2><p class="muted">Pick one of your Touhous and challenge an evil opponent. Wins grant EXP and SGC. Defeats cause a 10 minute faint cooldown.</p></div>
+    <div class="card"><h2>Touhou Battle Arena</h2><p class="muted">Choose one of your Touhous and start a battle directly from its card. Wins grant EXP and SGC. Defeats cause a 10 minute faint cooldown.</p></div>
     <div class="card"><div class="item inline-action"><a class="pill" href="${p('/touhou')}">Return To Main Menu</a></div></div>
-    <div class="card">
-      <h2>Start Battle</h2>
-      <div id="touhou-battle-result"></div>
-      <div class="stack">
-        <div class="item"><input id="touhou-battle-name" type="text" placeholder="Your Touhou name"></div>
-        <div class="item">
-          <select id="touhou-battle-rarity">
-            <option value="Common">Common</option>
-            <option value="Uncommon">Uncommon</option>
-            <option value="Rare">Rare</option>
-            <option value="Epic">Epic</option>
-            <option value="Legendary">Legendary</option>
-            <option value="gamble">Gamble</option>
-          </select>
-        </div>
-        <div class="item"><button class="primary" id="touhou-battle-start" type="button">Start Battle</button></div>
-        <div class="item"><input id="touhou-heal-name" type="text" placeholder="Touhou name to heal"><button class="primary" id="touhou-heal-free" type="button">Heal / Check Cooldown</button> <button class="primary" id="touhou-heal-pay" type="button">Instant Heal (50 SGC)</button></div>
-      </div>
-    </div>
+    <div class="card"><div id="touhou-battle-result"></div></div>
     <div class="card"><h2>Your Party</h2><div id="touhou-party" class="stack"><div class="item">Loading party...</div></div></div>
   `, {
     active: '/touhou',
@@ -1645,14 +1650,33 @@ function renderParty(items) {
     partyEl.textContent = 'You do not own any Touhous yet.';
     return;
   }
-  partyEl.innerHTML = items.map((item) => '<div class="item portrait-card">'
+  partyEl.innerHTML = items.map((item) => '<div class="item party-card">'
     + '<img src="' + item.imageUrl + '" alt="' + item.name.replace(/"/g, '&quot;') + '" loading="lazy">'
     + '<pre class="portrait-meta">'
     + item.rarity.emoji + ' ' + item.name + ' - Lv ' + item.level + ' - ' + item.exp + '/' + item.expToNext + ' EXP - ' + item.wins + 'W/' + item.losses + 'L'
     + (item.faintedUntil ? ' - fainted ' + item.faintedFor : '')
     + '\\n'
     + (item.attacks.length ? item.attacks.join(' / ') : 'no attacks')
-    + '</pre></div>').join('');
+    + '</pre>'
+    + '<div class="party-actions">'
+    + '<select data-rarity-for="' + item.name.replace(/"/g, '&quot;') + '">'
+    + '<option value="Common">Common</option>'
+    + '<option value="Uncommon">Uncommon</option>'
+    + '<option value="Rare">Rare</option>'
+    + '<option value="Epic">Epic</option>'
+    + '<option value="Legendary">Legendary</option>'
+    + '<option value="gamble">Gamble</option>'
+    + '</select>'
+    + '<button class="primary touhou-battle-start-button" type="button" data-name="' + item.name.replace(/"/g, '&quot;') + '">Start Battle</button>'
+    + '</div></div>').join('');
+  for (const button of document.querySelectorAll('.touhou-battle-start-button')) {
+    button.addEventListener('click', async () => {
+      const name = button.getAttribute('data-name');
+      const selector = button.parentElement.querySelector('select');
+      const rarity = selector ? selector.value : 'Common';
+      await startBattle(name, rarity);
+    });
+  }
 }
 async function refreshParty() {
   const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/party'))});
@@ -1662,14 +1686,14 @@ async function refreshParty() {
   }
   renderParty(data.items || []);
 }
-document.getElementById('touhou-battle-start').addEventListener('click', async () => {
+async function startBattle(name, rarity) {
   resultEl.innerHTML = '<div class="flash">Starting battle...</div>';
   const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/battle/start'))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      name: document.getElementById('touhou-battle-name').value,
-      rarity: document.getElementById('touhou-battle-rarity').value,
+      name,
+      rarity,
     }),
   });
   if (!res.ok) {
@@ -1677,22 +1701,6 @@ document.getElementById('touhou-battle-start').addEventListener('click', async (
     return;
   }
   window.location.href = ${JSON.stringify(p('/touhou/battle/'))} + data.battleId;
-});
-document.getElementById('touhou-heal-free').addEventListener('click', () => doHeal(false));
-document.getElementById('touhou-heal-pay').addEventListener('click', () => doHeal(true));
-async function doHeal(pay) {
-  resultEl.innerHTML = '<div class="flash">Checking heal...</div>';
-  const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/heal'))}, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name: document.getElementById('touhou-heal-name').value, pay }),
-  });
-  if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Heal failed.') + '</div>';
-    return;
-  }
-  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
-  refreshParty();
 }
 refreshParty();
 </script>`,
@@ -1725,6 +1733,7 @@ const attackButtonsEl = document.getElementById('touhou-battle-attack-buttons');
 const portraitsEl = document.getElementById('touhou-battle-portraits');
 const baseApi = ${baseApi};
 const touhouImageBase = ${touhouImageBase};
+let returnTimer = null;
 function renderState(state) {
   if (!state) {
     stateEl.textContent = 'Battle unavailable.';
@@ -1745,6 +1754,12 @@ function renderState(state) {
     document.getElementById('touhou-battle-defend').disabled = true;
     document.getElementById('touhou-battle-potion').disabled = true;
     document.getElementById('touhou-battle-run').disabled = true;
+    if (!returnTimer) {
+      resultEl.innerHTML = '<div class="flash success">' + (state.outcome ? 'Battle ended: ' + state.outcome + '. Returning in 6 seconds.' : 'Battle ended. Returning in 6 seconds.') + '</div>';
+      returnTimer = setTimeout(() => {
+        window.location.href = ${JSON.stringify(p('/touhou/battle'))};
+      }, 6000);
+    }
   }
   attackButtonsEl.innerHTML = '';
   for (const [index, attack] of (state.player.attacks || []).entries()) {
