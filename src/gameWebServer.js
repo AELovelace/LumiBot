@@ -356,6 +356,19 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     border: 1px solid #572020;
     background: rgba(8, 3, 4, 0.92);
   }
+  .hp-wrap { display: grid; gap: 3px; }
+  .hp-bar {
+    width: 100%;
+    height: 10px;
+    border: 1px solid #572020;
+    background: rgba(8, 3, 4, 0.92);
+    overflow: hidden;
+  }
+  .hp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff0000, #ff6a6a);
+  }
+  .hp-text { color: #d9cfdc; font-size: 11px; line-height: 1; }
   .portrait-meta { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   .board { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   h2 { margin: 0 0 6px; font: 24px 'VT323', monospace; color: #ff0000; line-height: 1; }
@@ -1718,16 +1731,10 @@ function renderState(state) {
     return;
   }
   portraitsEl.innerHTML = [
-    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.player.name) + '" alt="' + state.player.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.player.rarity.emoji + ' ' + state.player.name + '\\nLv ' + state.player.level + ' • ' + state.player.type + '\\nHP ' + state.player.hp + '/' + state.player.hpMax + '</pre></div>',
-    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.evil.name) + '" alt="Evil ' + state.evil.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.evil.rarity.emoji + ' Evil ' + state.evil.name + '\\nLv ' + state.evil.level + ' • ' + state.evil.type + '\\nHP ' + state.evil.hp + '/' + state.evil.hpMax + '</pre></div>',
+    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.player.name) + '" alt="' + state.player.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.player.rarity.emoji + ' ' + state.player.name + '\\nLv ' + state.player.level + ' • ' + state.player.type + '</pre><div class="hp-wrap"><div class="hp-bar"><div class="hp-fill" style="width:' + Math.max(0, Math.min(100, (state.player.hp / Math.max(1, state.player.hpMax)) * 100)) + '%"></div></div><div class="hp-text">' + state.player.hp + '/' + state.player.hpMax + ' HP</div></div></div>',
+    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.evil.name) + '" alt="Evil ' + state.evil.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.evil.rarity.emoji + ' Evil ' + state.evil.name + '\\nLv ' + state.evil.level + ' • ' + state.evil.type + '</pre><div class="hp-wrap"><div class="hp-bar"><div class="hp-fill" style="width:' + Math.max(0, Math.min(100, (state.evil.hp / Math.max(1, state.evil.hpMax)) * 100)) + '%"></div></div><div class="hp-text">' + state.evil.hp + '/' + state.evil.hpMax + ' HP</div></div></div>',
   ].join('');
   stateEl.textContent = [
-    state.player.rarity.emoji + ' ' + state.player.name + ' (Lv ' + state.player.level + ', ' + state.player.type + ')',
-    '[' + state.player.hpBar + '] ' + state.player.hp + '/' + state.player.hpMax,
-    '',
-    state.evil.rarity.emoji + ' Evil ' + state.evil.name + ' (Lv ' + state.evil.level + ', ' + state.evil.type + ')',
-    '[' + state.evil.hpBar + '] ' + state.evil.hp + '/' + state.evil.hpMax,
-    '',
     'Potions: ' + state.potionCount,
     '',
     'Battle Log:',
