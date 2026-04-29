@@ -21,6 +21,7 @@ const { handleVoiceStateUpdate, startVcRewards, stopVcRewards } = require('./vcR
 const { initBigBusiness, stopBigBusiness } = require('./bigBusiness');
 const { initGuildConfig } = require('./guildConfig');
 const { startWebPanel, stopWebPanel } = require('./webPanel');
+const { startWebAppServer, stopWebAppServer } = require('./webAppServer');
 const { startLeaderboardServer, stopLeaderboardServer } = require('./leaderboardServer');
 const { startApiServer, stopApiServer } = require('./apiServer');
 const { initPrivateStockStore } = require('./privateStockStore');
@@ -126,6 +127,7 @@ async function shutdown(signal) {
   // Stop web control panel
   try {
     stopWebPanel();
+    stopWebAppServer();
     stopLeaderboardServer();
     stopApiServer();
   } catch (error) {
@@ -292,6 +294,18 @@ client.once(Events.ClientReady, async (readyClient) => {
       startWebPanel();
     } catch (error) {
       logger.error('Failed to start web control panel.', error.message);
+    }
+
+    if (config.webAppEnabled) {
+      try {
+        startWebAppServer({
+          port: config.webAppPort,
+          host: config.webAppHost,
+          authRedirectUri: config.webAppDiscordOAuthRedirectUri,
+        });
+      } catch (error) {
+        logger.error('Failed to start Lumi Web app.', error.message);
+      }
     }
 
     // Start public leaderboard HTTP server (intended for nginx reverse proxy).

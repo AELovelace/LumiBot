@@ -269,6 +269,10 @@ const config = Object.freeze({
   webPanelSessionSecret: process.env.WEB_PANEL_SESSION_SECRET?.trim() || '',
   webPanelSessionTtlMs: parsePositiveInt(process.env.WEB_PANEL_SESSION_TTL_MS, 7_200_000),
   webPanelSecureCookies: parseBoolean(process.env.WEB_PANEL_SECURE_COOKIES, false),
+  webAppEnabled: parseBoolean(process.env.WEB_APP_ENABLED, true),
+  webAppPort: parsePositiveInt(process.env.WEB_APP_PORT, 7171),
+  webAppHost: process.env.WEB_APP_HOST?.trim() || '0.0.0.0',
+  webAppDiscordOAuthRedirectUri: process.env.WEB_APP_DISCORD_OAUTH_REDIRECT_URI?.trim() || '',
   // Game worker threads — Phase 1 of the multi-threaded refactor. When
   // enabled the bot spawns a pool of worker threads for game engines
   // and exposes the worker manager to game adapters. Per-engine pools

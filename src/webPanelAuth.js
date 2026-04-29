@@ -33,7 +33,7 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS).unref();
 
-function getPanelAuthConfig() {
+function getPanelAuthConfig(overrides = {}) {
   return {
     clientId: process.env.DISCORD_OAUTH_CLIENT_ID?.trim() || '',
     clientSecret: process.env.DISCORD_OAUTH_CLIENT_SECRET?.trim() || '',
@@ -42,15 +42,20 @@ function getPanelAuthConfig() {
     sessionSecret: process.env.WEB_PANEL_SESSION_SECRET?.trim() || '',
     sessionTtlMs: parseEnvPositiveInt(process.env.WEB_PANEL_SESSION_TTL_MS, 7_200_000),
     secureCookies: parseEnvBoolean(process.env.WEB_PANEL_SECURE_COOKIES, false),
+    ...overrides,
   };
 }
 
-function getBasePath() {
-  return (process.env.WEB_PANEL_BASE_PATH || '').replace(/\/+$/u, '');
+function getBasePath(envVarName = 'WEB_PANEL_BASE_PATH') {
+  return (process.env[envVarName] || '').replace(/\/+$/u, '');
+}
+
+function buildBasePathPath(path, envVarName = 'WEB_PANEL_BASE_PATH') {
+  return `${getBasePath(envVarName)}${path}`;
 }
 
 function panelPath(path) {
-  return `${getBasePath()}${path}`;
+  return buildBasePathPath(path, 'WEB_PANEL_BASE_PATH');
 }
 
 function parseEnvPositiveInt(value, fallback) {
@@ -211,8 +216,8 @@ function consumeOAuthState(state) {
   return entry.expiresAt > Date.now() ? entry : null;
 }
 
-function buildDiscordAuthorizeUrl(state) {
-  const { clientId, redirectUri } = getPanelAuthConfig();
+function buildDiscordAuthorizeUrl(state, cfg = getPanelAuthConfig()) {
+  const { clientId, redirectUri } = cfg;
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
@@ -224,8 +229,8 @@ function buildDiscordAuthorizeUrl(state) {
   return `${DISCORD_AUTHORIZE_URL}?${params.toString()}`;
 }
 
-async function exchangeCode(code) {
-  const { clientId, clientSecret, redirectUri } = getPanelAuthConfig();
+async function exchangeCode(code, cfg = getPanelAuthConfig()) {
+  const { clientId, clientSecret, redirectUri } = cfg;
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code: String(code),
@@ -257,8 +262,8 @@ async function fetchDiscordUser(accessToken) {
   return resp.json();
 }
 
-async function fetchGuildMember(accessToken) {
-  const { panelGuildId } = getPanelAuthConfig();
+async function fetchGuildMember(accessToken, cfg = getPanelAuthConfig()) {
+  const { panelGuildId } = cfg;
   const resp = await fetch(
     `${DISCORD_API_BASE}/users/@me/guilds/${panelGuildId}/member`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -287,8 +292,9 @@ function parseRequestUrl(req) {
   return new URL(req.url, `${proto}://${host}`);
 }
 
-function handleLoginRoute(req, res) {
-  const { clientId, redirectUri } = getPanelAuthConfig();
+function handleLoginRoute(req, res, opts = {}) {
+  const cfg = getPanelAuthConfig(opts.authConfig);
+  const { clientId, redirectUri } = cfg;
   if (!clientId || !redirectUri) {
     res.writeHead(503, { 'Content-Type': 'text/plain' });
     res.end('Discord OAuth is not configured on this panel.');
@@ -305,17 +311,19 @@ function handleLoginRoute(req, res) {
   const nextPath = normalizeNextPath(parsedUrl.searchParams.get('next') || '/');
   const accessLevel = parsedUrl.searchParams.get('mode') === 'member' ? 'member' : 'panel';
   const state = generateOAuthState({ accessLevel, nextPath });
-  res.writeHead(302, { Location: buildDiscordAuthorizeUrl(state) });
+  res.writeHead(302, { Location: buildDiscordAuthorizeUrl(state, cfg) });
   res.end();
 }
 
-async function handleCallbackRoute(req, res, parsedUrl) {
+async function handleCallbackRoute(req, res, parsedUrl, opts = {}) {
+  const cfg = getPanelAuthConfig(opts.authConfig);
+  const loginPath = opts.loginPath || `${opts.basePath || ''}/auth/discord/login`;
   const buildError = (status, msg) => {
     res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Login Error</title>
       <style>body{background:#0a0a0f;color:#c9c9d1;font-family:monospace;padding:40px;}</style>
       </head><body><h1 style="color:#ff4444;">Access Denied</h1><p>${msg}</p>
-      <br><a href="${panelPath('/auth/discord/login')}" style="color:#ff69b4;">Try again</a></body></html>`);
+      <br><a href="${loginPath}" style="color:#ff69b4;">Try again</a></body></html>`);
   };
 
   const code = parsedUrl.searchParams.get('code');
@@ -327,7 +335,7 @@ async function handleCallbackRoute(req, res, parsedUrl) {
 
   let tokens;
   try {
-    tokens = await exchangeCode(code);
+    tokens = await exchangeCode(code, cfg);
   } catch (err) {
     logger.error('[auth] Token exchange error:', err.message);
     return buildError(500, 'Failed to exchange authorization code with Discord.');
@@ -343,7 +351,7 @@ async function handleCallbackRoute(req, res, parsedUrl) {
 
   let member;
   try {
-    member = await fetchGuildMember(tokens.access_token);
+    member = await fetchGuildMember(tokens.access_token, cfg);
   } catch (err) {
     logger.error('[auth] Guild member fetch error:', err.message);
     return buildError(500, 'Failed to verify your server membership.');
@@ -373,16 +381,18 @@ async function handleCallbackRoute(req, res, parsedUrl) {
   res.end();
 }
 
-function handleLogoutRoute(req, res) {
+function handleLogoutRoute(req, res, opts = {}) {
+  const loginPath = opts.loginPath || `${opts.basePath || ''}/auth/discord/login`;
   destroySession(req);
   res.writeHead(302, {
     'Set-Cookie': buildClearCookieHeader(),
-    Location: panelPath('/auth/discord/login'),
+    Location: loginPath,
   });
   res.end();
 }
 
-function renderLoginPage(message) {
+function renderLoginPage(message, opts = {}) {
+  const loginPath = `${opts.basePath || ''}/auth/discord/login`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -432,7 +442,7 @@ function renderLoginPage(message) {
   <h1>SGC PANEL</h1>
   <div class="subtitle">SadGirlsClub Economy Control // auth required</div>
   ${message ? `<div class="error-msg">${message}</div>` : ''}
-  <a href="${panelPath('/auth/discord/login')}" class="discord-btn">Sign in with Discord</a>
+  <a href="${loginPath}" class="discord-btn">Sign in with Discord</a>
   <div class="notice">Access is limited to server modmins.<br>
     Questions? <a href="https://discord.gg/">Join the server</a>.</div>
 </div>
