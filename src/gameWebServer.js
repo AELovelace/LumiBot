@@ -299,6 +299,7 @@ function renderLoginPage(nextPath = p('/')) {
 }
 
 function renderPage(title, session, body, { active = '', pageScripts = '' } = {}) {
+  const sgcBalance = session?.discordId ? getBalance(session.discordId) : 0;
   const nav = [
     ['/', 'Lobby'],
     ['/slots', 'Slots'],
@@ -335,6 +336,16 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   }
   h1 { margin: 0; font: 40px 'VT323', monospace; color: #ff0000; letter-spacing: 2px; }
   .subtitle { color: #a394a7; font-size: 12px; }
+  .account-meta { display: grid; gap: 3px; justify-items: end; }
+  .balance-chip {
+    display: inline-block;
+    padding: 4px 8px;
+    border: 1px solid #7a1010;
+    background: rgba(12, 5, 7, 0.9);
+    color: #fff3f3;
+    font: 16px 'VT323', monospace;
+    line-height: 1;
+  }
   nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
   nav a { text-decoration: none; padding: 5px 8px; border: 1px solid #6f2525; color: #efe6f0; background: rgba(27, 10, 12, 0.9); font-size: 12px; line-height: 1.1; }
   nav a.active { border-color: #ff0000; color: #ff0000; }
@@ -414,8 +425,9 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
         <h1>LUMI GAMES</h1>
         <div class="subtitle">Dedicated casino interface</div>
       </div>
-      <div>
+      <div class="account-meta">
         <div>${escapeHtml(session.username)}</div>
+        <div class="balance-chip">${escapeHtml(String(sgcBalance))} SGC</div>
         <form method="POST" action="${p('/auth/logout')}"><button class="logout" type="submit">Logout</button></form>
       </div>
     </header>
