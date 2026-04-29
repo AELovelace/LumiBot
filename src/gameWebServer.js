@@ -4,9 +4,66 @@ const crypto = require('node:crypto');
 const http = require('node:http');
 const { URL } = require('node:url');
 
+const { config } = require('./config');
 const { logger } = require('./logger');
-const { ensureAccount } = require('./sadgirlEconomyStore');
+const {
+  ensureAccount,
+  getBalance,
+  adjustBalance,
+  TAYS_TOBACCO_USER_ID,
+  TOUHOU_MGMT_USER_ID,
+} = require('./sadgirlEconomyStore');
 const { manager } = require('./workers/workerManager');
+const {
+  DISPENSE_PRICE,
+  CASE_LIMIT,
+  dispenseCigarette,
+  getRarityByRank,
+  getUserCase,
+  smokeCigarette,
+  getTopSmokers,
+} = require('./cigaretteStore');
+const { activateSmokeBoost, getSmokeBoost } = require('./smokeBoost');
+const {
+  DEFAULT_TOUHOU_MIGRATION_GUILD_ID,
+  BASE_ADOPT_PRICE,
+  POTION_PRICE,
+  POTION_CAP,
+  resolveName,
+  getRarity,
+  getSuggestedPrice,
+  getAvailableTouhous,
+  getAvailableCount,
+  adoptTouhou,
+  getUserTouhous,
+  getTouhou,
+  sendTouhou,
+  listForSale,
+  delistTouhou,
+  getListings,
+  getListingsPage,
+  getListingsCount,
+  getListingPrice,
+  buyListing,
+  getTradeHistory,
+  getMarketStats,
+  searchTouhous,
+  sellbackToMarket,
+  getAttacks,
+  getOrCreateBattleStats,
+  expToNextLevel,
+  getPotionCount,
+  addPotions,
+  consumePotion,
+  healTouhou,
+  setFainted,
+} = require('./touhouStore');
+const {
+  makeBattleState,
+  resolveBattleAction,
+  serializeBattleState,
+  FAINT_DURATION_MS: TOUHOU_BATTLE_FAINT_MS,
+} = require('./touhouBattleCore');
 const {
   handleLoginRoute,
   handleCallbackRoute,
@@ -43,10 +100,14 @@ const SECURITY_HEADERS = {
   'cache-control': 'no-store',
 };
 
+const WEB_GUILD_ID = config.discordPanelGuildId || DEFAULT_TOUHOU_MIGRATION_GUILD_ID;
+const TOUHOU_TRADER_LIQUIDITY_FLOOR = 1000;
+
 let server = null;
 let wsListenerInstalled = false;
 const wsClients = new Set();
 const wsSubscriptions = new Map();
+const touhouBattleSessions = new Map();
 
 function p(path) {
   return `${GAME_WEB_BASE_PATH}${path}`;
@@ -58,6 +119,22 @@ function escapeHtml(str) {
     .replace(/</gu, '&lt;')
     .replace(/>/gu, '&gt;')
     .replace(/"/gu, '&quot;');
+}
+
+function formatRemaining(ms) {
+  const total = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+}
+
+function payTouhouTraderPayout(userId, amount, note) {
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  const traderBalance = getBalance(TOUHOU_MGMT_USER_ID);
+  adjustBalance(userId, amount, note);
+  if (traderBalance >= TOUHOU_TRADER_LIQUIDITY_FLOOR + amount) {
+    adjustBalance(TOUHOU_MGMT_USER_ID, -amount, note);
+  }
 }
 
 function applySecurityHeaders(res) {
@@ -212,6 +289,8 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     ['/holdem', 'Holdem'],
     ['/horseracing', 'Horse Racing'],
     ['/pachinko', 'Pachinko'],
+    ['/cigarettes', 'Cigarettes'],
+    ['/touhou', 'Touhou'],
   ].map(([href, label]) => `<a class="${active === href ? 'active' : ''}" href="${p(href)}">${label}</a>`).join('');
 
   return `<!DOCTYPE html>
@@ -255,7 +334,7 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     background: #ff0000; border: 0; color: #fff3f3; padding: 4px 8px; font: 16px 'VT323', monospace; line-height: 1; cursor: pointer;
   }
   .pill { display: inline-block; text-decoration: none; }
-  input, textarea {
+  input, textarea, select {
     width: 100%; padding: 5px 7px; margin: 0 0 6px; color: #f6f1f9; background: #16090b; border: 1px solid #7a1010; font: inherit; line-height: 1.1;
   }
   .flash { padding: 6px 8px; border: 1px solid #6f2525; background: rgba(42, 12, 16, 0.78); color: #fbeff0; margin-bottom: 6px; font-size: 12px; line-height: 1.2; }
@@ -386,6 +465,74 @@ function normalizeHorseChoice(value) {
   if (raw === '3') return 'C';
   if (raw === '4') return 'D';
   return null;
+}
+
+function serializeCigaretteCase(items) {
+  return (items || []).map((item, index) => ({
+    slot: index + 1,
+    displayName: item.display_name,
+    quantity: Number(item.quantity || 0),
+    rank: Number(item.rank || 0),
+    rarity: getRarityByRank(item.rank),
+  }));
+}
+
+function serializeTouhouCollection(items, ownerId) {
+  return (items || []).map((item) => {
+    const stats = getOrCreateBattleStats(WEB_GUILD_ID, item.name, ownerId);
+    const level = stats?.level || 1;
+    const rarity = getRarity(item.trade_count, item.name, item.base_rarity_score || 0, level);
+    const suggestedPrice = getSuggestedPrice(item.trade_count, item.base_rarity_score || 0, level);
+    const faintedUntil = stats?.fainted_until && stats.fainted_until > Date.now() ? stats.fainted_until : null;
+    return {
+      name: item.name,
+      rarity,
+      level,
+      suggestedPrice,
+      faintedUntil,
+      faintedFor: faintedUntil ? formatRemaining(faintedUntil - Date.now()) : null,
+    };
+  });
+}
+
+function serializeTouhouParty(items, ownerId) {
+  return (items || []).map((item) => {
+    const stats = getOrCreateBattleStats(WEB_GUILD_ID, item.name, ownerId);
+    const level = stats?.level || 1;
+    const rarity = getRarity(item.trade_count, item.name, item.base_rarity_score || 0, level);
+    const attacks = getAttacks(item.name);
+    const faintedUntil = stats?.fainted_until && stats.fainted_until > Date.now() ? stats.fainted_until : null;
+    return {
+      name: item.name,
+      level,
+      rarity,
+      exp: stats?.exp || 0,
+      expToNext: expToNextLevel(level),
+      wins: stats?.wins || 0,
+      losses: stats?.losses || 0,
+      attacks: attacks.map((attack) => attack.name),
+      faintedUntil,
+      faintedFor: faintedUntil ? formatRemaining(faintedUntil - Date.now()) : null,
+    };
+  });
+}
+
+function getTouhouBattleSession(sessionId, userId) {
+  const session = touhouBattleSessions.get(sessionId);
+  if (!session) return null;
+  if (session.userId !== userId) return null;
+  return session;
+}
+
+function finishTouhouBattleTimeout(sessionId) {
+  const session = touhouBattleSessions.get(sessionId);
+  if (!session || session.over) return;
+  session.log.push('You took too long and forfeited the battle.');
+  session.over = true;
+  session.victory = false;
+  session.outcome = 'timeout';
+  const until = Date.now() + TOUHOU_BATTLE_FAINT_MS;
+  setFainted(session.guildId, session.player.name, session.userId, until);
 }
 
 function buildWsFrame(data) {
@@ -619,6 +766,8 @@ function renderHomePage(session) {
         <div class="item"><strong>Holdem</strong><div class="muted">Shared poker table</div><a class="pill" href="${p('/holdem')}" style="margin-top:10px;">Open</a></div>
         <div class="item"><strong>Horse Racing</strong><div class="muted">Betting window and live race feed</div><a class="pill" href="${p('/horseracing')}" style="margin-top:10px;">Open</a></div>
         <div class="item"><strong>Pachinko</strong><div class="muted">Solo live drop board</div><a class="pill" href="${p('/pachinko')}" style="margin-top:10px;">Open</a></div>
+        <div class="item"><strong>Cigarettes</strong><div class="muted">Gacha pulls, case, smoke boosts</div><a class="pill" href="${p('/cigarettes')}" style="margin-top:10px;">Open</a></div>
+        <div class="item"><strong>Touhou</strong><div class="muted">Collection, market, potions</div><a class="pill" href="${p('/touhou')}" style="margin-top:10px;">Open</a></div>
       </div>
     </div>
   `, { active: '/' });
@@ -1225,6 +1374,357 @@ connectWs();
   });
 }
 
+function renderCigarettesPage(session) {
+  return renderPage('Cigarettes', session, `
+    <div class="card"><h2>Cigarette Gacha</h2><p class="muted">Pull cigarettes, manage your case, and smoke one for a temporary value boost.</p></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="cig-result"></div>
+      <div class="stack">
+        <div class="item"><button class="primary" id="cig-gacha" type="button">Pull for ${DISPENSE_PRICE} SGC</button></div>
+        <div class="item"><input id="cig-smoke-slot" type="number" min="1" step="1" value="1"><button class="primary" id="cig-smoke" type="button">Smoke Slot</button></div>
+      </div>
+    </div>
+    <div class="card"><h2>Active Buff</h2><pre id="cig-buff" class="board">Loading boost status...</pre></div>
+    <div class="card"><h2>Your Case</h2><pre id="cig-case" class="board">Loading case...</pre></div>
+    <div class="card"><h2>Top Smokers</h2><pre id="cig-leaderboard" class="board">Loading leaderboard...</pre></div>
+  `, {
+    active: '/cigarettes',
+    pageScripts: `<script>
+const resultEl = document.getElementById('cig-result');
+const buffEl = document.getElementById('cig-buff');
+const caseEl = document.getElementById('cig-case');
+const leaderboardEl = document.getElementById('cig-leaderboard');
+async function fetchJson(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json();
+  return { res, data };
+}
+function renderCase(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    caseEl.textContent = 'Your case is empty. Pull a cigarette to get started.';
+    return;
+  }
+  caseEl.textContent = items.map((item) => '[' + item.slot + '] ' + item.rarity.emoji + ' ' + item.displayName + ' x' + item.quantity + ' (' + item.rarity.tier + ', #' + item.rank + ')').join('\\n');
+}
+function renderBuff(buff) {
+  if (!buff || !buff.active) {
+    buffEl.textContent = 'No active smoke boost.';
+    return;
+  }
+  buffEl.textContent = buff.multiplier + 'x boost (' + buff.rarityTier + ')\\nTime left: ' + buff.timeLeft;
+}
+function renderLeaderboard(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    leaderboardEl.textContent = 'No cigarettes have been smoked yet.';
+    return;
+  }
+  leaderboardEl.textContent = rows.map((row, index) => (index + 1) + '. ' + row.userId + ' - ' + row.smokedTotal + ' smoked').join('\\n');
+}
+async function refreshAll() {
+  const [caseResp, buffResp, leaderboardResp] = await Promise.all([
+    fetchJson(${JSON.stringify(p('/api/cigarettes/case'))}),
+    fetchJson(${JSON.stringify(p('/api/cigarettes/buff'))}),
+    fetchJson(${JSON.stringify(p('/api/cigarettes/leaderboard'))}),
+  ]);
+  renderCase(caseResp.data.items || []);
+  renderBuff(caseResp.res.ok && buffResp.res.ok ? buffResp.data.buff : null);
+  renderLeaderboard(leaderboardResp.data.rows || []);
+}
+document.getElementById('cig-gacha').addEventListener('click', async () => {
+  resultEl.innerHTML = '<div class="flash">Pulling...</div>';
+  const { res, data } = await fetchJson(${JSON.stringify(p('/api/cigarettes/gacha'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Pull failed.') + '</div>';
+    return;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  refreshAll();
+});
+document.getElementById('cig-smoke').addEventListener('click', async () => {
+  resultEl.innerHTML = '<div class="flash">Lighting up...</div>';
+  const slot = Number(document.getElementById('cig-smoke-slot').value);
+  const { res, data } = await fetchJson(${JSON.stringify(p('/api/cigarettes/smoke'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slot }) });
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Smoke failed.') + '</div>';
+    return;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  refreshAll();
+});
+refreshAll();
+</script>`,
+  });
+}
+
+function renderTouhouPage(session) {
+  return renderPage('Touhou', session, `
+    <div class="card"><h2>Lumi Touhou</h2><p class="muted">Adopt Touhous, browse the market, manage listings, and stock up on potions.</p></div>
+    <div class="card"><a class="pill" href="${p('/touhou/battle')}">Open Battle Arena</a></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="touhou-result"></div>
+      <div class="stack">
+        <div class="item"><button class="primary" id="touhou-adopt" type="button">Adopt Random Touhou (${BASE_ADOPT_PRICE} SGC)</button></div>
+        <div class="item"><input id="touhou-buy-name" type="text" placeholder="Touhou name to buy"><button class="primary" id="touhou-buy" type="button">Buy Listing</button></div>
+        <div class="item"><input id="touhou-sell-name" type="text" placeholder="Your Touhou name"><input id="touhou-sell-price" type="number" min="1" step="1" value="25"><button class="primary" id="touhou-sell" type="button">List For Sale</button></div>
+        <div class="item"><input id="touhou-delist-name" type="text" placeholder="Touhou name to delist"><button class="primary" id="touhou-delist" type="button">Delist</button></div>
+        <div class="item"><input id="touhou-buyback-name" type="text" placeholder="Touhou name to buy back"><button class="primary" id="touhou-buyback" type="button">Sell Back To Market</button></div>
+        <div class="item"><input id="touhou-send-name" type="text" placeholder="Touhou name to send"><input id="touhou-send-user" type="text" placeholder="Recipient Discord user id"><button class="primary" id="touhou-send" type="button">Send Touhou</button></div>
+        <div class="item"><input id="touhou-potion-amount" type="number" min="1" step="1" value="1"><button class="primary" id="touhou-potion" type="button">Buy Potions</button></div>
+      </div>
+    </div>
+    <div class="card"><h2>Your Collection</h2><pre id="touhou-collection" class="board">Loading collection...</pre></div>
+    <div class="card"><h2>Market Pool</h2><pre id="touhou-market" class="board">Loading adoption pool...</pre></div>
+    <div class="card"><h2>Listings</h2><pre id="touhou-listings" class="board">Loading listings...</pre></div>
+    <div class="card"><h2>Stats</h2><pre id="touhou-stats" class="board">Loading stats...</pre></div>
+  `, {
+    active: '/touhou',
+    pageScripts: `<script>
+const resultEl = document.getElementById('touhou-result');
+const collectionEl = document.getElementById('touhou-collection');
+const marketEl = document.getElementById('touhou-market');
+const listingsEl = document.getElementById('touhou-listings');
+const statsEl = document.getElementById('touhou-stats');
+async function fetchJson(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json();
+  return { res, data };
+}
+function renderCollection(data) {
+  const items = data.items || [];
+  if (!items.length) {
+    collectionEl.textContent = 'You do not own any Touhous yet.';
+    return;
+  }
+  collectionEl.textContent = items.map((item) => item.rarity.emoji + ' ' + item.name + ' - ' + item.rarity.tier + ' - Lv ' + item.level + ' - ~' + item.suggestedPrice + ' SGC' + (item.faintedUntil ? ' - fainted ' + item.faintedFor : '')).join('\\n');
+}
+function renderMarket(data) {
+  const items = data.items || [];
+  marketEl.textContent = items.length
+    ? ('Available: ' + (data.availableCount || items.length) + '\\n' + items.map((item) => item.rarity.emoji + ' ' + item.name + ' - ' + item.rarity.tier).join('\\n'))
+    : 'No Touhous available for adoption right now.';
+}
+function renderListings(data) {
+  const items = data.items || [];
+  listingsEl.textContent = items.length
+    ? items.map((item) => item.rarity.emoji + ' ' + item.name + ' - ' + item.price + ' SGC - seller ' + item.sellerId + ' - Lv ' + item.level).join('\\n')
+    : 'No active Touhou listings.';
+}
+function renderStats(data) {
+  statsEl.textContent = [
+    'Total: ' + data.total,
+    'Owned: ' + data.owned + ' | Available: ' + data.available,
+    'Listings: ' + data.listings,
+    'Potions: ' + data.potionCount + '/' + data.potionCap,
+  ].join('\\n');
+}
+async function refreshAll() {
+  const [collectionResp, marketResp, listingsResp, statsResp] = await Promise.all([
+    fetchJson(${JSON.stringify(p('/api/touhou/collection'))}),
+    fetchJson(${JSON.stringify(p('/api/touhou/market'))}),
+    fetchJson(${JSON.stringify(p('/api/touhou/listings'))}),
+    fetchJson(${JSON.stringify(p('/api/touhou/stats'))}),
+  ]);
+  renderCollection(collectionResp.data);
+  renderMarket(marketResp.data);
+  renderListings(listingsResp.data);
+  renderStats(statsResp.data);
+}
+async function doPost(path, payload, fallback) {
+  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  const { res, data } = await fetchJson(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || fallback) + '</div>';
+    return;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  refreshAll();
+}
+document.getElementById('touhou-adopt').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/adopt'))}, {}, 'Adopt failed.'));
+document.getElementById('touhou-buy').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/buy'))}, { name: document.getElementById('touhou-buy-name').value }, 'Buy failed.'));
+document.getElementById('touhou-sell').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/sell'))}, { name: document.getElementById('touhou-sell-name').value, price: Number(document.getElementById('touhou-sell-price').value) }, 'Sell failed.'));
+document.getElementById('touhou-delist').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/delist'))}, { name: document.getElementById('touhou-delist-name').value }, 'Delist failed.'));
+document.getElementById('touhou-buyback').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/buyback'))}, { name: document.getElementById('touhou-buyback-name').value }, 'Buyback failed.'));
+document.getElementById('touhou-send').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/send'))}, { name: document.getElementById('touhou-send-name').value, recipientUserId: document.getElementById('touhou-send-user').value.trim() }, 'Send failed.'));
+document.getElementById('touhou-potion').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/potions'))}, { amount: Number(document.getElementById('touhou-potion-amount').value) }, 'Potion purchase failed.'));
+refreshAll();
+</script>`,
+  });
+}
+
+function renderTouhouBattleIndexPage(session) {
+  return renderPage('Touhou Battle', session, `
+    <div class="card"><h2>Touhou Battle Arena</h2><p class="muted">Pick one of your Touhous and challenge an evil opponent. Wins grant EXP and SGC. Defeats cause a 10 minute faint cooldown.</p></div>
+    <div class="card">
+      <h2>Start Battle</h2>
+      <div id="touhou-battle-result"></div>
+      <div class="stack">
+        <div class="item"><input id="touhou-battle-name" type="text" placeholder="Your Touhou name"></div>
+        <div class="item">
+          <select id="touhou-battle-rarity">
+            <option value="Common">Common</option>
+            <option value="Uncommon">Uncommon</option>
+            <option value="Rare">Rare</option>
+            <option value="Epic">Epic</option>
+            <option value="Legendary">Legendary</option>
+            <option value="gamble">Gamble</option>
+          </select>
+        </div>
+        <div class="item"><button class="primary" id="touhou-battle-start" type="button">Start Battle</button></div>
+        <div class="item"><input id="touhou-heal-name" type="text" placeholder="Touhou name to heal"><button class="primary" id="touhou-heal-free" type="button">Heal / Check Cooldown</button> <button class="primary" id="touhou-heal-pay" type="button">Instant Heal (50 SGC)</button></div>
+      </div>
+    </div>
+    <div class="card"><h2>Your Party</h2><pre id="touhou-party" class="board">Loading party...</pre></div>
+  `, {
+    active: '/touhou',
+    pageScripts: `<script>
+const resultEl = document.getElementById('touhou-battle-result');
+const partyEl = document.getElementById('touhou-party');
+async function fetchJson(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json();
+  return { res, data };
+}
+function renderParty(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    partyEl.textContent = 'You do not own any Touhous yet.';
+    return;
+  }
+  partyEl.textContent = items.map((item) => item.rarity.emoji + ' ' + item.name + ' - Lv ' + item.level + ' - ' + item.exp + '/' + item.expToNext + ' EXP - ' + item.wins + 'W/' + item.losses + 'L' + (item.faintedUntil ? ' - fainted ' + item.faintedFor : '') + '\\n  ' + (item.attacks.length ? item.attacks.join(' / ') : 'no attacks')).join('\\n');
+}
+async function refreshParty() {
+  const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/party'))});
+  if (!res.ok) {
+    partyEl.textContent = 'Could not load party.';
+    return;
+  }
+  renderParty(data.items || []);
+}
+document.getElementById('touhou-battle-start').addEventListener('click', async () => {
+  resultEl.innerHTML = '<div class="flash">Starting battle...</div>';
+  const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/battle/start'))}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('touhou-battle-name').value,
+      rarity: document.getElementById('touhou-battle-rarity').value,
+    }),
+  });
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Could not start battle.') + '</div>';
+    return;
+  }
+  window.location.href = ${JSON.stringify(p('/touhou/battle/'))} + data.battleId;
+});
+document.getElementById('touhou-heal-free').addEventListener('click', () => doHeal(false));
+document.getElementById('touhou-heal-pay').addEventListener('click', () => doHeal(true));
+async function doHeal(pay) {
+  resultEl.innerHTML = '<div class="flash">Checking heal...</div>';
+  const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/heal'))}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: document.getElementById('touhou-heal-name').value, pay }),
+  });
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Heal failed.') + '</div>';
+    return;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  refreshParty();
+}
+refreshParty();
+</script>`,
+  });
+}
+
+function renderTouhouBattlePage(session, battleId) {
+  const baseApi = JSON.stringify(p('/api/touhou/battle/'));
+  return renderPage(`Touhou Battle ${battleId}`, session, `
+    <div class="card"><h2>Touhou Battle</h2><div class="muted">Battle ID: ${escapeHtml(battleId)}</div></div>
+    <div class="card"><h2>Battlefield</h2><pre id="touhou-battle-state" class="board">Loading battle...</pre></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="touhou-battle-action-result"></div>
+      <div class="stack">
+        <div class="item" id="touhou-battle-attack-buttons">Loading attacks...</div>
+        <div class="item"><button class="primary" id="touhou-battle-defend" type="button">Defend</button> <button class="primary" id="touhou-battle-potion" type="button">Use Potion</button> <button class="primary" id="touhou-battle-run" type="button">Run</button></div>
+      </div>
+    </div>
+  `, {
+    active: '/touhou',
+    pageScripts: `<script>
+const battleId = ${JSON.stringify(battleId)};
+const stateEl = document.getElementById('touhou-battle-state');
+const resultEl = document.getElementById('touhou-battle-action-result');
+const attackButtonsEl = document.getElementById('touhou-battle-attack-buttons');
+const baseApi = ${baseApi};
+function renderState(state) {
+  if (!state) {
+    stateEl.textContent = 'Battle unavailable.';
+    return;
+  }
+  stateEl.textContent = [
+    state.player.rarity.emoji + ' ' + state.player.name + ' (Lv ' + state.player.level + ', ' + state.player.type + ')',
+    '[' + state.player.hpBar + '] ' + state.player.hp + '/' + state.player.hpMax,
+    '',
+    state.evil.rarity.emoji + ' Evil ' + state.evil.name + ' (Lv ' + state.evil.level + ', ' + state.evil.type + ')',
+    '[' + state.evil.hpBar + '] ' + state.evil.hp + '/' + state.evil.hpMax,
+    '',
+    'Potions: ' + state.potionCount,
+    '',
+    'Battle Log:',
+    ...state.log.slice(-8),
+  ].join('\\n');
+  if (state.over) {
+    document.getElementById('touhou-battle-defend').disabled = true;
+    document.getElementById('touhou-battle-potion').disabled = true;
+    document.getElementById('touhou-battle-run').disabled = true;
+  }
+  attackButtonsEl.innerHTML = '';
+  for (const [index, attack] of (state.player.attacks || []).entries()) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'primary';
+    button.textContent = attack.name + ' (' + attack.basePower + ')';
+    button.disabled = !!state.over;
+    button.addEventListener('click', () => postAction({ kind: 'attack', attackIndex: index }));
+    attackButtonsEl.appendChild(button);
+  }
+}
+async function fetchState() {
+  const res = await fetch(baseApi + battleId);
+  const data = await res.json();
+  if (!res.ok) {
+    stateEl.textContent = data.error?.message || 'Battle unavailable.';
+    return null;
+  }
+  renderState(data.state);
+  return data.state;
+}
+async function postAction(action) {
+  resultEl.innerHTML = '<div class="flash">Resolving turn...</div>';
+  const res = await fetch(baseApi + battleId + '/action', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(action),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Action failed.') + '</div>';
+    return;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Turn resolved.') + '</div>';
+  renderState(data.state);
+}
+document.getElementById('touhou-battle-defend').addEventListener('click', () => postAction({ kind: 'defend' }));
+document.getElementById('touhou-battle-potion').addEventListener('click', () => postAction({ kind: 'potion' }));
+document.getElementById('touhou-battle-run').addEventListener('click', () => postAction({ kind: 'run' }));
+fetchState();
+</script>`,
+  });
+}
+
 async function handleRequest(req, res) {
   const parsedUrl = parseUrl(req);
   const pathname = routePath(parsedUrl.pathname);
@@ -1263,6 +1763,374 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     sendJson(res, 200, { viewer: { discordId: session.discordId, username: session.username } });
+    return;
+  }
+
+  if (pathname === '/api/cigarettes/case' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, { ok: true, items: serializeCigaretteCase(getUserCase(session.discordId)) });
+    return;
+  }
+
+  if (pathname === '/api/cigarettes/leaderboard' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, {
+      ok: true,
+      rows: getTopSmokers(10).map((row) => ({ userId: row.user_id, smokedTotal: Number(row.smoked_total || 0) })),
+    });
+    return;
+  }
+
+  if (pathname === '/api/cigarettes/buff' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const buff = getSmokeBoost(session.discordId);
+    sendJson(res, 200, {
+      ok: true,
+      buff: {
+        active: buff.active,
+        multiplier: buff.multiplier,
+        rarityTier: buff.rarityTier,
+        timeLeft: buff.active ? formatRemaining(buff.remainingMs) : null,
+      },
+    });
+    return;
+  }
+
+  if (pathname === '/api/cigarettes/gacha' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    ensureAccount(session.discordId, session.username);
+    const balance = getBalance(session.discordId);
+    if (balance < DISPENSE_PRICE) return sendError(res, 400, 'insufficient_funds', `Need ${DISPENSE_PRICE} SGC but only have ${balance}.`);
+    const result = dispenseCigarette(session.discordId);
+    if (!result.success) return sendError(res, 400, 'gacha_failed', result.error || 'Could not pull cigarette');
+    adjustBalance(session.discordId, -DISPENSE_PRICE, `Cigarette gacha: ${result.cigarette.display_name}`);
+    adjustBalance(TAYS_TOBACCO_USER_ID, DISPENSE_PRICE, `Cigarette sale: ${result.cigarette.display_name}`);
+    const message = result.action === 'replaced' && result.replacedCigarette
+      ? `Pulled ${result.cigarette.display_name} (${result.rarity.tier}) and replaced ${result.replacedCigarette.display_name}.`
+      : result.action === 'rejected_full'
+        ? `Pulled ${result.cigarette.display_name} (${result.rarity.tier}), but your full case discarded it.`
+        : `Pulled ${result.cigarette.display_name} (${result.rarity.tier}).`;
+    sendJson(res, 200, { ok: true, message });
+    return;
+  }
+
+  if (pathname === '/api/cigarettes/smoke' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const slot = Number(body.slot);
+    const items = getUserCase(session.discordId);
+    if (!Number.isInteger(slot) || slot < 1 || slot > items.length) {
+      return sendError(res, 400, 'bad_slot', `Slot must be between 1 and ${items.length || 1}.`);
+    }
+    const target = items[slot - 1];
+    const result = smokeCigarette(session.discordId, target.display_name);
+    if (!result.success) return sendError(res, 400, 'smoke_failed', result.error || 'Could not smoke cigarette');
+    const boost = activateSmokeBoost(session.discordId, result.rarity.tier);
+    sendJson(res, 200, {
+      ok: true,
+      message: `Smoked ${result.cigarette.display_name}. ${boost.multiplier}x boost active for ${Math.max(1, Math.floor(boost.durationMs / 60000))} minutes.`,
+    });
+    return;
+  }
+
+  if (pathname === '/api/touhou/collection' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, { ok: true, items: serializeTouhouCollection(getUserTouhous(WEB_GUILD_ID, session.discordId), session.discordId) });
+    return;
+  }
+
+  if (pathname === '/api/touhou/party' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    sendJson(res, 200, { ok: true, items: serializeTouhouParty(getUserTouhous(WEB_GUILD_ID, session.discordId), session.discordId) });
+    return;
+  }
+
+  if (pathname === '/api/touhou/market' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const items = getAvailableTouhous(WEB_GUILD_ID, 20, 0).map((item) => ({
+      name: item.name,
+      rarity: getRarity(item.trade_count, item.name, item.base_rarity_score || 0, 0),
+    }));
+    sendJson(res, 200, { ok: true, items, availableCount: getAvailableCount(WEB_GUILD_ID) });
+    return;
+  }
+
+  if (pathname === '/api/touhou/listings' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const items = getListingsPage(WEB_GUILD_ID, 25, 0).map((item) => {
+      const stats = getOrCreateBattleStats(WEB_GUILD_ID, item.touhou_name, item.seller_id);
+      const level = stats?.level || 1;
+      return {
+        name: item.touhou_name,
+        sellerId: item.seller_id,
+        price: item.price,
+        level,
+        rarity: getRarity(item.trade_count, item.touhou_name, item.base_rarity_score || 0, level),
+      };
+    });
+    sendJson(res, 200, { ok: true, items, total: getListingsCount(WEB_GUILD_ID) });
+    return;
+  }
+
+  if (pathname === '/api/touhou/stats' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const stats = getMarketStats(WEB_GUILD_ID);
+    sendJson(res, 200, {
+      ok: true,
+      ...stats,
+      potionCount: getPotionCount(WEB_GUILD_ID, session.discordId),
+      potionCap: POTION_CAP,
+    });
+    return;
+  }
+
+  if (pathname === '/api/touhou/adopt' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    ensureAccount(session.discordId, session.username);
+    const balance = getBalance(session.discordId);
+    if (balance < BASE_ADOPT_PRICE) return sendError(res, 400, 'insufficient_funds', `Need ${BASE_ADOPT_PRICE} SGC but only have ${balance}.`);
+    const result = adoptTouhou(WEB_GUILD_ID, session.discordId);
+    if (!result.success) return sendError(res, 400, result.code || 'adopt_failed', result.error || 'Could not adopt Touhou');
+    adjustBalance(session.discordId, -BASE_ADOPT_PRICE, `Adopted Touhou: ${result.touhou.name}`);
+    adjustBalance(TOUHOU_MGMT_USER_ID, BASE_ADOPT_PRICE, `Touhou adoption fee: ${result.touhou.name}`);
+    sendJson(res, 200, { ok: true, message: `Adopted ${result.touhou.name}.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/buy' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    const listingPrice = getListingPrice(WEB_GUILD_ID, touhouName);
+    if (listingPrice === null) return sendError(res, 400, 'not_listed', `${touhouName} is not listed for sale.`);
+    const balance = getBalance(session.discordId);
+    if (balance < listingPrice) return sendError(res, 400, 'insufficient_funds', `Need ${listingPrice} SGC but only have ${balance}.`);
+    const result = buyListing(WEB_GUILD_ID, session.discordId, touhouName);
+    if (!result.success) return sendError(res, 400, 'buy_failed', result.error || 'Could not buy Touhou');
+    const tax = Math.max(1, Math.floor(result.price * 0.10));
+    const sellerReceives = result.price - tax;
+    adjustBalance(session.discordId, -result.price, `Bought Touhou: ${touhouName}`);
+    adjustBalance(result.sellerId, sellerReceives, `Sold Touhou: ${touhouName} (after 10% tax)`);
+    adjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
+    sendJson(res, 200, { ok: true, message: `Bought ${touhouName} for ${result.price} SGC.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/sell' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    const price = Number(body.price);
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    if (!Number.isInteger(price) || price <= 0) return sendError(res, 400, 'bad_price', 'Price must be a positive integer.');
+    const result = listForSale(WEB_GUILD_ID, session.discordId, touhouName, price);
+    if (!result.success) return sendError(res, 400, 'sell_failed', result.error || 'Could not list Touhou');
+    sendJson(res, 200, { ok: true, message: `Listed ${touhouName} for ${price} SGC.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/delist' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    const result = delistTouhou(WEB_GUILD_ID, session.discordId, touhouName);
+    if (!result.success) return sendError(res, 400, 'delist_failed', result.error || 'Could not delist Touhou');
+    sendJson(res, 200, { ok: true, message: `Delisted ${touhouName}.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/buyback' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    const result = sellbackToMarket(WEB_GUILD_ID, session.discordId, touhouName);
+    if (!result.success) return sendError(res, 400, 'buyback_failed', result.error || 'Could not buy back Touhou');
+    payTouhouTraderPayout(session.discordId, result.payout, `Touhou buyback: ${touhouName}`);
+    sendJson(res, 200, { ok: true, message: `Sold ${touhouName} back to the market for ${result.payout} SGC.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/send' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    const recipientUserId = String(body.recipientUserId || '').trim();
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    if (!recipientUserId) return sendError(res, 400, 'bad_recipient', 'recipientUserId is required.');
+    const result = sendTouhou(WEB_GUILD_ID, session.discordId, recipientUserId, touhouName);
+    if (!result.success) return sendError(res, 400, 'send_failed', result.error || 'Could not send Touhou');
+    sendJson(res, 200, { ok: true, message: `Sent ${touhouName} to ${recipientUserId}.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/potions' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount <= 0) return sendError(res, 400, 'bad_amount', 'Amount must be a positive integer.');
+    const totalCost = amount * POTION_PRICE;
+    const balance = getBalance(session.discordId);
+    if (balance < totalCost) return sendError(res, 400, 'insufficient_funds', `Need ${totalCost} SGC but only have ${balance}.`);
+    const result = addPotions(WEB_GUILD_ID, session.discordId, amount);
+    if (!result.success) return sendError(res, 400, result.code || 'potion_failed', result.code === 'CAP_REACHED' ? `Potion cap reached (${result.newCount}/${POTION_CAP}).` : 'Could not add potions.');
+    adjustBalance(session.discordId, -(result.added * POTION_PRICE), `Bought ${result.added} potion(s)`);
+    adjustBalance(TOUHOU_MGMT_USER_ID, result.added * POTION_PRICE, `Potion purchase x${result.added}`);
+    sendJson(res, 200, { ok: true, message: `Bought ${result.added} potion(s) for ${result.added * POTION_PRICE} SGC.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/heal' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    const pay = Boolean(body.pay);
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    const touhou = getTouhou(WEB_GUILD_ID, touhouName);
+    if (!touhou || touhou.owner_id !== session.discordId) return sendError(res, 400, 'not_owner', `You do not own ${touhouName}.`);
+    const stats = getOrCreateBattleStats(WEB_GUILD_ID, touhouName, session.discordId);
+    if (!stats.fainted_until) return sendJson(res, 200, { ok: true, message: `${touhouName} is already healthy.` });
+    if (stats.fainted_until <= Date.now()) {
+      healTouhou(WEB_GUILD_ID, touhouName, session.discordId);
+      return sendJson(res, 200, { ok: true, message: `${touhouName} recovered and is ready to battle.` });
+    }
+    if (!pay) return sendError(res, 400, 'still_fainted', `${touhouName} is still fainted for ${formatRemaining(stats.fainted_until - Date.now())}.`);
+    const healCost = 50;
+    const balance = getBalance(session.discordId);
+    if (balance < healCost) return sendError(res, 400, 'insufficient_funds', `Need ${healCost} SGC but only have ${balance}.`);
+    adjustBalance(session.discordId, -healCost, `Touhou instant-heal: ${touhouName}`);
+    adjustBalance(TOUHOU_MGMT_USER_ID, healCost, `Touhou instant-heal fee: ${touhouName}`);
+    healTouhou(WEB_GUILD_ID, touhouName, session.discordId);
+    sendJson(res, 200, { ok: true, message: `Instant-healed ${touhouName} for ${healCost} SGC.` });
+    return;
+  }
+
+  if (pathname === '/api/touhou/battle/start' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const touhouName = resolveName(body.name);
+    const rarityChoice = String(body.rarity || '').trim();
+    if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    const touhou = getTouhou(WEB_GUILD_ID, touhouName);
+    if (!touhou) return sendError(res, 400, 'not_found', 'Touhou not found.');
+    if (touhou.owner_id !== session.discordId) return sendError(res, 400, 'not_owner', `You do not own ${touhouName}.`);
+    const playerStats = getOrCreateBattleStats(WEB_GUILD_ID, touhouName, session.discordId);
+    if (playerStats.fainted_until && playerStats.fainted_until > Date.now()) {
+      return sendError(res, 400, 'fainted', `${touhouName} is fainted for ${formatRemaining(playerStats.fainted_until - Date.now())}.`);
+    }
+    const playerAttacks = getAttacks(touhouName);
+    if (!playerAttacks.length) return sendError(res, 400, 'no_attacks', `${touhouName} has no attacks seeded yet.`);
+    const battleId = `battle-${crypto.randomBytes(6).toString('hex')}`;
+    const result = makeBattleState({
+      guildId: WEB_GUILD_ID,
+      userId: session.discordId,
+      playerTouhou: touhou,
+      playerStats,
+      playerAttacks,
+      rarityChoice,
+      potionCount: getPotionCount(WEB_GUILD_ID, session.discordId),
+    });
+    if (!result.ok) return sendError(res, 400, result.reason || 'battle_failed', 'Could not start battle.');
+    touhouBattleSessions.set(battleId, {
+      ...result.state,
+      battleId,
+      startedAt: Date.now(),
+    });
+    sendJson(res, 200, { ok: true, battleId, state: serializeBattleState(touhouBattleSessions.get(battleId)) });
+    return;
+  }
+
+  const touhouBattleApiMatch = pathname.match(/^\/api\/touhou\/battle\/([^/]+)$/u);
+  if (touhouBattleApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const battleId = decodeURIComponent(touhouBattleApiMatch[1]);
+    const battle = getTouhouBattleSession(battleId, session.discordId);
+    if (!battle) return sendError(res, 404, 'not_found', 'Battle not found.');
+    if (!battle.over && battle.updatedAt && Date.now() - battle.updatedAt > 90_000) {
+      finishTouhouBattleTimeout(battleId);
+    }
+    const current = getTouhouBattleSession(battleId, session.discordId);
+    sendJson(res, 200, { ok: true, state: serializeBattleState(current) });
+    return;
+  }
+
+  const touhouBattleActionApiMatch = pathname.match(/^\/api\/touhou\/battle\/([^/]+)\/action$/u);
+  if (touhouBattleActionApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const battleId = decodeURIComponent(touhouBattleActionApiMatch[1]);
+    const battle = getTouhouBattleSession(battleId, session.discordId);
+    if (!battle) return sendError(res, 404, 'not_found', 'Battle not found.');
+    const body = await readJsonBody(req);
+    const kind = String(body.kind || '').trim();
+    const action = { kind };
+    if (kind === 'attack') {
+      const attackIndex = Number(body.attackIndex);
+      if (!Number.isInteger(attackIndex) || attackIndex < 0 || attackIndex >= battle.player.attacks.length) {
+        return sendError(res, 400, 'bad_attack', 'Invalid attack index.');
+      }
+      action.attackIndex = attackIndex;
+    } else if (!['defend', 'potion', 'run'].includes(kind)) {
+      return sendError(res, 400, 'bad_action', 'Unknown battle action.');
+    }
+    resolveBattleAction(battle, action, {
+      consumePotion,
+      payTouhouTraderPayout,
+    });
+    if (battle.over) {
+      setTimeout(() => touhouBattleSessions.delete(battleId), 10 * 60 * 1000).unref?.();
+    }
+    sendJson(res, 200, {
+      ok: true,
+      message: battle.over ? `Battle ended: ${battle.outcome}.` : 'Turn resolved.',
+      state: serializeBattleState(battle),
+    });
     return;
   }
 
@@ -1833,6 +2701,31 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { nextPath: p('/pachinko') });
     if (!session) return;
     sendHtml(res, 200, renderPachinkoPage(session));
+    return;
+  }
+  if (pathname === '/cigarettes' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/cigarettes') });
+    if (!session) return;
+    sendHtml(res, 200, renderCigarettesPage(session));
+    return;
+  }
+  if (pathname === '/touhou' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/touhou') });
+    if (!session) return;
+    sendHtml(res, 200, renderTouhouPage(session));
+    return;
+  }
+  if (pathname === '/touhou/battle' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/touhou/battle') });
+    if (!session) return;
+    sendHtml(res, 200, renderTouhouBattleIndexPage(session));
+    return;
+  }
+  const touhouBattlePageMatch = pathname.match(/^\/touhou\/battle\/([^/]+)$/u);
+  if (touhouBattlePageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/touhou/battle/${touhouBattlePageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderTouhouBattlePage(session, decodeURIComponent(touhouBattlePageMatch[1])));
     return;
   }
   if (pathname === '/slots' && method === 'GET') {
