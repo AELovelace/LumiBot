@@ -378,6 +378,16 @@ function serializeTextLobbies(result, prefix) {
   }));
 }
 
+function normalizeHorseChoice(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (['A', 'B', 'C', 'D'].includes(raw)) return raw;
+  if (raw === '1') return 'A';
+  if (raw === '2') return 'B';
+  if (raw === '3') return 'C';
+  if (raw === '4') return 'D';
+  return null;
+}
+
 function buildWsFrame(data) {
   const payload = Buffer.from(data, 'utf8');
   const length = payload.length;
@@ -1108,7 +1118,13 @@ function renderHorseracingLobbyPage(session, lobbyId) {
       <div class="stack">
         <div class="item"><button class="primary" id="race-join" type="button">Join Lobby</button> <button class="primary" id="race-leave" type="button">Leave Lobby</button></div>
         <div class="item"><input id="race-bet" type="number" min="1" step="1" value="5"><button class="primary" id="race-set-bet" type="button">Set Bet</button></div>
-        <div class="item"><input id="race-horse" type="number" min="1" max="4" step="1" value="1"><button class="primary" id="race-pick-horse" type="button">Pick Horse</button></div>
+        <div class="item">
+          <div class="muted" style="margin-bottom:6px;">Pick your horse:</div>
+          <button class="primary" data-race-horse="A" type="button">Horse A</button>
+          <button class="primary" data-race-horse="B" type="button">Horse B</button>
+          <button class="primary" data-race-horse="C" type="button">Horse C</button>
+          <button class="primary" data-race-horse="D" type="button">Horse D</button>
+        </div>
       </div>
     </div>
   `, {
@@ -1145,7 +1161,9 @@ function connectWs() {
 document.getElementById('race-join').addEventListener('click', () => postAction(baseApi + lobbyId + '/join'));
 document.getElementById('race-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
 document.getElementById('race-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('race-bet').value) }));
-document.getElementById('race-pick-horse').addEventListener('click', () => postAction(baseApi + lobbyId + '/horse', { horse: Number(document.getElementById('race-horse').value) }));
+for (const button of document.querySelectorAll('[data-race-horse]')) {
+  button.addEventListener('click', () => postAction(baseApi + lobbyId + '/horse', { horse: button.getAttribute('data-race-horse') }));
+}
 connectWs();
 refreshState();
 </script>`,
@@ -1606,8 +1624,8 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const body = await readJsonBody(req);
-    const horse = Number(body.horse);
-    if (!Number.isInteger(horse) || horse < 1 || horse > 4) return sendError(res, 400, 'bad_request', 'horse must be between 1 and 4');
+    const horse = normalizeHorseChoice(body.horse);
+    if (!horse) return sendError(res, 400, 'bad_request', 'horse must be A, B, C, or D');
     const lobbyId = decodeURIComponent(horseracingHorseApiMatch[1]);
     const channelId = getWebHorseracingChannelId(lobbyId);
     try {
