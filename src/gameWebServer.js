@@ -208,6 +208,10 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   const nav = [
     ['/', 'Lobby'],
     ['/slots', 'Slots'],
+    ['/blackjack', 'Blackjack'],
+    ['/holdem', 'Holdem'],
+    ['/horseracing', 'Horse Racing'],
+    ['/pachinko', 'Pachinko'],
   ].map(([href, label]) => `<a class="${active === href ? 'active' : ''}" href="${p(href)}">${label}</a>`).join('');
 
   return `<!DOCTYPE html>
@@ -241,7 +245,9 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .card { padding: 16px; border: 1px solid #572020; background: rgba(20, 8, 10, 0.94); margin-bottom: 14px; }
   .stack { display: grid; gap: 14px; }
   .slots-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .games-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .item { padding: 12px; border: 1px solid #3d1719; background: rgba(12, 5, 7, 0.86); }
+  .board { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   h2 { margin: 0 0 10px; font: 30px 'VT323', monospace; color: #ff0000; }
   .metric { font: 28px 'VT323', monospace; color: #fff; }
   .muted { color: #a394a7; font-size: 12px; }
@@ -259,6 +265,7 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   @media (max-width: 700px) {
     .wrap { width: calc(100vw - 12px); }
     .slots-grid { grid-template-columns: 1fr; }
+    .games-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -290,6 +297,22 @@ function getWebSlotsChannelId(lobbyId) {
   return `games:web:slots:${String(lobbyId)}`;
 }
 
+function getWebBlackjackChannelId(lobbyId) {
+  return `games:web:blackjack:${String(lobbyId)}`;
+}
+
+function getWebHoldemChannelId(lobbyId) {
+  return `games:web:holdem:${String(lobbyId)}`;
+}
+
+function getWebHorseracingChannelId(lobbyId) {
+  return `games:web:horseracing:${String(lobbyId)}`;
+}
+
+function getWebPachinkoChannelId(sessionId) {
+  return `games:web:pachinko:${String(sessionId)}`;
+}
+
 function serializeSlotsPayload(payload) {
   if (!payload || !payload.embed) return null;
   return {
@@ -308,6 +331,10 @@ function parseLobbyIdFromChannelId(channelId) {
   return String(channelId || '').replace(/^games:web:slots:/u, '');
 }
 
+function parsePrefixedId(channelId, prefix) {
+  return String(channelId || '').replace(new RegExp(`^games:web:${prefix}:`, 'u'), '');
+}
+
 function serializeSlotsLobbyList(result) {
   if (!result || !Array.isArray(result.lobbies)) return [];
   return result.lobbies.map((lobby) => ({
@@ -322,6 +349,32 @@ function serializeSlotsLobbyList(result) {
       spinning: Boolean(player.spinning),
       statusText: player.statusText || '',
     })) : [],
+  }));
+}
+
+function serializeTextTables(result, prefix, fallbackMaxPlayers = null) {
+  if (!result || !Array.isArray(result.tables)) return [];
+  return result.tables.map((table) => ({
+    lobbyId: parsePrefixedId(table.channelId, prefix),
+    channelId: table.channelId,
+    playerCount: Number(table.playerCount) || 0,
+    maxPlayers: Number.isFinite(Number(table.maxPlayers)) ? Number(table.maxPlayers) : fallbackMaxPlayers,
+    content: table.content || '',
+    phase: table.phase || '',
+    resolving: Boolean(table.resolving),
+  }));
+}
+
+function serializeTextLobbies(result, prefix) {
+  if (!result || !Array.isArray(result.lobbies)) return [];
+  return result.lobbies.map((lobby) => ({
+    lobbyId: parsePrefixedId(lobby.channelId, prefix),
+    channelId: lobby.channelId,
+    playerCount: Number(lobby.playerCount) || 0,
+    content: lobby.content || '',
+    phase: lobby.phase || '',
+    raceNumber: Number(lobby.raceNumber) || 0,
+    players: Array.isArray(lobby.players) ? lobby.players : [],
   }));
 }
 
@@ -446,6 +499,50 @@ function installWsBridge() {
       broadcastToChannel(`slots:lobby:${lobbyId}`, { type: 'slots.spinComplete', lobbyId, result: evt });
     }
   });
+  manager.onEngineEvent('blackjack', (evt) => {
+    if (!evt || typeof evt.channelId !== 'string' || !evt.channelId.startsWith('games:web:blackjack:')) return;
+    const lobbyId = parsePrefixedId(evt.channelId, 'blackjack');
+    if (evt.name === 'render') {
+      broadcastToChannel(`blackjack:lobby:${lobbyId}`, { type: 'blackjack.render', lobbyId, state: { content: evt.content || '' } });
+      return;
+    }
+    if (evt.name === 'tableClosed') {
+      broadcastToChannel(`blackjack:lobby:${lobbyId}`, { type: 'blackjack.closed', lobbyId, content: evt.content || 'Table closed.' });
+    }
+  });
+  manager.onEngineEvent('holdem', (evt) => {
+    if (!evt || typeof evt.channelId !== 'string' || !evt.channelId.startsWith('games:web:holdem:')) return;
+    const lobbyId = parsePrefixedId(evt.channelId, 'holdem');
+    if (evt.name === 'render') {
+      broadcastToChannel(`holdem:lobby:${lobbyId}`, { type: 'holdem.render', lobbyId, state: { content: evt.content || '' } });
+      return;
+    }
+    if (evt.name === 'tableClosed') {
+      broadcastToChannel(`holdem:lobby:${lobbyId}`, { type: 'holdem.closed', lobbyId, content: evt.content || 'Table closed.' });
+    }
+  });
+  manager.onEngineEvent('horseracing', (evt) => {
+    if (!evt || typeof evt.channelId !== 'string' || !evt.channelId.startsWith('games:web:horseracing:')) return;
+    const lobbyId = parsePrefixedId(evt.channelId, 'horseracing');
+    if (['bettingOpen', 'bettingUpdate', 'bettingClosed', 'raceStart', 'raceFrame', 'raceFinished'].includes(evt.name)) {
+      broadcastToChannel(`horseracing:lobby:${lobbyId}`, { type: `horseracing.${evt.name}`, lobbyId, state: { content: evt.content || '' }, content: evt.content || '' });
+      return;
+    }
+    if (evt.name === 'lobbyClosed') {
+      broadcastToChannel(`horseracing:lobby:${lobbyId}`, { type: 'horseracing.closed', lobbyId, state: { content: evt.content || 'Lobby closed.' }, content: evt.content || 'Lobby closed.' });
+    }
+  });
+  manager.onEngineEvent('pachinko', (evt) => {
+    if (!evt || typeof evt.channelId !== 'string' || !evt.channelId.startsWith('games:web:pachinko:')) return;
+    const sessionId = parsePrefixedId(evt.channelId, 'pachinko');
+    if (evt.name === 'frame') {
+      broadcastToChannel(`pachinko:session:${sessionId}`, { type: 'pachinko.frame', sessionId, content: evt.content || '' });
+      return;
+    }
+    if (evt.name === 'finalresult') {
+      broadcastToChannel(`pachinko:session:${sessionId}`, { type: 'pachinko.finalresult', sessionId, resultText: evt.resultText || '', payout: evt.payout || 0 });
+    }
+  });
 }
 
 function handleWsUpgrade(req, socket) {
@@ -505,8 +602,14 @@ function renderHomePage(session) {
   return renderPage('Games Lobby', session, `
     <div class="card">
       <h2>Game Lobby</h2>
-      <p>Use the dedicated games interface for realtime casino tables.</p>
-      <a class="pill" href="${p('/slots')}">Open Slots</a>
+      <p>Use the dedicated games interface for realtime casino tables and live betting games.</p>
+      <div class="games-grid">
+        <div class="item"><strong>Slots</strong><div class="muted">Shared 3-seat machine</div><a class="pill" href="${p('/slots')}" style="margin-top:10px;">Open</a></div>
+        <div class="item"><strong>Blackjack</strong><div class="muted">Realtime table play</div><a class="pill" href="${p('/blackjack')}" style="margin-top:10px;">Open</a></div>
+        <div class="item"><strong>Holdem</strong><div class="muted">Shared poker table</div><a class="pill" href="${p('/holdem')}" style="margin-top:10px;">Open</a></div>
+        <div class="item"><strong>Horse Racing</strong><div class="muted">Betting window and live race feed</div><a class="pill" href="${p('/horseracing')}" style="margin-top:10px;">Open</a></div>
+        <div class="item"><strong>Pachinko</strong><div class="muted">Solo live drop board</div><a class="pill" href="${p('/pachinko')}" style="margin-top:10px;">Open</a></div>
+      </div>
     </div>
   `, { active: '/' });
 }
@@ -684,6 +787,392 @@ refreshLobby();
   });
 }
 
+function renderTextLobbyList(lobbies, emptyMessage, pageBase) {
+  if (!Array.isArray(lobbies) || lobbies.length === 0) {
+    return `<div class="item">${escapeHtml(emptyMessage)}</div>`;
+  }
+  return lobbies.map((lobby) => {
+    const joinUrl = `${pageBase}${encodeURIComponent(lobby.lobbyId)}`;
+    return [
+      '<div class="item">',
+      `<strong>Lobby ${escapeHtml(lobby.lobbyId)}</strong>`,
+      `<div>${escapeHtml(String(lobby.playerCount))}${lobby.maxPlayers ? `/${escapeHtml(String(lobby.maxPlayers))}` : ''} seats filled</div>`,
+      `<pre class="board">${escapeHtml(lobby.content || 'Waiting for first action...')}</pre>`,
+      `<a class="pill" href="${escapeHtml(joinUrl)}">Open Lobby</a>`,
+      '</div>',
+    ].join('');
+  }).join('');
+}
+
+function renderBlackjackIndexPage(session) {
+  const apiPath = JSON.stringify(p('/api/blackjack/lobbies'));
+  const pageBase = JSON.stringify(p('/blackjack/'));
+  return renderPage('Blackjack', session, `
+    <div class="card">
+      <h2>Blackjack Tables</h2>
+      <p class="muted">Create a blackjack table or join one that is already running.</p>
+      <button class="primary" id="create-blackjack-lobby" type="button">Create Blackjack Table</button>
+      <div id="blackjack-create-result" style="margin-top:12px;"></div>
+    </div>
+    <div class="card">
+      <h2>Open Tables</h2>
+      <div id="blackjack-lobby-list"><div class="item">Loading blackjack tables...</div></div>
+    </div>
+  `, {
+    active: '/blackjack',
+    pageScripts: `<script>
+const listEl = document.getElementById('blackjack-lobby-list');
+const apiPath = ${apiPath};
+const pageBase = ${pageBase};
+function renderList(lobbies) {
+  listEl.innerHTML = ${JSON.stringify('')} + (Array.isArray(lobbies) && lobbies.length
+    ? lobbies.map((lobby) => {
+        const joinUrl = pageBase + encodeURIComponent(lobby.lobbyId);
+        return '<div class="item"><strong>Lobby ' + lobby.lobbyId + '</strong><pre class="board">' + (lobby.content || 'Waiting for first hand...') + '</pre><a class="pill" href="' + joinUrl + '">Open Table</a></div>';
+      }).join('')
+    : '<div class="item">No open blackjack tables yet.</div>');
+}
+async function refreshList() {
+  try {
+    const res = await fetch(apiPath);
+    const data = await res.json();
+    if (!res.ok) {
+      listEl.innerHTML = '<div class="item">Could not load blackjack tables.</div>';
+      return;
+    }
+    renderList(data.lobbies || []);
+  } catch {
+    listEl.innerHTML = '<div class="item">Could not load blackjack tables.</div>';
+  }
+}
+document.getElementById('create-blackjack-lobby').addEventListener('click', async () => {
+  const result = document.getElementById('blackjack-create-result');
+  result.innerHTML = '<div class="flash">Creating table...</div>';
+  const res = await fetch(apiPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+  const data = await res.json();
+  if (!res.ok) {
+    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    return;
+  }
+  window.location.href = pageBase + data.lobbyId;
+});
+refreshList();
+setInterval(refreshList, 5000);
+</script>`,
+  });
+}
+
+function renderBlackjackLobbyPage(session, lobbyId) {
+  const baseApi = JSON.stringify(p('/api/blackjack/lobbies/'));
+  return renderPage(`Blackjack ${lobbyId}`, session, `
+    <div class="card"><h2>Blackjack ${escapeHtml(lobbyId)}</h2></div>
+    <div class="card"><h2>Table</h2><pre id="blackjack-state" class="board">Connecting...</pre></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="blackjack-result"></div>
+      <div class="stack">
+        <div class="item"><input id="blackjack-ante" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-play" type="button">Join Table</button></div>
+        <div class="item"><input id="blackjack-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-set-bet" type="button">Set Next Bet</button></div>
+        <div class="item"><button class="primary" id="blackjack-hit" type="button">Hit</button> <button class="primary" id="blackjack-stay" type="button">Stay</button> <button class="primary" id="blackjack-surrender" type="button">Surrender</button></div>
+        <div class="item"><button class="primary" id="blackjack-leave" type="button">Leave Table</button></div>
+      </div>
+    </div>
+  `, {
+    active: '/blackjack',
+    pageScripts: `<script>
+const lobbyId = ${JSON.stringify(lobbyId)};
+const stateEl = document.getElementById('blackjack-state');
+const resultEl = document.getElementById('blackjack-result');
+const baseApi = ${baseApi};
+let socket;
+function renderState(state) { stateEl.textContent = state && state.content ? state.content : 'Table is empty.'; }
+async function postAction(path, payload) {
+  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
+  const data = await res.json();
+  if (!res.ok) { resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>'; return null; }
+  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (data.state) renderState(data.state);
+  return data;
+}
+async function refreshState() {
+  const res = await fetch(baseApi + lobbyId);
+  const data = await res.json();
+  renderState(data.state || null);
+}
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'blackjack:lobby:' + lobbyId })));
+  socket.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.lobbyId !== lobbyId) return;
+    if (msg.type === 'blackjack.render') renderState(msg.state);
+    if (msg.type === 'blackjack.closed') stateEl.textContent = msg.content || 'Table closed.';
+  });
+}
+document.getElementById('blackjack-play').addEventListener('click', () => postAction(baseApi + lobbyId + '/play', { bet: Number(document.getElementById('blackjack-ante').value) }));
+document.getElementById('blackjack-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('blackjack-next-bet').value) }));
+document.getElementById('blackjack-hit').addEventListener('click', () => postAction(baseApi + lobbyId + '/hit'));
+document.getElementById('blackjack-stay').addEventListener('click', () => postAction(baseApi + lobbyId + '/stay'));
+document.getElementById('blackjack-surrender').addEventListener('click', () => postAction(baseApi + lobbyId + '/surrender'));
+document.getElementById('blackjack-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
+connectWs();
+refreshState();
+</script>`,
+  });
+}
+
+function renderHoldemIndexPage(session) {
+  const apiPath = JSON.stringify(p('/api/holdem/lobbies'));
+  const pageBase = JSON.stringify(p('/holdem/'));
+  return renderPage('Holdem', session, `
+    <div class="card"><h2>Holdem Tables</h2><p class="muted">Create a hold'em table or join an existing one.</p><button class="primary" id="create-holdem-lobby" type="button">Create Holdem Table</button><div id="holdem-create-result" style="margin-top:12px;"></div></div>
+    <div class="card"><h2>Open Tables</h2><div id="holdem-lobby-list"><div class="item">Loading hold'em tables...</div></div></div>
+  `, {
+    active: '/holdem',
+    pageScripts: `<script>
+const listEl = document.getElementById('holdem-lobby-list');
+const apiPath = ${apiPath};
+const pageBase = ${pageBase};
+function refreshListHtml(lobbies) {
+  listEl.innerHTML = Array.isArray(lobbies) && lobbies.length
+    ? lobbies.map((lobby) => '<div class="item"><strong>Lobby ' + lobby.lobbyId + '</strong><pre class="board">' + (lobby.content || 'Waiting for players...') + '</pre><a class="pill" href="' + pageBase + encodeURIComponent(lobby.lobbyId) + '">Open Table</a></div>').join('')
+    : '<div class="item">No open hold\\'em tables yet.</div>';
+}
+async function refreshList() {
+  try {
+    const res = await fetch(apiPath); const data = await res.json();
+    if (!res.ok) { listEl.innerHTML = '<div class="item">Could not load hold\\'em tables.</div>'; return; }
+    refreshListHtml(data.lobbies || []);
+  } catch { listEl.innerHTML = '<div class="item">Could not load hold\\'em tables.</div>'; }
+}
+document.getElementById('create-holdem-lobby').addEventListener('click', async () => {
+  const result = document.getElementById('holdem-create-result');
+  result.innerHTML = '<div class="flash">Creating table...</div>';
+  const res = await fetch(apiPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+  const data = await res.json();
+  if (!res.ok) { result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>'; return; }
+  window.location.href = pageBase + data.lobbyId;
+});
+refreshList();
+setInterval(refreshList, 5000);
+</script>`,
+  });
+}
+
+function renderHoldemLobbyPage(session, lobbyId) {
+  const baseApi = JSON.stringify(p('/api/holdem/lobbies/'));
+  return renderPage(`Holdem ${lobbyId}`, session, `
+    <div class="card"><h2>Holdem ${escapeHtml(lobbyId)}</h2></div>
+    <div class="card"><h2>Table</h2><pre id="holdem-state" class="board">Connecting...</pre></div>
+    <div class="card"><h2>Private Peek</h2><pre id="holdem-peek" class="board">Use Peek when you are seated in a hand.</pre></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="holdem-result"></div>
+      <div class="stack">
+        <div class="item"><input id="holdem-ante" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-play" type="button">Join Table</button></div>
+        <div class="item"><input id="holdem-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-set-bet" type="button">Set Ante</button></div>
+        <div class="item"><button class="primary" id="holdem-peek-btn" type="button">Peek</button> <button class="primary" id="holdem-check" type="button">Check/Call</button> <button class="primary" id="holdem-fold" type="button">Fold</button></div>
+        <div class="item"><input id="holdem-raise-amount" type="number" min="1" step="1" value="1"><button class="primary" id="holdem-raise" type="button">Raise</button></div>
+        <div class="item"><button class="primary" id="holdem-leave" type="button">Leave Table</button></div>
+      </div>
+    </div>
+  `, {
+    active: '/holdem',
+    pageScripts: `<script>
+const lobbyId = ${JSON.stringify(lobbyId)};
+const stateEl = document.getElementById('holdem-state');
+const peekEl = document.getElementById('holdem-peek');
+const resultEl = document.getElementById('holdem-result');
+const baseApi = ${baseApi};
+let socket;
+function renderState(state) { stateEl.textContent = state && state.content ? state.content : 'Table is empty.'; }
+async function postAction(path, payload) {
+  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
+  const data = await res.json();
+  if (!res.ok) { resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>'; return null; }
+  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (data.state) renderState(data.state);
+  if (data.peek) peekEl.textContent = data.peek;
+  return data;
+}
+async function refreshState() {
+  const res = await fetch(baseApi + lobbyId); const data = await res.json(); renderState(data.state || null);
+}
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'holdem:lobby:' + lobbyId })));
+  socket.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.lobbyId !== lobbyId) return;
+    if (msg.type === 'holdem.render') renderState(msg.state);
+    if (msg.type === 'holdem.closed') stateEl.textContent = msg.content || 'Table closed.';
+  });
+}
+document.getElementById('holdem-play').addEventListener('click', () => postAction(baseApi + lobbyId + '/play', { bet: Number(document.getElementById('holdem-ante').value) }));
+document.getElementById('holdem-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('holdem-next-bet').value) }));
+document.getElementById('holdem-peek-btn').addEventListener('click', () => postAction(baseApi + lobbyId + '/peek'));
+document.getElementById('holdem-check').addEventListener('click', () => postAction(baseApi + lobbyId + '/check'));
+document.getElementById('holdem-fold').addEventListener('click', () => postAction(baseApi + lobbyId + '/fold'));
+document.getElementById('holdem-raise').addEventListener('click', () => postAction(baseApi + lobbyId + '/raise', { amount: Number(document.getElementById('holdem-raise-amount').value) }));
+document.getElementById('holdem-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
+connectWs();
+refreshState();
+</script>`,
+  });
+}
+
+function renderHorseracingIndexPage(session) {
+  const apiPath = JSON.stringify(p('/api/horseracing/lobbies'));
+  const pageBase = JSON.stringify(p('/horseracing/'));
+  return renderPage('Horse Racing', session, `
+    <div class="card"><h2>Horse Racing Lobbies</h2><p class="muted">Create a race lobby or join one already taking bets.</p><button class="primary" id="create-race-lobby" type="button">Create Race Lobby</button><div id="race-create-result" style="margin-top:12px;"></div></div>
+    <div class="card"><h2>Open Races</h2><div id="race-lobby-list"><div class="item">Loading races...</div></div></div>
+  `, {
+    active: '/horseracing',
+    pageScripts: `<script>
+const listEl = document.getElementById('race-lobby-list');
+const apiPath = ${apiPath};
+const pageBase = ${pageBase};
+function refreshListHtml(lobbies) {
+  listEl.innerHTML = Array.isArray(lobbies) && lobbies.length
+    ? lobbies.map((lobby) => '<div class="item"><strong>Lobby ' + lobby.lobbyId + '</strong><pre class="board">' + (lobby.content || 'Waiting for first bettor...') + '</pre><a class="pill" href="' + pageBase + encodeURIComponent(lobby.lobbyId) + '">Open Race</a></div>').join('')
+    : '<div class="item">No open horse racing lobbies yet.</div>';
+}
+async function refreshList() {
+  try {
+    const res = await fetch(apiPath); const data = await res.json();
+    if (!res.ok) { listEl.innerHTML = '<div class="item">Could not load races.</div>'; return; }
+    refreshListHtml(data.lobbies || []);
+  } catch { listEl.innerHTML = '<div class="item">Could not load races.</div>'; }
+}
+document.getElementById('create-race-lobby').addEventListener('click', async () => {
+  const result = document.getElementById('race-create-result');
+  result.innerHTML = '<div class="flash">Creating race...</div>';
+  const res = await fetch(apiPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+  const data = await res.json();
+  if (!res.ok) { result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>'; return; }
+  window.location.href = pageBase + data.lobbyId;
+});
+refreshList();
+setInterval(refreshList, 5000);
+</script>`,
+  });
+}
+
+function renderHorseracingLobbyPage(session, lobbyId) {
+  const baseApi = JSON.stringify(p('/api/horseracing/lobbies/'));
+  return renderPage(`Horse Racing ${lobbyId}`, session, `
+    <div class="card"><h2>Horse Racing ${escapeHtml(lobbyId)}</h2></div>
+    <div class="card"><h2>Race Feed</h2><pre id="race-state" class="board">Connecting...</pre></div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="race-result"></div>
+      <div class="stack">
+        <div class="item"><button class="primary" id="race-join" type="button">Join Lobby</button> <button class="primary" id="race-leave" type="button">Leave Lobby</button></div>
+        <div class="item"><input id="race-bet" type="number" min="1" step="1" value="5"><button class="primary" id="race-set-bet" type="button">Set Bet</button></div>
+        <div class="item"><input id="race-horse" type="number" min="1" max="4" step="1" value="1"><button class="primary" id="race-pick-horse" type="button">Pick Horse</button></div>
+      </div>
+    </div>
+  `, {
+    active: '/horseracing',
+    pageScripts: `<script>
+const lobbyId = ${JSON.stringify(lobbyId)};
+const stateEl = document.getElementById('race-state');
+const resultEl = document.getElementById('race-result');
+const baseApi = ${baseApi};
+let socket;
+function renderState(state) { stateEl.textContent = state && state.content ? state.content : 'Lobby is empty.'; }
+async function postAction(path, payload) {
+  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
+  const data = await res.json();
+  if (!res.ok) { resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>'; return null; }
+  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (data.state) renderState(data.state);
+  return data;
+}
+async function refreshState() {
+  const res = await fetch(baseApi + lobbyId); const data = await res.json(); renderState(data.state || null);
+}
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'horseracing:lobby:' + lobbyId })));
+  socket.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.lobbyId !== lobbyId) return;
+    if (msg.type.startsWith('horseracing.')) renderState(msg.state || { content: msg.content || '' });
+  });
+}
+document.getElementById('race-join').addEventListener('click', () => postAction(baseApi + lobbyId + '/join'));
+document.getElementById('race-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
+document.getElementById('race-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('race-bet').value) }));
+document.getElementById('race-pick-horse').addEventListener('click', () => postAction(baseApi + lobbyId + '/horse', { horse: Number(document.getElementById('race-horse').value) }));
+connectWs();
+refreshState();
+</script>`,
+  });
+}
+
+function renderPachinkoPage(session) {
+  return renderPage('Pachinko', session, `
+    <div class="card"><h2>Pachinko</h2><p class="muted">Pick a peg, set your bet, and watch the live drop feed.</p></div>
+    <div class="card"><h2>Board</h2><pre id="pachinko-state" class="board">Ready for first drop.</pre></div>
+    <div class="card">
+      <h2>Drop</h2>
+      <div id="pachinko-result"></div>
+      <input id="pachinko-peg" type="number" min="1" max="9" step="1" value="5">
+      <input id="pachinko-bet" type="number" min="1" step="1" value="5">
+      <button class="primary" id="pachinko-drop" type="button">Drop Ball</button>
+    </div>
+  `, {
+    active: '/pachinko',
+    pageScripts: `<script>
+const stateEl = document.getElementById('pachinko-state');
+const resultEl = document.getElementById('pachinko-result');
+const sessionId = 'pachinko-' + Math.random().toString(16).slice(2);
+let socket;
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'pachinko:session:' + sessionId })));
+  socket.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.sessionId !== sessionId) return;
+    if (msg.type === 'pachinko.frame') stateEl.textContent = msg.content || '';
+    if (msg.type === 'pachinko.finalresult') {
+      stateEl.textContent = msg.resultText || '';
+      resultEl.innerHTML = '<div class="flash success">Drop resolved.</div>';
+    }
+  });
+}
+document.getElementById('pachinko-drop').addEventListener('click', async () => {
+  resultEl.innerHTML = '<div class="flash">Dropping...</div>';
+  const res = await fetch(${JSON.stringify(p('/api/pachinko/drop'))}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      sessionId,
+      peg: Number(document.getElementById('pachinko-peg').value),
+      bet: Number(document.getElementById('pachinko-bet').value),
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Drop failed.') + '</div>';
+    return;
+  }
+  stateEl.textContent = (data.state && data.state.content) || 'Drop started.';
+});
+connectWs();
+</script>`,
+  });
+}
+
 async function handleRequest(req, res) {
   const parsedUrl = parseUrl(req);
   const pathname = routePath(parsedUrl.pathname);
@@ -722,6 +1211,374 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     sendJson(res, 200, { viewer: { discordId: session.discordId, username: session.username } });
+    return;
+  }
+
+  if (pathname === '/api/blackjack/lobbies' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    try {
+      const result = await manager.sendCommand('blackjack', 'listTables', {}, { channelId: 'games:web:blackjack:lobby-directory' });
+      sendJson(res, 200, { ok: true, lobbies: serializeTextTables(result, 'blackjack') });
+    } catch (error) {
+      sendError(res, 503, 'blackjack_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/blackjack/lobbies' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = generateLobbyId('blackjack');
+    sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/blackjack/${lobbyId}`) });
+    return;
+  }
+
+  const blackjackLobbyApiMatch = pathname.match(/^\/api\/blackjack\/lobbies\/([^/]+)$/u);
+  if (blackjackLobbyApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(blackjackLobbyApiMatch[1]);
+    const channelId = getWebBlackjackChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('blackjack', 'getTable', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, lobbyId, state: result && result.ok ? { content: result.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'blackjack_unavailable', error.message);
+    }
+    return;
+  }
+
+  const blackjackPlayApiMatch = pathname.match(/^\/api\/blackjack\/lobbies\/([^/]+)\/play$/u);
+  if (blackjackPlayApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const bet = Number(body.bet);
+    if (!Number.isInteger(bet) || bet <= 0) return sendError(res, 400, 'bad_request', 'bet must be a positive integer');
+    const lobbyId = decodeURIComponent(blackjackPlayApiMatch[1]);
+    const channelId = getWebBlackjackChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('blackjack', 'play', { channelId, userId: session.discordId, username: session.username, bet }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'play_failed', 'Could not join blackjack table');
+      sendJson(res, 200, { ok: true, message: 'Joined blackjack table.', state: { content: result.content || '' } });
+    } catch (error) {
+      sendError(res, 503, 'blackjack_unavailable', error.message);
+    }
+    return;
+  }
+
+  const blackjackBetApiMatch = pathname.match(/^\/api\/blackjack\/lobbies\/([^/]+)\/bet$/u);
+  if (blackjackBetApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount <= 0) return sendError(res, 400, 'bad_request', 'amount must be a positive integer');
+    const lobbyId = decodeURIComponent(blackjackBetApiMatch[1]);
+    const channelId = getWebBlackjackChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('blackjack', 'setBet', { channelId, userId: session.discordId, amount }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set blackjack bet');
+      const snapshot = await manager.sendCommand('blackjack', 'getTable', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, message: `Set next bet to ${amount} SGC.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'blackjack_unavailable', error.message);
+    }
+    return;
+  }
+
+  for (const action of ['hit', 'stay', 'surrender', 'leave']) {
+    const match = pathname.match(new RegExp(`^/api/blackjack/lobbies/([^/]+)/${action}$`, 'u'));
+    if (match && method === 'POST') {
+      const originCheck = validateSameOrigin(req);
+      if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+      const session = requireMemberSession(req, res, { api: true });
+      if (!session) return;
+      const lobbyId = decodeURIComponent(match[1]);
+      const channelId = getWebBlackjackChannelId(lobbyId);
+      try {
+        const result = await manager.sendCommand('blackjack', action, { channelId, userId: session.discordId }, { channelId });
+        if (!result.ok) return sendError(res, 400, result.reason || `${action}_failed`, `Could not ${action} at blackjack table`);
+        const snapshot = action === 'leave' ? await manager.sendCommand('blackjack', 'getTable', { channelId }, { channelId }).catch(() => null) : null;
+        sendJson(res, 200, { ok: true, message: `Blackjack ${action} complete.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : (result.content ? { content: result.content } : null) });
+      } catch (error) {
+        sendError(res, 503, 'blackjack_unavailable', error.message);
+      }
+      return;
+    }
+  }
+
+  if (pathname === '/api/holdem/lobbies' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    try {
+      const result = await manager.sendCommand('holdem', 'listTables', {}, { channelId: 'games:web:holdem:lobby-directory' });
+      sendJson(res, 200, { ok: true, lobbies: serializeTextTables(result, 'holdem') });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/holdem/lobbies' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = generateLobbyId('holdem');
+    sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/holdem/${lobbyId}`) });
+    return;
+  }
+
+  const holdemLobbyApiMatch = pathname.match(/^\/api\/holdem\/lobbies\/([^/]+)$/u);
+  if (holdemLobbyApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(holdemLobbyApiMatch[1]);
+    const channelId = getWebHoldemChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('holdem', 'getTable', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, lobbyId, state: result && result.ok ? { content: result.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
+  const holdemPlayApiMatch = pathname.match(/^\/api\/holdem\/lobbies\/([^/]+)\/play$/u);
+  if (holdemPlayApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const bet = Number(body.bet);
+    if (!Number.isInteger(bet) || bet <= 0) return sendError(res, 400, 'bad_request', 'bet must be a positive integer');
+    const lobbyId = decodeURIComponent(holdemPlayApiMatch[1]);
+    const channelId = getWebHoldemChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('holdem', 'play', { channelId, userId: session.discordId, username: session.username, bet }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'play_failed', 'Could not join hold\'em table');
+      if (result.isNew) await manager.sendCommand('holdem', 'tableReady', { channelId }, { channelId });
+      const snapshot = await manager.sendCommand('holdem', 'getTable', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, message: 'Joined hold\'em table.', state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
+  const holdemBetApiMatch = pathname.match(/^\/api\/holdem\/lobbies\/([^/]+)\/bet$/u);
+  if (holdemBetApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount <= 0) return sendError(res, 400, 'bad_request', 'amount must be a positive integer');
+    const lobbyId = decodeURIComponent(holdemBetApiMatch[1]);
+    const channelId = getWebHoldemChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('holdem', 'bet', { channelId, userId: session.discordId, amount }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set hold\'em ante');
+      const snapshot = await manager.sendCommand('holdem', 'getTable', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, message: `Set ante to ${amount} SGC.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
+  const holdemPeekApiMatch = pathname.match(/^\/api\/holdem\/lobbies\/([^/]+)\/peek$/u);
+  if (holdemPeekApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(holdemPeekApiMatch[1]);
+    const channelId = getWebHoldemChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('holdem', 'peek', { channelId, userId: session.discordId }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'peek_failed', 'Could not peek hold\'em hand');
+      sendJson(res, 200, { ok: true, message: 'Peeked hand.', peek: result.content || '' });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
+  for (const action of ['check', 'fold', 'leave']) {
+    const match = pathname.match(new RegExp(`^/api/holdem/lobbies/([^/]+)/${action}$`, 'u'));
+    if (match && method === 'POST') {
+      const originCheck = validateSameOrigin(req);
+      if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+      const session = requireMemberSession(req, res, { api: true });
+      if (!session) return;
+      const lobbyId = decodeURIComponent(match[1]);
+      const channelId = getWebHoldemChannelId(lobbyId);
+      try {
+        const result = await manager.sendCommand('holdem', action, { channelId, userId: session.discordId }, { channelId });
+        if (!result.ok) return sendError(res, 400, result.reason || `${action}_failed`, `Could not ${action} in hold'em`);
+        const snapshot = await manager.sendCommand('holdem', 'getTable', { channelId }, { channelId }).catch(() => null);
+        sendJson(res, 200, { ok: true, message: `Hold'em ${action} complete.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+      } catch (error) {
+        sendError(res, 503, 'holdem_unavailable', error.message);
+      }
+      return;
+    }
+  }
+
+  const holdemRaiseApiMatch = pathname.match(/^\/api\/holdem\/lobbies\/([^/]+)\/raise$/u);
+  if (holdemRaiseApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount <= 0) return sendError(res, 400, 'bad_request', 'amount must be a positive integer');
+    const lobbyId = decodeURIComponent(holdemRaiseApiMatch[1]);
+    const channelId = getWebHoldemChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('holdem', 'raise', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'raise_failed', 'Could not raise in hold\'em');
+      const snapshot = await manager.sendCommand('holdem', 'getTable', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, message: `Raised by ${amount} SGC.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/horseracing/lobbies' && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    try {
+      const result = await manager.sendCommand('horseracing', 'listLobbies', {}, { channelId: 'games:web:horseracing:lobby-directory' });
+      sendJson(res, 200, { ok: true, lobbies: serializeTextLobbies(result, 'horseracing') });
+    } catch (error) {
+      sendError(res, 503, 'horseracing_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/horseracing/lobbies' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = generateLobbyId('horseracing');
+    sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/horseracing/${lobbyId}`) });
+    return;
+  }
+
+  const horseracingLobbyApiMatch = pathname.match(/^\/api\/horseracing\/lobbies\/([^/]+)$/u);
+  if (horseracingLobbyApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(horseracingLobbyApiMatch[1]);
+    const channelId = getWebHorseracingChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId });
+      sendJson(res, 200, { ok: true, lobbyId, state: result && result.ok ? { content: result.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'horseracing_unavailable', error.message);
+    }
+    return;
+  }
+
+  for (const action of ['join', 'leave']) {
+    const match = pathname.match(new RegExp(`^/api/horseracing/lobbies/([^/]+)/${action}$`, 'u'));
+    if (match && method === 'POST') {
+      const originCheck = validateSameOrigin(req);
+      if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+      const session = requireMemberSession(req, res, { api: true });
+      if (!session) return;
+      const lobbyId = decodeURIComponent(match[1]);
+      const channelId = getWebHorseracingChannelId(lobbyId);
+      try {
+        const result = await manager.sendCommand('horseracing', action, { channelId, userId: session.discordId, username: session.username }, { channelId });
+        if (!result.ok) return sendError(res, 400, result.reason || `${action}_failed`, `Could not ${action} horse racing lobby`);
+        const snapshot = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId }).catch(() => null);
+        sendJson(res, 200, { ok: true, message: `Horse racing ${action} complete.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+      } catch (error) {
+        sendError(res, 503, 'horseracing_unavailable', error.message);
+      }
+      return;
+    }
+  }
+
+  const horseracingBetApiMatch = pathname.match(/^\/api\/horseracing\/lobbies\/([^/]+)\/bet$/u);
+  if (horseracingBetApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount <= 0) return sendError(res, 400, 'bad_request', 'amount must be a positive integer');
+    const lobbyId = decodeURIComponent(horseracingBetApiMatch[1]);
+    const channelId = getWebHorseracingChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('horseracing', 'setBet', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set horse racing bet');
+      const snapshot = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId }).catch(() => null);
+      sendJson(res, 200, { ok: true, message: `Set horse racing bet to ${amount} SGC.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'horseracing_unavailable', error.message);
+    }
+    return;
+  }
+
+  const horseracingHorseApiMatch = pathname.match(/^\/api\/horseracing\/lobbies\/([^/]+)\/horse$/u);
+  if (horseracingHorseApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const horse = Number(body.horse);
+    if (!Number.isInteger(horse) || horse < 1 || horse > 4) return sendError(res, 400, 'bad_request', 'horse must be between 1 and 4');
+    const lobbyId = decodeURIComponent(horseracingHorseApiMatch[1]);
+    const channelId = getWebHorseracingChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('horseracing', 'pickHorse', { channelId, userId: session.discordId, username: session.username, horse }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'horse_failed', 'Could not pick horse');
+      const snapshot = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId }).catch(() => null);
+      sendJson(res, 200, { ok: true, message: `Picked horse ${horse}.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'horseracing_unavailable', error.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/pachinko/drop' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const body = await readJsonBody(req);
+    const sessionId = String(body.sessionId || '').trim();
+    const peg = Number(body.peg);
+    const bet = Number(body.bet);
+    if (!sessionId) return sendError(res, 400, 'bad_request', 'sessionId is required');
+    if (!Number.isInteger(peg) || !Number.isInteger(bet)) return sendError(res, 400, 'bad_request', 'peg and bet must be integers');
+    const channelId = getWebPachinkoChannelId(sessionId);
+    try {
+      const result = await manager.sendCommand('pachinko', 'drop', { channelId, userId: session.discordId, username: session.username, peg, bet }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'drop_failed', 'Could not start pachinko drop');
+      sendJson(res, 200, { ok: true, message: 'Pachinko drop started.', state: { content: [result.initial?.header, result.initial?.firstRow].filter(Boolean).join('\n') } });
+    } catch (error) {
+      sendError(res, 503, 'pachinko_unavailable', error.message);
+    }
     return;
   }
 
@@ -843,6 +1700,51 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { nextPath: p('/') });
     if (!session) return;
     sendHtml(res, 200, renderHomePage(session));
+    return;
+  }
+  if (pathname === '/blackjack' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/blackjack') });
+    if (!session) return;
+    sendHtml(res, 200, renderBlackjackIndexPage(session));
+    return;
+  }
+  const blackjackLobbyPageMatch = pathname.match(/^\/blackjack\/([^/]+)$/u);
+  if (blackjackLobbyPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/blackjack/${blackjackLobbyPageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderBlackjackLobbyPage(session, decodeURIComponent(blackjackLobbyPageMatch[1])));
+    return;
+  }
+  if (pathname === '/holdem' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/holdem') });
+    if (!session) return;
+    sendHtml(res, 200, renderHoldemIndexPage(session));
+    return;
+  }
+  const holdemLobbyPageMatch = pathname.match(/^\/holdem\/([^/]+)$/u);
+  if (holdemLobbyPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/holdem/${holdemLobbyPageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderHoldemLobbyPage(session, decodeURIComponent(holdemLobbyPageMatch[1])));
+    return;
+  }
+  if (pathname === '/horseracing' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/horseracing') });
+    if (!session) return;
+    sendHtml(res, 200, renderHorseracingIndexPage(session));
+    return;
+  }
+  const horseracingLobbyPageMatch = pathname.match(/^\/horseracing\/([^/]+)$/u);
+  if (horseracingLobbyPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/horseracing/${horseracingLobbyPageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderHorseracingLobbyPage(session, decodeURIComponent(horseracingLobbyPageMatch[1])));
+    return;
+  }
+  if (pathname === '/pachinko' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/pachinko') });
+    if (!session) return;
+    sendHtml(res, 200, renderPachinkoPage(session));
     return;
   }
   if (pathname === '/slots' && method === 'GET') {

@@ -123,6 +123,7 @@ async function startBettingRound(channelId, isFirst = false) {
   for (const p of lobby.players.values()) p.horse = null;
 
   const content = await buildBettingContentFromDb(lobby);
+  lobby.lastContent = content;
 
   if (!isFirst) {
     emitEvent('bettingOpen', { channelId, content, raceNumber: lobby.raceNumber });
@@ -193,12 +194,14 @@ async function runRace(channelId) {
   const underdog = E.getUnderdog(winStats);
   const betsLine = racers.map((r) => `${r.username} → Horse ${r.horse} (${r.bet} SGC)`).join('  |  ');
   const initialBody = `🏇 **Race #${lobby.raceNumber}** — And they're off!\n🎫 ${betsLine}\n\`\`\`\n${E.renderTrack(positions, settings.trackWidth)}\n\`\`\``;
+  lobby.lastContent = initialBody;
   emitEvent('raceStart', { channelId, content: initialBody });
 
   await new Promise((resolve) => {
     const interval = setInterval(() => {
       const { finished, winner } = E.tickPositions(positions, settings.trackWidth);
       const body = `🏇 **Race #${lobby.raceNumber}** — ${finished ? 'Finished!' : 'Racing...'}\n🎫 ${betsLine}\n\`\`\`\n${E.renderTrack(positions, settings.trackWidth)}\n\`\`\``;
+      lobby.lastContent = body;
       emitEvent('raceFrame', { channelId, content: body });
       if (finished) {
         clearInterval(interval);
@@ -247,6 +250,7 @@ async function runRace(channelId) {
     lines.push('', `📊 Win Stats: ${E.statsLine(winStats)}`);
 
     const finalRaceBody = `🏇 **Race #${lobby.raceNumber - 1}** — Finished!\n🎫 ${betsLine}\n\`\`\`\n${E.renderTrack(positions, settings.trackWidth)}\n\`\`\`\n${lines.join('\n')}`;
+    lobby.lastContent = finalRaceBody;
     emitEvent('raceFinished', { channelId, content: finalRaceBody });
 
     if (lobby.players.size > 0) {
@@ -315,6 +319,7 @@ registerCommand('join', async ({ channelId, userId, username } = {}) => {
   }
   if (lobby.phase === 'betting') {
     const content = await buildBettingContentFromDb(lobby);
+    lobby.lastContent = content;
     emitEvent('bettingUpdate', { channelId, content });
   }
   return { ok: true, isNew: false };
@@ -332,6 +337,7 @@ registerCommand('leave', async ({ channelId, userId } = {}) => {
   }
   if (lobby.phase === 'betting') {
     const content = await buildBettingContentFromDb(lobby);
+    lobby.lastContent = content;
     emitEvent('bettingUpdate', { channelId, content });
   }
   return { ok: true, closed: false };
@@ -358,6 +364,7 @@ registerCommand('pickHorse', async ({ channelId, userId, username, horse } = {})
   }
   player.horse = horse;
   const content = await buildBettingContentFromDb(lobby);
+  lobby.lastContent = content;
   emitEvent('bettingUpdate', { channelId, content });
   return { ok: true, horse };
 });
@@ -379,6 +386,7 @@ registerCommand('setBet', async ({ channelId, userId, username, amount } = {}) =
   if (balance < amount) return { ok: false, reason: 'insufficient', balance, amount };
   player.bet = amount;
   const content = await buildBettingContentFromDb(lobby);
+  lobby.lastContent = content;
   emitEvent('bettingUpdate', { channelId, content });
   return { ok: true, amount };
 });
@@ -393,3 +401,39 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
     players: [...lobby.players.values()],
   };
 });
+
+registerCommand('getLobby', async ({ channelId } = {}) => {
+  const lobby = lobbies.get(channelId);
+  if (!lobby) return { ok: false, exists: false };
+  return {
+    ok: true,
+    exists: true,
+    phase: lobby.phase,
+    raceNumber: lobby.raceNumber,
+    content: lobby.lastContent || '',
+    playerCount: lobby.players.size,
+    maxPlayers: null,
+    players: [...lobby.players.values()].map((player) => ({
+      userId: player.userId,
+      username: player.username,
+      horse: player.horse,
+      bet: player.bet,
+    })),
+  };
+});
+
+registerCommand('listLobbies', async () => ({
+  ok: true,
+  lobbies: [...lobbies.values()].map((lobby) => ({
+    channelId: lobby.channelId,
+    phase: lobby.phase,
+    raceNumber: lobby.raceNumber,
+    content: lobby.lastContent || '',
+    playerCount: lobby.players.size,
+    players: [...lobby.players.values()].map((player) => ({
+      username: player.username,
+      horse: player.horse,
+      bet: player.bet,
+    })),
+  })),
+}));

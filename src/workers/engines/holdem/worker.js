@@ -629,3 +629,27 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
     })),
   };
 });
+
+registerCommand('getTable', async ({ channelId } = {}) => {
+  const table = tables.get(channelId);
+  if (!table) return { ok: false, exists: false };
+  return {
+    ok: true,
+    exists: true,
+    phase: table.phase,
+    content: E.buildTableContent(table),
+    buttonState: E.buttonState(table),
+  };
+});
+
+registerCommand('listTables', async () => ({
+  ok: true,
+  tables: [...tables.values()].map((table) => ({
+    channelId: table.channelId,
+    phase: table.phase,
+    playerCount: E.getHumanPlayers(table).length,
+    maxPlayers: settings.maxPlayers,
+    content: E.buildTableContent(table),
+    buttonState: E.buttonState(table),
+  })),
+}));

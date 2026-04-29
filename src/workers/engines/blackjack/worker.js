@@ -410,3 +410,21 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
     shoeRemaining: table.shoe.cards.length,
   };
 });
+
+registerCommand('getTable', async ({ channelId } = {}) => {
+  const table = tables.get(channelId);
+  if (!table) return { ok: false, exists: false };
+  const mode = table.resolving ? 'finalresults' : 'play';
+  return { ok: true, exists: true, ...buildRender(table, mode) };
+});
+
+registerCommand('listTables', async () => ({
+  ok: true,
+  tables: [...tables.values()].map((table) => ({
+    channelId: table.channelId,
+    playerCount: table.players.size,
+    maxPlayers: settings.maxPlayers,
+    resolving: Boolean(table.resolving),
+    content: buildRender(table, table.resolving ? 'finalresults' : 'play').content,
+  })),
+}));
