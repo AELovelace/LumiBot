@@ -332,14 +332,14 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .wrap { width: min(980px, calc(100vw - 12px)); margin: 0 auto; padding: 6px 0 12px; }
   header {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 8px; padding: 10px 12px; border: 1px solid #7a1010; background: rgba(24, 8, 10, 0.95);
+    margin-bottom: 6px; padding: 6px 8px; border: 1px solid #7a1010; background: rgba(24, 8, 10, 0.95);
   }
   h1 { margin: 0; font: 40px 'VT323', monospace; color: #ff0000; letter-spacing: 2px; }
   .subtitle { color: #a394a7; font-size: 12px; }
-  .account-meta { display: grid; gap: 3px; justify-items: end; }
+  .account-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
   .balance-chip {
     display: inline-block;
-    padding: 4px 8px;
+    padding: 2px 6px;
     border: 1px solid #7a1010;
     background: rgba(12, 5, 7, 0.9);
     color: #fff3f3;
@@ -407,7 +407,7 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .flash { padding: 6px 8px; border: 1px solid #6f2525; background: rgba(42, 12, 16, 0.78); color: #fbeff0; margin-bottom: 6px; font-size: 12px; line-height: 1.2; }
   .flash.error { border-color: #ff4d4d; color: #ffe3e3; }
   .flash.success { border-color: #ff0000; color: #fff0f0; }
-  .logout { background: transparent; border: 1px solid #6f2525; color: #efe6f0; padding: 8px 12px; font-family: inherit; cursor: pointer; }
+  .logout { background: transparent; border: 1px solid #6f2525; color: #efe6f0; padding: 4px 8px; font-family: inherit; cursor: pointer; line-height: 1; }
   @media (max-width: 700px) {
     .wrap { width: calc(100vw - 8px); }
     .slots-grid { grid-template-columns: 1fr; }
