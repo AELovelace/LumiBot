@@ -1,7 +1,9 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
 const { URL } = require('node:url');
 
 const { config } = require('./config');
@@ -30,6 +32,7 @@ const {
   POTION_PRICE,
   POTION_CAP,
   resolveName,
+  getImageFile,
   getRarity,
   getSuggestedPrice,
   getAvailableTouhous,
@@ -113,6 +116,10 @@ function p(path) {
   return `${GAME_WEB_BASE_PATH}${path}`;
 }
 
+function touhouImagePath(name) {
+  return p(`/media/touhou/${encodeURIComponent(String(name || ''))}`);
+}
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/gu, '&amp;')
@@ -155,6 +162,16 @@ function sendJson(res, status, body) {
   applySecurityHeaders(res);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
+}
+
+function sendBuffer(res, status, contentType, buffer) {
+  if (res.headersSent || res.writableEnded) return;
+  applySecurityHeaders(res);
+  res.writeHead(status, {
+    'content-type': contentType,
+    'content-length': Buffer.byteLength(buffer),
+  });
+  res.end(buffer);
 }
 
 function sendError(res, status, code, message) {
@@ -330,6 +347,16 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .inline-action input, .inline-action select, .inline-action textarea { flex: 1 1 180px; margin: 0; }
   .inline-action .pill, .inline-action button.primary { flex: 0 0 auto; }
   .inline-action .compact-input { flex: 0 0 88px; }
+  .portrait-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .portrait-card { display: grid; gap: 6px; }
+  .portrait-card img {
+    width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    border: 1px solid #572020;
+    background: rgba(8, 3, 4, 0.92);
+  }
+  .portrait-meta { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   .board { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   h2 { margin: 0 0 6px; font: 24px 'VT323', monospace; color: #ff0000; line-height: 1; }
   .metric { font: 22px 'VT323', monospace; color: #fff; }
@@ -349,6 +376,7 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     .wrap { width: calc(100vw - 8px); }
     .slots-grid { grid-template-columns: 1fr; }
     .games-grid { grid-template-columns: 1fr; }
+    .portrait-strip { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -490,6 +518,7 @@ function serializeTouhouCollection(items, ownerId) {
     const faintedUntil = stats?.fainted_until && stats.fainted_until > Date.now() ? stats.fainted_until : null;
     return {
       name: item.name,
+      imageUrl: touhouImagePath(item.name),
       rarity,
       level,
       suggestedPrice,
@@ -508,6 +537,7 @@ function serializeTouhouParty(items, ownerId) {
     const faintedUntil = stats?.fainted_until && stats.fainted_until > Date.now() ? stats.fainted_until : null;
     return {
       name: item.name,
+      imageUrl: touhouImagePath(item.name),
       level,
       rarity,
       exp: stats?.exp || 0,
@@ -1565,6 +1595,7 @@ refreshAll();
 function renderTouhouBattleIndexPage(session) {
   return renderPage('Touhou Battle', session, `
     <div class="card"><h2>Touhou Battle Arena</h2><p class="muted">Pick one of your Touhous and challenge an evil opponent. Wins grant EXP and SGC. Defeats cause a 10 minute faint cooldown.</p></div>
+    <div class="card"><div class="item inline-action"><a class="pill" href="${p('/touhou')}">Return To Main Menu</a></div></div>
     <div class="card">
       <h2>Start Battle</h2>
       <div id="touhou-battle-result"></div>
@@ -1584,7 +1615,7 @@ function renderTouhouBattleIndexPage(session) {
         <div class="item"><input id="touhou-heal-name" type="text" placeholder="Touhou name to heal"><button class="primary" id="touhou-heal-free" type="button">Heal / Check Cooldown</button> <button class="primary" id="touhou-heal-pay" type="button">Instant Heal (50 SGC)</button></div>
       </div>
     </div>
-    <div class="card"><h2>Your Party</h2><pre id="touhou-party" class="board">Loading party...</pre></div>
+    <div class="card"><h2>Your Party</h2><div id="touhou-party" class="stack"><div class="item">Loading party...</div></div></div>
   `, {
     active: '/touhou',
     pageScripts: `<script>
@@ -1600,7 +1631,14 @@ function renderParty(items) {
     partyEl.textContent = 'You do not own any Touhous yet.';
     return;
   }
-  partyEl.textContent = items.map((item) => item.rarity.emoji + ' ' + item.name + ' - Lv ' + item.level + ' - ' + item.exp + '/' + item.expToNext + ' EXP - ' + item.wins + 'W/' + item.losses + 'L' + (item.faintedUntil ? ' - fainted ' + item.faintedFor : '') + '\\n  ' + (item.attacks.length ? item.attacks.join(' / ') : 'no attacks')).join('\\n');
+  partyEl.innerHTML = items.map((item) => '<div class="item portrait-card">'
+    + '<img src="' + item.imageUrl + '" alt="' + item.name.replace(/"/g, '&quot;') + '" loading="lazy">'
+    + '<pre class="portrait-meta">'
+    + item.rarity.emoji + ' ' + item.name + ' - Lv ' + item.level + ' - ' + item.exp + '/' + item.expToNext + ' EXP - ' + item.wins + 'W/' + item.losses + 'L'
+    + (item.faintedUntil ? ' - fainted ' + item.faintedFor : '')
+    + '\\n'
+    + (item.attacks.length ? item.attacks.join(' / ') : 'no attacks')
+    + '</pre></div>').join('');
 }
 async function refreshParty() {
   const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/party'))});
@@ -1649,8 +1687,11 @@ refreshParty();
 
 function renderTouhouBattlePage(session, battleId) {
   const baseApi = JSON.stringify(p('/api/touhou/battle/'));
+  const touhouImageBase = JSON.stringify(p('/media/touhou/'));
   return renderPage(`Touhou Battle ${battleId}`, session, `
     <div class="card"><h2>Touhou Battle</h2><div class="muted">Battle ID: ${escapeHtml(battleId)}</div></div>
+    <div class="card"><div class="item inline-action"><a class="pill" href="${p('/touhou')}">Return To Main Menu</a><a class="pill" href="${p('/touhou/battle')}">Back To Battle Arena</a></div></div>
+    <div class="card"><h2>Combatants</h2><div id="touhou-battle-portraits" class="portrait-strip"><div class="item">Loading portraits...</div></div></div>
     <div class="card"><h2>Battlefield</h2><pre id="touhou-battle-state" class="board">Loading battle...</pre></div>
     <div class="card">
       <h2>Actions</h2>
@@ -1667,12 +1708,19 @@ const battleId = ${JSON.stringify(battleId)};
 const stateEl = document.getElementById('touhou-battle-state');
 const resultEl = document.getElementById('touhou-battle-action-result');
 const attackButtonsEl = document.getElementById('touhou-battle-attack-buttons');
+const portraitsEl = document.getElementById('touhou-battle-portraits');
 const baseApi = ${baseApi};
+const touhouImageBase = ${touhouImageBase};
 function renderState(state) {
   if (!state) {
     stateEl.textContent = 'Battle unavailable.';
+    portraitsEl.innerHTML = '<div class="item">Battle unavailable.</div>';
     return;
   }
+  portraitsEl.innerHTML = [
+    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.player.name) + '" alt="' + state.player.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.player.rarity.emoji + ' ' + state.player.name + '\\nLv ' + state.player.level + ' • ' + state.player.type + '\\nHP ' + state.player.hp + '/' + state.player.hpMax + '</pre></div>',
+    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.evil.name) + '" alt="Evil ' + state.evil.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.evil.rarity.emoji + ' Evil ' + state.evil.name + '\\nLv ' + state.evil.level + ' • ' + state.evil.type + '\\nHP ' + state.evil.hp + '/' + state.evil.hpMax + '</pre></div>',
+  ].join('');
   stateEl.textContent = [
     state.player.rarity.emoji + ' ' + state.player.name + ' (Lv ' + state.player.level + ', ' + state.player.type + ')',
     '[' + state.player.hpBar + '] ' + state.player.hp + '/' + state.player.hpMax,
@@ -1855,6 +1903,31 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     sendJson(res, 200, { ok: true, items: serializeTouhouCollection(getUserTouhous(WEB_GUILD_ID, session.discordId), session.discordId) });
+    return;
+  }
+
+  const touhouMediaMatch = pathname.match(/^\/media\/touhou\/([^/]+)$/u);
+  if (touhouMediaMatch && method === 'GET') {
+    const requestedName = decodeURIComponent(touhouMediaMatch[1]);
+    const canonicalName = resolveName(requestedName) || requestedName;
+    const imageFile = getImageFile(canonicalName);
+    if (!imageFile) return sendError(res, 404, 'not_found', 'Touhou image not found.');
+    const imagePath = path.resolve(config.touhouDir, imageFile);
+    let buffer;
+    try {
+      buffer = fs.readFileSync(imagePath);
+    } catch {
+      return sendError(res, 404, 'not_found', 'Touhou image not found.');
+    }
+    const ext = path.extname(imageFile).toLowerCase();
+    const contentType = ext === '.jpg' || ext === '.jpeg'
+      ? 'image/jpeg'
+      : ext === '.gif'
+        ? 'image/gif'
+        : ext === '.webp'
+          ? 'image/webp'
+          : 'image/png';
+    sendBuffer(res, 200, contentType, buffer);
     return;
   }
 
