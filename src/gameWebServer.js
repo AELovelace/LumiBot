@@ -232,38 +232,38 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     color: #ebe4ef;
     font-family: 'Space Mono', monospace;
   }
-  .wrap { width: min(920px, calc(100vw - 18px)); margin: 0 auto; padding: 10px 0 24px; }
+  .wrap { width: min(980px, calc(100vw - 12px)); margin: 0 auto; padding: 6px 0 12px; }
   header {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
-    margin-bottom: 16px; padding: 16px; border: 1px solid #7a1010; background: rgba(24, 8, 10, 0.95);
+    margin-bottom: 8px; padding: 10px 12px; border: 1px solid #7a1010; background: rgba(24, 8, 10, 0.95);
   }
   h1 { margin: 0; font: 40px 'VT323', monospace; color: #ff0000; letter-spacing: 2px; }
   .subtitle { color: #a394a7; font-size: 12px; }
-  nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-  nav a { text-decoration: none; padding: 8px 12px; border: 1px solid #6f2525; color: #efe6f0; background: rgba(27, 10, 12, 0.9); }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  nav a { text-decoration: none; padding: 5px 8px; border: 1px solid #6f2525; color: #efe6f0; background: rgba(27, 10, 12, 0.9); font-size: 12px; line-height: 1.1; }
   nav a.active { border-color: #ff0000; color: #ff0000; }
-  .card { padding: 16px; border: 1px solid #572020; background: rgba(20, 8, 10, 0.94); margin-bottom: 14px; }
-  .stack { display: grid; gap: 14px; }
-  .slots-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .games-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .item { padding: 12px; border: 1px solid #3d1719; background: rgba(12, 5, 7, 0.86); }
+  .card { padding: 10px 12px; border: 1px solid #572020; background: rgba(20, 8, 10, 0.94); margin-bottom: 8px; }
+  .stack { display: grid; gap: 8px; }
+  .slots-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .games-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .item { padding: 8px; border: 1px solid #3d1719; background: rgba(12, 5, 7, 0.86); }
   .board { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
-  h2 { margin: 0 0 10px; font: 30px 'VT323', monospace; color: #ff0000; }
-  .metric { font: 28px 'VT323', monospace; color: #fff; }
-  .muted { color: #a394a7; font-size: 12px; }
+  h2 { margin: 0 0 6px; font: 24px 'VT323', monospace; color: #ff0000; line-height: 1; }
+  .metric { font: 22px 'VT323', monospace; color: #fff; }
+  .muted { color: #a394a7; font-size: 11px; line-height: 1.2; }
   button.primary, .pill {
-    background: #ff0000; border: 0; color: #fff3f3; padding: 10px 14px; font: 22px 'VT323', monospace; cursor: pointer;
+    background: #ff0000; border: 0; color: #fff3f3; padding: 4px 8px; font: 16px 'VT323', monospace; line-height: 1; cursor: pointer;
   }
   .pill { display: inline-block; text-decoration: none; }
   input, textarea {
-    width: 100%; padding: 10px; margin: 0 0 12px; color: #f6f1f9; background: #16090b; border: 1px solid #7a1010; font: inherit;
+    width: 100%; padding: 5px 7px; margin: 0 0 6px; color: #f6f1f9; background: #16090b; border: 1px solid #7a1010; font: inherit; line-height: 1.1;
   }
-  .flash { padding: 10px 12px; border: 1px solid #6f2525; background: rgba(42, 12, 16, 0.78); color: #fbeff0; margin-bottom: 12px; }
+  .flash { padding: 6px 8px; border: 1px solid #6f2525; background: rgba(42, 12, 16, 0.78); color: #fbeff0; margin-bottom: 6px; font-size: 12px; line-height: 1.2; }
   .flash.error { border-color: #ff4d4d; color: #ffe3e3; }
   .flash.success { border-color: #ff0000; color: #fff0f0; }
   .logout { background: transparent; border: 1px solid #6f2525; color: #efe6f0; padding: 8px 12px; font-family: inherit; cursor: pointer; }
   @media (max-width: 700px) {
-    .wrap { width: calc(100vw - 12px); }
+    .wrap { width: calc(100vw - 8px); }
     .slots-grid { grid-template-columns: 1fr; }
     .games-grid { grid-template-columns: 1fr; }
   }
@@ -864,6 +864,7 @@ setInterval(refreshList, 5000);
 
 function renderBlackjackLobbyPage(session, lobbyId) {
   const baseApi = JSON.stringify(p('/api/blackjack/lobbies/'));
+  const viewerName = JSON.stringify(session.username || '');
   return renderPage(`Blackjack ${lobbyId}`, session, `
     <div class="card"><h2>Blackjack ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Table</h2><pre id="blackjack-state" class="board">Connecting...</pre></div>
@@ -871,8 +872,8 @@ function renderBlackjackLobbyPage(session, lobbyId) {
       <h2>Actions</h2>
       <div id="blackjack-result"></div>
       <div class="stack">
-        <div class="item"><button class="primary" id="blackjack-hit" type="button">Hit</button> <button class="primary" id="blackjack-stay" type="button">Stay</button> <button class="primary" id="blackjack-surrender" type="button">Surrender</button></div>
-        <div class="item"><button class="primary" id="blackjack-leave" type="button">Leave Table</button></div>
+        <div class="item" id="blackjack-card-controls"><button class="primary" id="blackjack-hit" type="button">Hit</button> <button class="primary" id="blackjack-stay" type="button">Stay</button> <button class="primary" id="blackjack-surrender" type="button">Surrender</button></div>
+        <div class="item" id="blackjack-leave-wrap"><button class="primary" id="blackjack-leave" type="button">Leave Table</button></div>
         <div class="item"><input id="blackjack-ante" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-play" type="button">Join Table</button></div>
         <div class="item"><input id="blackjack-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="blackjack-set-bet" type="button">Set Next Bet</button></div>
       </div>
@@ -881,11 +882,25 @@ function renderBlackjackLobbyPage(session, lobbyId) {
     active: '/blackjack',
     pageScripts: `<script>
 const lobbyId = ${JSON.stringify(lobbyId)};
+const viewerName = ${viewerName}.toLowerCase();
 const stateEl = document.getElementById('blackjack-state');
 const resultEl = document.getElementById('blackjack-result');
+const cardControlsEl = document.getElementById('blackjack-card-controls');
+const leaveWrapEl = document.getElementById('blackjack-leave-wrap');
 const baseApi = ${baseApi};
 let socket;
-function renderState(state) { stateEl.textContent = state && state.content ? state.content : 'Table is empty.'; }
+function viewerIsSeated(state) {
+  return Boolean(state && state.content && viewerName && state.content.toLowerCase().includes(viewerName));
+}
+function setJoinedUi(joined) {
+  const display = joined ? '' : 'none';
+  cardControlsEl.style.display = display;
+  leaveWrapEl.style.display = display;
+}
+function renderState(state) {
+  stateEl.textContent = state && state.content ? state.content : 'Table is empty.';
+  setJoinedUi(viewerIsSeated(state));
+}
 async function postAction(path, payload) {
   resultEl.innerHTML = '<div class="flash">Working...</div>';
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
@@ -917,6 +932,7 @@ document.getElementById('blackjack-hit').addEventListener('click', () => postAct
 document.getElementById('blackjack-stay').addEventListener('click', () => postAction(baseApi + lobbyId + '/stay'));
 document.getElementById('blackjack-surrender').addEventListener('click', () => postAction(baseApi + lobbyId + '/surrender'));
 document.getElementById('blackjack-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
+setJoinedUi(false);
 connectWs();
 refreshState();
 </script>`,
@@ -963,6 +979,7 @@ setInterval(refreshList, 5000);
 
 function renderHoldemLobbyPage(session, lobbyId) {
   const baseApi = JSON.stringify(p('/api/holdem/lobbies/'));
+  const viewerName = JSON.stringify(session.username || '');
   return renderPage(`Holdem ${lobbyId}`, session, `
     <div class="card"><h2>Holdem ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Table</h2><pre id="holdem-state" class="board">Connecting...</pre></div>
@@ -971,9 +988,9 @@ function renderHoldemLobbyPage(session, lobbyId) {
       <h2>Actions</h2>
       <div id="holdem-result"></div>
       <div class="stack">
-        <div class="item"><button class="primary" id="holdem-peek-btn" type="button">Peek</button> <button class="primary" id="holdem-check" type="button">Check/Call</button> <button class="primary" id="holdem-fold" type="button">Fold</button></div>
-        <div class="item"><input id="holdem-raise-amount" type="number" min="1" step="1" value="1"><button class="primary" id="holdem-raise" type="button">Raise</button></div>
-        <div class="item"><button class="primary" id="holdem-leave" type="button">Leave Table</button></div>
+        <div class="item" id="holdem-card-controls"><button class="primary" id="holdem-peek-btn" type="button">Peek</button> <button class="primary" id="holdem-check" type="button">Check/Call</button> <button class="primary" id="holdem-fold" type="button">Fold</button></div>
+        <div class="item" id="holdem-raise-wrap"><input id="holdem-raise-amount" type="number" min="1" step="1" value="1"><button class="primary" id="holdem-raise" type="button">Raise</button></div>
+        <div class="item" id="holdem-leave-wrap"><button class="primary" id="holdem-leave" type="button">Leave Table</button></div>
         <div class="item"><input id="holdem-ante" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-play" type="button">Join Table</button></div>
         <div class="item"><input id="holdem-next-bet" type="number" min="1" step="1" value="5"><button class="primary" id="holdem-set-bet" type="button">Set Ante</button></div>
       </div>
@@ -982,12 +999,28 @@ function renderHoldemLobbyPage(session, lobbyId) {
     active: '/holdem',
     pageScripts: `<script>
 const lobbyId = ${JSON.stringify(lobbyId)};
+const viewerName = ${viewerName}.toLowerCase();
 const stateEl = document.getElementById('holdem-state');
 const peekEl = document.getElementById('holdem-peek');
 const resultEl = document.getElementById('holdem-result');
+const cardControlsEl = document.getElementById('holdem-card-controls');
+const raiseWrapEl = document.getElementById('holdem-raise-wrap');
+const leaveWrapEl = document.getElementById('holdem-leave-wrap');
 const baseApi = ${baseApi};
 let socket;
-function renderState(state) { stateEl.textContent = state && state.content ? state.content : 'Table is empty.'; }
+function viewerIsSeated(state) {
+  return Boolean(state && state.content && viewerName && state.content.toLowerCase().includes(viewerName));
+}
+function setJoinedUi(joined) {
+  const display = joined ? '' : 'none';
+  cardControlsEl.style.display = display;
+  raiseWrapEl.style.display = display;
+  leaveWrapEl.style.display = display;
+}
+function renderState(state) {
+  stateEl.textContent = state && state.content ? state.content : 'Table is empty.';
+  setJoinedUi(viewerIsSeated(state));
+}
 async function postAction(path, payload) {
   resultEl.innerHTML = '<div class="flash">Working...</div>';
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
@@ -1019,6 +1052,7 @@ document.getElementById('holdem-check').addEventListener('click', () => postActi
 document.getElementById('holdem-fold').addEventListener('click', () => postAction(baseApi + lobbyId + '/fold'));
 document.getElementById('holdem-raise').addEventListener('click', () => postAction(baseApi + lobbyId + '/raise', { amount: Number(document.getElementById('holdem-raise-amount').value) }));
 document.getElementById('holdem-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
+setJoinedUi(false);
 connectWs();
 refreshState();
 </script>`,
@@ -1476,7 +1510,25 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = generateLobbyId('horseracing');
-    sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/horseracing/${lobbyId}`) });
+    const channelId = getWebHorseracingChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('horseracing', 'join', {
+        channelId,
+        userId: session.discordId,
+        username: session.username,
+      }, { channelId });
+      if (!result.ok) {
+        return sendError(res, 400, result.reason || 'create_failed', 'Could not create horse racing lobby');
+      }
+      sendJson(res, 200, {
+        ok: true,
+        lobbyId,
+        joinUrl: p(`/horseracing/${lobbyId}`),
+        state: { content: result.content || '' },
+      });
+    } catch (error) {
+      sendError(res, 503, 'horseracing_unavailable', error.message);
+    }
     return;
   }
 
@@ -1528,7 +1580,16 @@ async function handleRequest(req, res) {
     const lobbyId = decodeURIComponent(horseracingBetApiMatch[1]);
     const channelId = getWebHorseracingChannelId(lobbyId);
     try {
-      const result = await manager.sendCommand('horseracing', 'setBet', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
+      let result = await manager.sendCommand('horseracing', 'setBet', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
+      if (!result.ok && result.reason === 'no_lobby') {
+        const joinResult = await manager.sendCommand('horseracing', 'join', {
+          channelId,
+          userId: session.discordId,
+          username: session.username,
+        }, { channelId });
+        if (!joinResult.ok) return sendError(res, 400, joinResult.reason || 'join_failed', 'Could not join horse racing lobby');
+        result = await manager.sendCommand('horseracing', 'setBet', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
+      }
       if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set horse racing bet');
       const snapshot = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId }).catch(() => null);
       sendJson(res, 200, { ok: true, message: `Set horse racing bet to ${amount} SGC.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
@@ -1550,7 +1611,16 @@ async function handleRequest(req, res) {
     const lobbyId = decodeURIComponent(horseracingHorseApiMatch[1]);
     const channelId = getWebHorseracingChannelId(lobbyId);
     try {
-      const result = await manager.sendCommand('horseracing', 'pickHorse', { channelId, userId: session.discordId, username: session.username, horse }, { channelId });
+      let result = await manager.sendCommand('horseracing', 'pickHorse', { channelId, userId: session.discordId, username: session.username, horse }, { channelId });
+      if (!result.ok && result.reason === 'no_lobby') {
+        const joinResult = await manager.sendCommand('horseracing', 'join', {
+          channelId,
+          userId: session.discordId,
+          username: session.username,
+        }, { channelId });
+        if (!joinResult.ok) return sendError(res, 400, joinResult.reason || 'join_failed', 'Could not join horse racing lobby');
+        result = await manager.sendCommand('horseracing', 'pickHorse', { channelId, userId: session.discordId, username: session.username, horse }, { channelId });
+      }
       if (!result.ok) return sendError(res, 400, result.reason || 'horse_failed', 'Could not pick horse');
       const snapshot = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId }).catch(() => null);
       sendJson(res, 200, { ok: true, message: `Picked horse ${horse}.`, state: snapshot && snapshot.ok ? { content: snapshot.content || '' } : null });
