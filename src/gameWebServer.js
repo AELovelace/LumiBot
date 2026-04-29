@@ -371,6 +371,7 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
   .hp-text { color: #d9cfdc; font-size: 11px; line-height: 1; }
   .portrait-meta { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
   .board { white-space: pre-wrap; margin: 0; font-family: 'Space Mono', monospace; }
+  .battle-log-board { min-height: calc(1.2em * 9); }
   h2 { margin: 0 0 6px; font: 24px 'VT323', monospace; color: #ff0000; line-height: 1; }
   .metric { font: 22px 'VT323', monospace; color: #fff; }
   .muted { color: #a394a7; font-size: 11px; line-height: 1.2; }
@@ -1705,7 +1706,7 @@ function renderTouhouBattlePage(session, battleId) {
     <div class="card"><h2>Touhou Battle</h2><div class="muted">Battle ID: ${escapeHtml(battleId)}</div></div>
     <div class="card"><div class="item inline-action"><a class="pill" href="${p('/touhou')}">Return To Main Menu</a><a class="pill" href="${p('/touhou/battle')}">Back To Battle Arena</a></div></div>
     <div class="card"><h2>Combatants</h2><div id="touhou-battle-portraits" class="portrait-strip"><div class="item">Loading portraits...</div></div></div>
-    <div class="card"><h2>Battlefield</h2><pre id="touhou-battle-state" class="board">Loading battle...</pre></div>
+    <div class="card"><h2>Battlefield</h2><pre id="touhou-battle-state" class="board battle-log-board">Loading battle...</pre></div>
     <div class="card">
       <h2>Actions</h2>
       <div id="touhou-battle-action-result"></div>
@@ -1738,7 +1739,7 @@ function renderState(state) {
     'Potions: ' + state.potionCount,
     '',
     'Battle Log:',
-    ...state.log.slice(-8),
+    ...state.log.slice(-6),
   ].join('\\n');
   if (state.over) {
     document.getElementById('touhou-battle-defend').disabled = true;
