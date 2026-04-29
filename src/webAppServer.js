@@ -446,6 +446,11 @@ function renderPage(title, session, body, {
     display: grid;
     gap: 14px;
   }
+  .slots-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
   .flash {
     padding: 10px 12px;
     border: 1px solid #3e4663;
@@ -474,6 +479,7 @@ function renderPage(title, session, body, {
   @media (max-width: 700px) {
     .wrap { width: calc(100vw - 16px); }
     header { padding: 14px; }
+    .slots-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -1081,7 +1087,7 @@ function renderSlotsLobbyPage(session, lobbyId) {
     </div>
     <div class="card">
       <h2>Lobby State</h2>
-      <div id="slots-lobby-state" class="list"><div class="item">Connecting...</div></div>
+      <div id="slots-lobby-state"><div class="item">Connecting...</div></div>
     </div>
     <div class="card">
       <h2>Actions</h2>
@@ -1112,7 +1118,7 @@ function renderSlotsState(state) {
   const players = Array.isArray(state.players) ? state.players : [];
   stateEl.innerHTML = [
     '<div class="item"><strong>' + (state.title || 'Slots Lobby') + '</strong><div>' + (state.description || '') + '</div><div class="muted">' + (state.footer || '') + '</div></div>',
-    ...players.map((player) => '<div class="item"><strong>' + player.name + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + player.value + '</pre></div>')
+    '<div class="slots-grid">' + players.map((player) => '<div class="item"><strong>' + player.name + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + player.value + '</pre></div>').join('') + '</div>'
   ].join('');
 }
 
