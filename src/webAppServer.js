@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const http = require('node:http');
 const { URL } = require('node:url');
 
@@ -10,7 +11,6 @@ const {
   getCentralBankBalance,
   getDollStreetBalance,
   getMomijiCasinoBalance,
-  getTopHolders,
   getUserTransactions,
   transferCoins,
   buyYearlyRaffleTicket,
@@ -37,6 +37,7 @@ const {
   buyShares,
   sellShares,
 } = require('./privateStockStore');
+const { manager } = require('./workers/workerManager');
 const {
   handleLoginRoute,
   handleCallbackRoute,
@@ -72,6 +73,9 @@ const SECURITY_HEADERS = {
 };
 
 let server = null;
+let wsListenerInstalled = false;
+const wsClients = new Set();
+const wsSubscriptions = new Map();
 
 function p(path) {
   return `${WEB_APP_BASE_PATH}${path}`;
@@ -235,6 +239,7 @@ function renderPage(title, session, body, {
     ['/stocks', 'Stocks'],
     ['/portfolio', 'Portfolio'],
     ['/bets', 'Bets'],
+    ['/casino/slots', 'Slots'],
     ['/bank/history', 'History'],
     ['/bank/send', 'Send'],
     ['/bank/raffle', 'Raffle'],
@@ -262,9 +267,9 @@ function renderPage(title, session, body, {
     font-family: 'Space Mono', monospace;
   }
   .wrap {
-    width: min(1180px, calc(100vw - 24px));
+    width: min(900px, calc(100vw - 20px));
     margin: 0 auto;
-    padding: 16px 0 40px;
+    padding: 10px 0 24px;
   }
   header {
     display: flex;
@@ -320,7 +325,7 @@ function renderPage(title, session, body, {
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: 1fr;
     gap: 14px;
   }
   .card {
@@ -381,6 +386,10 @@ function renderPage(title, session, body, {
     text-decoration: none;
   }
   .panel {
+    display: grid;
+    gap: 14px;
+  }
+  .stack {
     display: grid;
     gap: 14px;
   }
@@ -496,7 +505,6 @@ function buildWalletSummary(userId) {
     casinoBalance: getMomijiCasinoBalance(),
     transferFeeRate: getTransferFeeRate(),
     lottoDay: isLottoDay(),
-    leaderboard: getTopHolders(10),
   };
 }
 
@@ -507,51 +515,33 @@ function renderDashboard(session) {
   const receipts = getReceiptsForUser(session.discordId, 6);
   const notifications = getNotificationsForUser(session.discordId, 6);
 
-  const leaderboardRows = wallet.leaderboard.map((row, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(row.username || row.user_id)}</td>
-      <td>${Number(row.balance).toLocaleString()} SGC</td>
-    </tr>
-  `).join('');
-
   return renderPage('Lumi Web Dashboard', session, `
-    <section class="grid">
+    <section class="stack">
       <div class="card"><h2>Wallet</h2><div class="metric">${wallet.balance.toLocaleString()} SGC</div><div class="muted">Your spendable balance</div></div>
       <div class="card"><h2>Transfer Fee</h2><div class="metric">${Math.round(wallet.transferFeeRate * 100)}%</div><div class="muted">${wallet.lottoDay ? 'Lotto day fee is active.' : 'Normal transfer rate.'}</div></div>
       <div class="card"><h2>Central Bank</h2><div class="metric">${wallet.centralBankBalance.toLocaleString()}</div><div class="muted">System reserve</div></div>
       <div class="card"><h2>Momiji Casino</h2><div class="metric">${wallet.casinoBalance.toLocaleString()}</div><div class="muted">House balance snapshot</div></div>
     </section>
     <div class="panel" style="margin-top:14px;">
-        <div class="card">
-          <h2>Quick Actions</h2>
-          <a class="pill" href="${p('/bank/send')}">Send SGC</a>
-          <a class="pill" href="${p('/bank/raffle')}" style="margin-left:8px;">Buy Raffle Ticket</a>
-          <a class="pill" href="${p('/stocks')}" style="margin-left:8px;">Open Stocks</a>
-          <a class="pill" href="${p('/bets')}" style="margin-left:8px;">Open Bets</a>
-        </div>
-      <div class="grid">
-        <div class="card">
-          <h2>Recent Transactions</h2>
-          ${renderTransactionsTable(transactions, session.discordId)}
-        </div>
-        <div class="card">
-          <h2>Recent Receipts</h2>
-          ${renderReceipts(receipts)}
-        </div>
+      <div class="card">
+        <h2>Quick Actions</h2>
+        <a class="pill" href="${p('/bank/send')}">Send SGC</a>
+        <a class="pill" href="${p('/bank/raffle')}" style="margin-left:8px;">Buy Raffle Ticket</a>
+        <a class="pill" href="${p('/stocks')}" style="margin-left:8px;">Open Stocks</a>
+        <a class="pill" href="${p('/bets')}" style="margin-left:8px;">Open Bets</a>
+        <a class="pill" href="${p('/casino/slots')}" style="margin-left:8px;">Open Slots</a>
       </div>
-      <div class="grid">
-        <div class="card">
-          <h2>Notifications</h2>
-          ${renderNotifications(notifications)}
-        </div>
-        <div class="card">
-          <h2>Top Holders</h2>
-          <table>
-            <thead><tr><th>#</th><th>User</th><th>Balance</th></tr></thead>
-            <tbody>${leaderboardRows}</tbody>
-          </table>
-        </div>
+      <div class="card">
+        <h2>Recent Transactions</h2>
+        ${renderTransactionsTable(transactions, session.discordId)}
+      </div>
+      <div class="card">
+        <h2>Recent Receipts</h2>
+        ${renderReceipts(receipts)}
+      </div>
+      <div class="card">
+        <h2>Notifications</h2>
+        ${renderNotifications(notifications)}
       </div>
     </div>
   `, { active: '/' });
@@ -1000,6 +990,144 @@ document.getElementById('bet-buy-form').addEventListener('submit', async (event)
   `, { active: '/bets', pageScripts });
 }
 
+function renderSlotsIndexPage(session) {
+  return renderPage('Slots', session, `
+    <div class="card">
+      <h2>Slots Lobbies</h2>
+      <p class="muted">Create a new worker-backed slots lobby and open it inside this embedded app.</p>
+      <button class="primary" id="create-slots-lobby" type="button">Create Slots Lobby</button>
+      <div id="slots-create-result" style="margin-top:12px;"></div>
+    </div>
+  `, {
+    active: '/casino/slots',
+    pageScripts: `<script>
+document.getElementById('create-slots-lobby').addEventListener('click', async () => {
+  const result = document.getElementById('slots-create-result');
+  result.innerHTML = '<div class="flash">Creating lobby...</div>';
+  const res = await fetch(${JSON.stringify(p('/api/casino/slots/lobbies'))}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    return;
+  }
+  window.location.href = ${JSON.stringify(p('/casino/slots/'))} + data.lobbyId;
+});
+</script>`,
+  });
+}
+
+function renderSlotsLobbyPage(session, lobbyId) {
+  return renderPage(`Slots ${lobbyId}`, session, `
+    <div class="card">
+      <h2>Slots Lobby ${escapeHtml(lobbyId)}</h2>
+      <div class="muted">Worker channel: <span class="mono">${escapeHtml(getWebSlotsChannelId(lobbyId))}</span></div>
+    </div>
+    <div class="card">
+      <h2>Lobby State</h2>
+      <div id="slots-lobby-state" class="list"><div class="item">Connecting...</div></div>
+    </div>
+    <div class="card">
+      <h2>Actions</h2>
+      <div id="slots-action-result"></div>
+      <div class="list">
+        <div class="item"><button class="primary" id="slots-join" type="button">Join Lobby</button></div>
+        <div class="item">
+          <input id="slots-bet-amount" type="number" min="1" step="1" value="1">
+          <button class="primary" id="slots-set-bet" type="button">Set Bet</button>
+        </div>
+        <div class="item"><button class="primary" id="slots-spin" type="button">Spin</button></div>
+        <div class="item"><button class="primary" id="slots-leave" type="button">Leave Lobby</button></div>
+      </div>
+    </div>
+  `, {
+    active: '/casino/slots',
+    pageScripts: `<script>
+const lobbyId = ${JSON.stringify(lobbyId)};
+const stateEl = document.getElementById('slots-lobby-state');
+const resultEl = document.getElementById('slots-action-result');
+let socket;
+
+function renderSlotsState(state) {
+  if (!state) {
+    stateEl.innerHTML = '<div class="item">Lobby is empty.</div>';
+    return;
+  }
+  const players = Array.isArray(state.players) ? state.players : [];
+  stateEl.innerHTML = [
+    '<div class="item"><strong>' + (state.title || 'Slots Lobby') + '</strong><div>' + (state.description || '') + '</div><div class="muted">' + (state.footer || '') + '</div></div>',
+    ...players.map((player) => '<div class="item"><strong>' + player.name + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + player.value + '</pre></div>')
+  ].join('');
+}
+
+async function postAction(path, payload) {
+  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>';
+    return null;
+  }
+  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (data.state) renderSlotsState(data.state);
+  return data;
+}
+
+async function refreshLobby() {
+  const res = await fetch(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId);
+  const data = await res.json();
+  if (!res.ok) {
+    stateEl.innerHTML = '<div class="item">Lobby unavailable.</div>';
+    return;
+  }
+  renderSlotsState(data.state);
+}
+
+function connectWs() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket.addEventListener('open', () => {
+    socket.send(JSON.stringify({ type: 'subscribe', channel: 'slots:lobby:' + lobbyId }));
+  });
+  socket.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'slots.render' && msg.lobbyId === lobbyId) {
+      renderSlotsState(msg.state);
+    }
+    if (msg.type === 'slots.closed' && msg.lobbyId === lobbyId) {
+      stateEl.innerHTML = '<div class="item"><strong>Lobby closed</strong><div>' + (msg.content || '') + '</div></div>';
+    }
+  });
+}
+
+document.getElementById('slots-join').addEventListener('click', () => {
+  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/join');
+});
+document.getElementById('slots-set-bet').addEventListener('click', () => {
+  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/bet', {
+    amount: Number(document.getElementById('slots-bet-amount').value),
+  });
+});
+document.getElementById('slots-spin').addEventListener('click', () => {
+  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/spin');
+});
+document.getElementById('slots-leave').addEventListener('click', () => {
+  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/leave');
+});
+
+connectWs();
+refreshLobby();
+</script>`,
+  });
+}
+
 function requireMemberSession(req, res, {
   api = false,
   nextPath = null,
@@ -1036,7 +1164,6 @@ function walletPayloadFor(session) {
       dollStreet: summary.dollStreetBalance,
       momijiCasino: summary.casinoBalance,
     },
-    leaderboard: summary.leaderboard,
   };
 }
 
@@ -1155,6 +1282,280 @@ function renderMarketCards(markets, viewerId) {
       <div style="margin-top:8px;">${optionLines}</div>
     </div>`;
   }).join('')}</div>`;
+}
+
+function generateLobbyId(prefix = 'slots') {
+  return `${prefix}-${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function getWebSlotsChannelId(lobbyId) {
+  return `web:slots:${String(lobbyId)}`;
+}
+
+function serializeSlotsPayload(payload) {
+  if (!payload || !payload.embed) return null;
+  return {
+    channelId: payload.channelId,
+    title: payload.embed.title || 'Slots Lobby',
+    description: payload.embed.description || '',
+    footer: payload.embed.footer || '',
+    players: Array.isArray(payload.embed.fields) ? payload.embed.fields.map((field) => ({
+      name: field.name,
+      value: field.value,
+    })) : [],
+  };
+}
+
+function buildWsFrame(data) {
+  const payload = Buffer.from(data, 'utf8');
+  const length = payload.length;
+  if (length < 126) {
+    return Buffer.concat([Buffer.from([0x81, length]), payload]);
+  }
+  if (length < 65536) {
+    const header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(length, 2);
+    return Buffer.concat([header, payload]);
+  }
+  const header = Buffer.alloc(10);
+  header[0] = 0x81;
+  header[1] = 127;
+  header.writeUInt32BE(0, 2);
+  header.writeUInt32BE(length, 6);
+  return Buffer.concat([header, payload]);
+}
+
+function parseWsFrames(buffer) {
+  const messages = [];
+  let offset = 0;
+
+  while (offset + 2 <= buffer.length) {
+    const firstByte = buffer[offset];
+    const secondByte = buffer[offset + 1];
+    const opcode = firstByte & 0x0f;
+    const masked = (secondByte & 0x80) !== 0;
+    let payloadLength = secondByte & 0x7f;
+    let headerLength = 2;
+
+    if (payloadLength === 126) {
+      if (offset + 4 > buffer.length) break;
+      payloadLength = buffer.readUInt16BE(offset + 2);
+      headerLength = 4;
+    } else if (payloadLength === 127) {
+      if (offset + 10 > buffer.length) break;
+      const high = buffer.readUInt32BE(offset + 2);
+      if (high !== 0) throw new Error('Large websocket frames are not supported');
+      payloadLength = buffer.readUInt32BE(offset + 6);
+      headerLength = 10;
+    }
+
+    const maskLength = masked ? 4 : 0;
+    const frameLength = headerLength + maskLength + payloadLength;
+    if (offset + frameLength > buffer.length) break;
+
+    const maskOffset = offset + headerLength;
+    const payloadOffset = maskOffset + maskLength;
+    let payload = buffer.subarray(payloadOffset, payloadOffset + payloadLength);
+
+    if (masked) {
+      const mask = buffer.subarray(maskOffset, maskOffset + 4);
+      const unmasked = Buffer.alloc(payloadLength);
+      for (let i = 0; i < payloadLength; i += 1) {
+        unmasked[i] = payload[i] ^ mask[i % 4];
+      }
+      payload = unmasked;
+    }
+
+    messages.push({ opcode, payload: payload.toString('utf8') });
+    offset += frameLength;
+  }
+
+  return { messages, remaining: buffer.subarray(offset) };
+}
+
+function sendWsJson(client, payload) {
+  if (!client || client.socket.destroyed) return;
+  try {
+    client.socket.write(buildWsFrame(JSON.stringify(payload)));
+  } catch {
+    // socket teardown handled elsewhere
+  }
+}
+
+function subscribeClient(client, channel) {
+  if (!channel) return;
+  client.channels.add(channel);
+  if (!wsSubscriptions.has(channel)) wsSubscriptions.set(channel, new Set());
+  wsSubscriptions.get(channel).add(client);
+}
+
+function unsubscribeClient(client, channel) {
+  if (!channel) return;
+  client.channels.delete(channel);
+  const bucket = wsSubscriptions.get(channel);
+  if (!bucket) return;
+  bucket.delete(client);
+  if (bucket.size === 0) wsSubscriptions.delete(channel);
+}
+
+function removeWsClient(client) {
+  if (!client) return;
+  wsClients.delete(client);
+  for (const channel of [...client.channels]) {
+    unsubscribeClient(client, channel);
+  }
+}
+
+function broadcastToChannel(channel, payload) {
+  const bucket = wsSubscriptions.get(channel);
+  if (!bucket) return;
+  for (const client of bucket) {
+    sendWsJson(client, payload);
+  }
+}
+
+function handleWsMessage(client, raw) {
+  let message;
+  try {
+    message = JSON.parse(raw);
+  } catch {
+    sendWsJson(client, { type: 'error', message: 'Invalid JSON frame' });
+    return;
+  }
+
+  if (message.type === 'ping') {
+    sendWsJson(client, { type: 'pong', ts: Date.now() });
+    return;
+  }
+  if (message.type === 'subscribe') {
+    subscribeClient(client, String(message.channel || ''));
+    sendWsJson(client, { type: 'subscribed', channel: String(message.channel || '') });
+    return;
+  }
+  if (message.type === 'unsubscribe') {
+    unsubscribeClient(client, String(message.channel || ''));
+    sendWsJson(client, { type: 'unsubscribed', channel: String(message.channel || '') });
+    return;
+  }
+
+  sendWsJson(client, { type: 'error', message: 'Unknown websocket message type' });
+}
+
+function installWsBridge() {
+  if (wsListenerInstalled) return;
+  wsListenerInstalled = true;
+
+  manager.onEngineEvent('slots', (evt) => {
+    if (!evt || typeof evt.channelId !== 'string' || !evt.channelId.startsWith('web:slots:')) return;
+    const lobbyId = evt.channelId.replace(/^web:slots:/u, '');
+    if (evt.name === 'render') {
+      broadcastToChannel(`slots:lobby:${lobbyId}`, {
+        type: 'slots.render',
+        lobbyId,
+        state: serializeSlotsPayload(evt),
+      });
+      return;
+    }
+    if (evt.name === 'lobbyClosed') {
+      broadcastToChannel(`slots:lobby:${lobbyId}`, {
+        type: 'slots.closed',
+        lobbyId,
+        content: evt.content || 'Lobby closed',
+      });
+      return;
+    }
+    if (evt.name === 'spinComplete') {
+      broadcastToChannel(`slots:lobby:${lobbyId}`, {
+        type: 'slots.spinComplete',
+        lobbyId,
+        result: evt,
+      });
+    }
+  });
+}
+
+function handleWsUpgrade(req, socket) {
+  let parsedUrl;
+  try {
+    parsedUrl = parseUrl(req);
+  } catch {
+    socket.destroy();
+    return;
+  }
+  const pathname = routePath(parsedUrl.pathname);
+  if (pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+
+  const session = requireUserAuth(req);
+  if (!session) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const key = req.headers['sec-websocket-key'];
+  if (!key || typeof key !== 'string') {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const accept = crypto
+    .createHash('sha1')
+    .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest('base64');
+
+  socket.write([
+    'HTTP/1.1 101 Switching Protocols',
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    `Sec-WebSocket-Accept: ${accept}`,
+    '\r\n',
+  ].join('\r\n'));
+
+  const client = {
+    socket,
+    session,
+    channels: new Set(),
+    buffer: Buffer.alloc(0),
+  };
+  wsClients.add(client);
+  subscribeClient(client, `user:${session.discordId}`);
+  sendWsJson(client, {
+    type: 'hello',
+    userId: session.discordId,
+    username: session.username,
+  });
+
+  socket.on('data', (chunk) => {
+    try {
+      client.buffer = Buffer.concat([client.buffer, chunk]);
+      const { messages, remaining } = parseWsFrames(client.buffer);
+      client.buffer = remaining;
+      for (const message of messages) {
+        if (message.opcode === 0x8) {
+          socket.end();
+          return;
+        }
+        if (message.opcode === 0x9) {
+          socket.write(Buffer.from([0x8a, 0x00]));
+          continue;
+        }
+        if (message.opcode === 0x1) {
+          handleWsMessage(client, message.payload);
+        }
+      }
+    } catch {
+      socket.destroy();
+    }
+  });
+  socket.on('close', () => removeWsClient(client));
+  socket.on('end', () => removeWsClient(client));
+  socket.on('error', () => removeWsClient(client));
 }
 
 async function handleRequest(req, res) {
@@ -1487,6 +1888,148 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (pathname === '/api/casino/slots/lobbies' && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = generateLobbyId('slots');
+    sendJson(res, 200, {
+      ok: true,
+      lobbyId,
+      joinUrl: p(`/casino/slots/${lobbyId}`),
+    });
+    return;
+  }
+
+  const slotsLobbyApiMatch = pathname.match(/^\/api\/casino\/slots\/lobbies\/([^/]+)$/u);
+  if (slotsLobbyApiMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsLobbyApiMatch[1]);
+    try {
+      const result = await manager.sendCommand('slots', 'getLobby', { channelId: getWebSlotsChannelId(lobbyId) }, { channelId: getWebSlotsChannelId(lobbyId) });
+      sendJson(res, 200, {
+        ok: true,
+        lobbyId,
+        state: result && result.ok ? serializeSlotsPayload(result) : null,
+      });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsJoinApiMatch = pathname.match(/^\/api\/casino\/slots\/lobbies\/([^/]+)\/join$/u);
+  if (slotsJoinApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsJoinApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'join', {
+        channelId,
+        userId: session.discordId,
+        username: session.username,
+      }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'join_failed', 'Could not join slots lobby');
+      sendJson(res, 200, {
+        ok: true,
+        message: 'Joined slots lobby.',
+        state: serializeSlotsPayload(result),
+      });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsBetApiMatch = pathname.match(/^\/api\/casino\/slots\/lobbies\/([^/]+)\/bet$/u);
+  if (slotsBetApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    let body;
+    try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0 || Math.floor(amount) !== amount) {
+      return sendError(res, 400, 'bad_request', 'amount must be a positive integer');
+    }
+    const lobbyId = decodeURIComponent(slotsBetApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'setBet', {
+        channelId,
+        userId: session.discordId,
+        username: session.username,
+        amount,
+      }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set bet');
+      sendJson(res, 200, {
+        ok: true,
+        message: `Set bet to ${amount} SGC.`,
+        state: serializeSlotsPayload(result),
+      });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsSpinApiMatch = pathname.match(/^\/api\/casino\/slots\/lobbies\/([^/]+)\/spin$/u);
+  if (slotsSpinApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsSpinApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'spin', {
+        channelId,
+        userId: session.discordId,
+        username: session.username,
+      }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'spin_failed', 'Could not spin');
+      sendJson(res, 200, {
+        ok: true,
+        message: 'Spin started.',
+        state: serializeSlotsPayload(result),
+      });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
+  const slotsLeaveApiMatch = pathname.match(/^\/api\/casino\/slots\/lobbies\/([^/]+)\/leave$/u);
+  if (slotsLeaveApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(slotsLeaveApiMatch[1]);
+    const channelId = getWebSlotsChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('slots', 'leave', {
+        channelId,
+        userId: session.discordId,
+      }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'leave_failed', 'Could not leave lobby');
+      sendJson(res, 200, {
+        ok: true,
+        message: 'Left slots lobby.',
+        state: result.closed ? null : serializeSlotsPayload(result),
+      });
+    } catch (error) {
+      sendError(res, 503, 'slots_unavailable', error.message);
+    }
+    return;
+  }
+
   if (pathname === '/api/wallet/send' && method === 'POST') {
     const originCheck = validateSameOrigin(req);
     if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
@@ -1683,6 +2226,21 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (pathname === '/casino/slots' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/casino/slots') });
+    if (!session) return;
+    sendHtml(res, 200, renderSlotsIndexPage(session));
+    return;
+  }
+
+  const slotsLobbyPageMatch = pathname.match(/^\/casino\/slots\/([^/]+)$/u);
+  if (slotsLobbyPageMatch && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p(`/casino/slots/${slotsLobbyPageMatch[1]}`) });
+    if (!session) return;
+    sendHtml(res, 200, renderSlotsLobbyPage(session, decodeURIComponent(slotsLobbyPageMatch[1])));
+    return;
+  }
+
   const betPageMatch = pathname.match(/^\/bets\/(\d+)$/u);
   if (betPageMatch && method === 'GET') {
     const session = requireMemberSession(req, res, { nextPath: p(`/bets/${betPageMatch[1]}`) });
@@ -1700,11 +2258,19 @@ function startWebAppServer(opts = {}) {
   WEB_APP_HOST = opts.host || WEB_APP_HOST;
   WEB_APP_DISCORD_OAUTH_REDIRECT_URI = opts.authRedirectUri || WEB_APP_DISCORD_OAUTH_REDIRECT_URI;
   initWebAppStore();
+  installWsBridge();
   server = http.createServer((req, res) => {
     handleRequest(req, res).catch((error) => {
       logger.error(`Web app request failed: ${error.message}`);
       sendError(res, 500, 'internal_error', 'Internal server error');
     });
+  });
+  server.on('upgrade', (req, socket) => {
+    try {
+      handleWsUpgrade(req, socket);
+    } catch {
+      try { socket.destroy(); } catch { /* ignore */ }
+    }
   });
   server.listen(WEB_APP_PORT, WEB_APP_HOST, () => {
     logger.info(`Lumi Web app running at http://${WEB_APP_HOST}:${WEB_APP_PORT}${WEB_APP_BASE_PATH || '/'}`);

@@ -303,3 +303,9 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
     })),
   };
 });
+
+registerCommand('getLobby', async ({ channelId } = {}) => {
+  const lobby = lobbies.get(channelId);
+  if (!lobby) return { ok: false, exists: false };
+  return { ok: true, exists: true, ...buildLobbyPayload(lobby) };
+});
