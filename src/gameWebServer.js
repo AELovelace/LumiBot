@@ -427,13 +427,62 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
       </div>
       <div class="account-meta">
         <div>${escapeHtml(session.username)}</div>
-        <div class="balance-chip">${escapeHtml(String(sgcBalance))} SGC</div>
+        <div class="balance-chip" id="games-balance-chip">${escapeHtml(String(sgcBalance))} SGC</div>
         <form method="POST" action="${p('/auth/logout')}"><button class="logout" type="submit">Logout</button></form>
       </div>
     </header>
     <nav>${nav}</nav>
     ${body}
   </div>
+  <script>
+    (() => {
+      const balanceChip = document.getElementById('games-balance-chip');
+      if (!balanceChip) return;
+      let refreshBalanceTimer = null;
+      async function refreshGamesBalance() {
+        try {
+          const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'same-origin' });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (!data || !data.viewer) return;
+          if (typeof data.viewer.balance !== 'number') return;
+          balanceChip.textContent = data.viewer.balance + ' SGC';
+        } catch {}
+      }
+      function scheduleBalanceRefresh(delayMs = 150) {
+        if (refreshBalanceTimer) clearTimeout(refreshBalanceTimer);
+        refreshBalanceTimer = setTimeout(() => {
+          refreshBalanceTimer = null;
+          refreshGamesBalance();
+        }, delayMs);
+      }
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const response = await originalFetch(...args);
+        try {
+          const [resource, options] = args;
+          const method = String(options?.method || 'GET').toUpperCase();
+          const url = typeof resource === 'string'
+            ? resource
+            : resource instanceof Request
+              ? resource.url
+              : String(resource || '');
+          if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && /\/api\//u.test(url)) {
+            scheduleBalanceRefresh(response.ok ? 80 : 150);
+          }
+        } catch {}
+        return response;
+      };
+      window.__lumigamesRefreshBalance = refreshGamesBalance;
+      window.addEventListener('focus', () => scheduleBalanceRefresh(0));
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleBalanceRefresh(0);
+      });
+      setInterval(() => {
+        if (!document.hidden) refreshGamesBalance();
+      }, 10000);
+    })();
+  </script>
   ${pageScripts}
 </body>
 </html>`;
@@ -1854,7 +1903,7 @@ async function handleRequest(req, res) {
   if (pathname === '/api/me' && method === 'GET') {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
-    sendJson(res, 200, { viewer: { discordId: session.discordId, username: session.username } });
+    sendJson(res, 200, { viewer: { discordId: session.discordId, username: session.username, balance: getBalance(session.discordId) } });
     return;
   }
 
