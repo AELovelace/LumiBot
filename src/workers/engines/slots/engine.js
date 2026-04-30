@@ -18,6 +18,32 @@ const BELL = '🔔';
 const BET_OPTIONS = Object.freeze([1, 5, 10, 25]);
 const GRID_ROWS = 3;
 const GRID_COLS = 3;
+const REEL_WEIGHTS = Object.freeze([
+  Object.freeze([
+    ['🍋', 35],
+    ['🍒', 25],
+    ['⭐', 15],
+    ['💎', 8],
+    ['7️⃣', 2],
+    ['🔔', 1],
+  ]),
+  Object.freeze([
+    ['🍋', 12],
+    ['🍒', 24],
+    ['⭐', 32],
+    ['💎', 10],
+    ['7️⃣', 2],
+    ['🔔', 1],
+  ]),
+  Object.freeze([
+    ['🍋', 8],
+    ['🍒', 14],
+    ['⭐', 24],
+    ['💎', 26],
+    ['7️⃣', 2],
+    ['🔔', 1],
+  ]),
+]);
 
 const PAYLINES = Object.freeze([
   { name: 'Row 1', positions: [[0, 0], [0, 1], [0, 2]] },
@@ -40,11 +66,24 @@ function randomGrid() {
   for (let r = 0; r < GRID_ROWS; r++) {
     const row = [];
     for (let c = 0; c < GRID_COLS; c++) {
-      row.push(SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
+      row.push(pickWeightedSymbol(c));
     }
     grid.push(row);
   }
   return grid;
+}
+
+function pickWeightedSymbol(columnIndex) {
+  const reel = REEL_WEIGHTS[columnIndex] || REEL_WEIGHTS[REEL_WEIGHTS.length - 1];
+  const totalWeight = reel.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = Math.random() * totalWeight;
+
+  for (const [symbol, weight] of reel) {
+    roll -= weight;
+    if (roll < 0) return symbol;
+  }
+
+  return reel[reel.length - 1][0];
 }
 
 function placeholderGrid() {
@@ -147,6 +186,7 @@ module.exports = {
   SYMBOL_VALUES,
   GRID_ROWS,
   GRID_COLS,
+  REEL_WEIGHTS,
   PAYLINES,
   DEFAULTS,
   randomGrid,
