@@ -27,36 +27,37 @@ function sleep(ms) {
 }
 
 function clearIdleTimer(channelId) {
-  const t = idleTimers.get(channelId);
-  if (t) {
-    clearTimeout(t);
-    idleTimers.delete(channelId);
-  }
+  const timer = idleTimers.get(channelId);
+  if (!timer) return;
+  clearTimeout(timer);
+  idleTimers.delete(channelId);
 }
 
 function startIdleTimer(channelId) {
   clearIdleTimer(channelId);
-  const t = setTimeout(() => {
+  const timer = setTimeout(() => {
     idleTimers.delete(channelId);
     closeLobby(channelId, 'idle');
   }, settings.idleTimeoutMs);
-  idleTimers.set(channelId, t);
+  idleTimers.set(channelId, timer);
 }
 
 function buildLobbyPayload(lobby) {
   const players = [...lobby.players.values()];
   const fields = [];
-  for (const p of players) {
+
+  for (const player of players) {
     fields.push({
-      name: p.username,
+      name: player.username,
       value: [
-        `Bet: **${p.bet}** SGC`,
-        p.statusText,
-        E.renderCompactGrid(p.grid),
+        `Bet: **${player.bet}** SGC`,
+        player.statusText,
+        E.renderCompactGrid(player.grid),
       ].join('\n'),
       inline: true,
     });
   }
+
   for (let seat = players.length + 1; seat <= settings.maxPlayers; seat++) {
     fields.push({
       name: `Open Seat ${seat}`,
@@ -76,7 +77,8 @@ function buildLobbyPayload(lobby) {
       title: `🎰 Slot Machine — Momiji Casino (${players.length}/${settings.maxPlayers} seats)`,
       description: [
         'Set your bet and hit **Spin**.',
-        `3-of-a-kind: row **${settings.horizontalMultiplier}×** · diagonal **${settings.diagonalMultiplier}×** | Hands **${settings.handMultiplier}×**: 💎💎⭐ · 7️⃣7️⃣💎 · 🍒🍒🔔`,
+        E.buildPayoutSummary(),
+        `Bet buttons: ${E.BET_OPTIONS.join(' / ')} SGC.`,
         'Up to 3 players can share this play area at once.',
       ].join('\n'),
       fields,
@@ -96,22 +98,19 @@ function closeLobby(channelId, reason) {
   if (!lobby) return;
   clearIdleTimer(channelId);
   lobbies.delete(channelId);
-  let content;
+
+  let content = '🎰 **Slot Machine — Closed**';
   if (reason === 'allLeft') content = '🎰 **Slot Machine — Closed** (everyone left)';
   else if (reason === 'idle') content = '🎰 **Slot Machine — Closed** (idle timeout)';
-  else content = '🎰 **Slot Machine — Closed**';
+
   emitEvent('lobbyClosed', { channelId, content });
 }
-
-// ---------------------------------------------------------------------------
-// Commands
-// ---------------------------------------------------------------------------
 
 registerCommand('setSettings', async (next) => {
   if (next && typeof next === 'object') {
     const merged = { ...settings };
-    for (const [k, v] of Object.entries(next)) {
-      if (typeof v === 'number' && Number.isFinite(v)) merged[k] = v;
+    for (const [key, value] of Object.entries(next)) {
+      if (typeof value === 'number' && Number.isFinite(value)) merged[key] = value;
     }
     settings = merged;
   }
@@ -135,7 +134,7 @@ registerCommand('join', async ({ channelId, userId, username } = {}) => {
     return { ok: false, reason: 'already_joined', isNew: false, ...buildLobbyPayload(lobby) };
   }
   if (lobby.players.size >= settings.maxPlayers) {
-    if (isNew) lobbies.delete(channelId); // shouldn't happen but defensive
+    if (isNew) lobbies.delete(channelId);
     return { ok: false, reason: 'full', max: settings.maxPlayers };
   }
 
@@ -151,10 +150,12 @@ registerCommand('leave', async ({ channelId, userId } = {}) => {
   if (!lobby || !lobby.players.has(userId)) {
     return { ok: false, reason: 'not_in_lobby' };
   }
+
   const player = lobby.players.get(userId);
   if (player.spinning) {
     return { ok: false, reason: 'spinning' };
   }
+
   lobby.players.delete(userId);
   lobby.lastEvent = `${player.username} left the slot bank.`;
 
@@ -162,14 +163,16 @@ registerCommand('leave', async ({ channelId, userId } = {}) => {
     closeLobby(channelId, 'allLeft');
     return { ok: true, closed: true };
   }
+
   startIdleTimer(channelId);
   return { ok: true, closed: false, ...buildLobbyPayload(lobby) };
 });
 
 registerCommand('setBet', async ({ channelId, userId, username, amount } = {}) => {
-  if (!Number.isInteger(amount) || amount <= 0) {
+  if (!Number.isInteger(amount) || !E.isAllowedBet(amount)) {
     return { ok: false, reason: 'bad_amount' };
   }
+
   await dbCall('ensureAccount', { userId, username });
 
   let lobby = lobbies.get(channelId);
@@ -183,10 +186,12 @@ registerCommand('setBet', async ({ channelId, userId, username, amount } = {}) =
     }
     lobby.players.set(userId, E.createPlayer(userId, username, settings));
   }
+
   const player = lobby.players.get(userId);
   if (player.spinning) {
     return { ok: false, reason: 'spinning' };
   }
+
   const balance = await dbCall('getBalance', { userId });
   if (balance < amount) {
     return { ok: false, reason: 'insufficient', balance, amount };
@@ -200,10 +205,11 @@ registerCommand('setBet', async ({ channelId, userId, username, amount } = {}) =
 });
 
 registerCommand('spin', async ({ channelId, userId, username } = {}) => {
-  let lobby = lobbies.get(channelId);
+  const lobby = lobbies.get(channelId);
   if (!lobby) {
     return { ok: false, reason: 'no_lobby' };
   }
+
   if (!lobby.players.has(userId)) {
     if (lobby.players.size >= settings.maxPlayers) {
       return { ok: false, reason: 'full', max: settings.maxPlayers };
@@ -212,6 +218,7 @@ registerCommand('spin', async ({ channelId, userId, username } = {}) => {
     lobby.players.set(userId, E.createPlayer(userId, username, settings));
     lobby.lastEvent = `${username} joined the slot bank.`;
   }
+
   const player = lobby.players.get(userId);
   if (player.spinning) {
     return { ok: false, reason: 'spinning' };
@@ -222,8 +229,12 @@ registerCommand('spin', async ({ channelId, userId, username } = {}) => {
   if (balance < player.bet) {
     return { ok: false, reason: 'insufficient', balance, bet: player.bet };
   }
+
   const placed = await dbCall('placeCasinoBet', {
-    userId, username: player.username, amount: player.bet, gameType: 'slots',
+    userId,
+    username: player.username,
+    amount: player.bet,
+    gameType: 'slots',
   });
   if (!placed || !placed.success) {
     return { ok: false, reason: 'bet_failed', error: placed && placed.error };
@@ -234,7 +245,9 @@ registerCommand('spin', async ({ channelId, userId, username } = {}) => {
   lobby.lastEvent = `${player.username} spins for ${player.bet} SGC.`;
   startIdleTimer(channelId);
 
-  setImmediate(() => { void runSpin(channelId, userId); });
+  setImmediate(() => {
+    void runSpin(channelId, userId);
+  });
 
   return { ok: true, ...buildLobbyPayload(lobby) };
 });
@@ -247,23 +260,20 @@ async function runSpin(channelId, userId) {
 
   const finalGrid = E.randomGrid();
 
-  // Initial spin frame
   player.grid = E.randomGrid();
   emitRender(channelId);
 
-  for (let f = 1; f < settings.spinFrames; f++) {
-    // eslint-disable-next-line no-await-in-loop
+  for (let frame = 1; frame < settings.spinFrames; frame++) {
     await sleep(settings.spinFrameMs);
-    const stillHere = lobbies.get(channelId);
-    if (!stillHere || !stillHere.players.has(userId)) return;
-    const frameGrid = f === settings.spinFrames - 1 ? finalGrid : E.randomGrid();
-    player.grid = frameGrid;
-    player.statusText = f < settings.spinFrames - 1 ? 'Spinning...' : 'Stopping...';
+    const currentLobby = lobbies.get(channelId);
+    if (!currentLobby || !currentLobby.players.has(userId)) return;
+    player.grid = frame === settings.spinFrames - 1 ? finalGrid : E.randomGrid();
+    player.statusText = frame < settings.spinFrames - 1 ? 'Spinning...' : 'Stopping...';
     emitRender(channelId);
   }
 
-  const { totalMultiplier, wins } = E.evaluateGrid(finalGrid, settings);
-  const payout = Math.floor(player.bet * totalMultiplier);
+  const { totalPoints, wins } = E.evaluateGrid(finalGrid);
+  const payout = player.bet * totalPoints;
 
   if (payout > 0) {
     try {
@@ -276,18 +286,29 @@ async function runSpin(channelId, userId) {
   let newBal = 0;
   try {
     newBal = await dbCall('getBalance', { userId });
-  } catch { /* ignore */ }
+  } catch {
+    newBal = 0;
+  }
 
   if (wins.length > 0) {
-    player.statusText = `Won ${payout.toLocaleString()} • Bal ${newBal.toLocaleString()}`;
-    lobby.lastEvent = `${player.username}: +${payout.toLocaleString()} SGC, bal ${newBal.toLocaleString()}.`;
+    player.statusText = `Won ${payout.toLocaleString()} • ${totalPoints} pts × ${player.bet} • Bal ${newBal.toLocaleString()}`;
+    lobby.lastEvent = `${player.username}: ${totalPoints} pts × ${player.bet} = +${payout.toLocaleString()} SGC, bal ${newBal.toLocaleString()}.`;
   } else {
     player.statusText = `Lost ${player.bet.toLocaleString()} • Bal ${newBal.toLocaleString()}`;
     lobby.lastEvent = `${player.username}: -${player.bet.toLocaleString()} SGC, bal ${newBal.toLocaleString()}.`;
   }
   player.spinning = false;
 
-  emitEvent('spinComplete', { channelId, userId, bet: player.bet, payout, multiplier: totalMultiplier, winCount: wins.length });
+  emitEvent('spinComplete', {
+    channelId,
+    userId,
+    bet: player.bet,
+    payout,
+    points: totalPoints,
+    multiplier: totalPoints,
+    winCount: wins.length,
+    wins,
+  });
   emitRender(channelId);
   startIdleTimer(channelId);
 }
@@ -298,8 +319,11 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
   return {
     exists: true,
     playerCount: lobby.players.size,
-    players: [...lobby.players.values()].map((p) => ({
-      userId: p.userId, bet: p.bet, spinning: p.spinning, statusText: p.statusText,
+    players: [...lobby.players.values()].map((player) => ({
+      userId: player.userId,
+      bet: player.bet,
+      spinning: player.spinning,
+      statusText: player.statusText,
     })),
   };
 });

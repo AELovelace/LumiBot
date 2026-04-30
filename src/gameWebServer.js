@@ -1138,8 +1138,13 @@ function renderSlotsLobbyPage(session, lobbyId) {
       <div class="stack">
         <div class="item"><button class="primary" id="slots-join" type="button">Join Lobby</button></div>
         <div class="item">
-          <input id="slots-bet-amount" type="number" min="1" step="1" value="1">
-          <button class="primary" id="slots-set-bet" type="button">Set Bet</button>
+          <strong>Set Bet</strong>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            <button class="primary slots-bet-button" data-amount="1" type="button">1 SGC</button>
+            <button class="primary slots-bet-button" data-amount="5" type="button">5 SGC</button>
+            <button class="primary slots-bet-button" data-amount="10" type="button">10 SGC</button>
+            <button class="primary slots-bet-button" data-amount="25" type="button">25 SGC</button>
+          </div>
         </div>
         <div class="item"><button class="primary" id="slots-spin" type="button">Spin</button></div>
         <div class="item"><button class="primary" id="slots-leave" type="button">Leave Lobby</button></div>
@@ -1229,7 +1234,9 @@ function leaveLobbyOnExit() {
 }
 window.addEventListener('pagehide', leaveLobbyOnExit);
 document.getElementById('slots-join').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/join'));
-document.getElementById('slots-set-bet').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/bet', { amount: Number(document.getElementById('slots-bet-amount').value) }));
+document.querySelectorAll('.slots-bet-button').forEach((button) => {
+  button.addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/bet', { amount: Number(button.dataset.amount) }));
+});
 document.getElementById('slots-spin').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/spin'));
 document.getElementById('slots-leave').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/leave'));
 connectWs();
@@ -3227,7 +3234,12 @@ async function handleRequest(req, res) {
     const channelId = getWebSlotsChannelId(lobbyId);
     try {
       const result = await manager.sendCommand('slots', 'setBet', { channelId, userId: session.discordId, username: session.username, amount }, { channelId });
-      if (!result.ok) return sendError(res, 400, result.reason || 'bet_failed', 'Could not set bet');
+      if (!result.ok) {
+        const message = result.reason === 'bad_amount'
+          ? 'Slots only allow bets of 1, 5, 10, or 25 SGC.'
+          : 'Could not set bet';
+        return sendError(res, 400, result.reason || 'bet_failed', message);
+      }
       sendJson(res, 200, { ok: true, message: `Set bet to ${amount} SGC.`, state: serializeSlotsPayload(result) });
     } catch (error) {
       sendError(res, 503, 'slots_unavailable', error.message);

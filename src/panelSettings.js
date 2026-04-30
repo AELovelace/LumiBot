@@ -90,9 +90,6 @@ const SCHEMA = {
 
   // ── Slots ────────────────────────────────────────────────────────────────
   'slots.maxPlayers':           { default: 3,   type: 'number', label: 'Max Players',              desc: 'Maximum players per slot machine lobby',        category: 'Slots' },
-  'slots.horizontalMultiplier': { default: 4,   type: 'number', label: 'Horizontal Multiplier',    desc: 'Payout multiplier for row 3-of-a-kind',        category: 'Slots' },
-  'slots.diagonalMultiplier':   { default: 3,   type: 'number', label: 'Diagonal Multiplier',      desc: 'Payout multiplier for diagonal 3-of-a-kind',   category: 'Slots' },
-  'slots.handMultiplier':       { default: 2,   type: 'number', label: 'Hand Combo Multiplier',    desc: 'Payout multiplier for winning hand combo',      category: 'Slots' },
   'slots.spinFrames':           { default: 6,   type: 'number', label: 'Spin Animation Frames',    desc: 'Number of animation frames during a spin',      category: 'Slots' },
   'slots.spinFrameMs':          { default: 400, type: 'number', label: 'Frame Duration (ms)',       desc: 'Milliseconds between animation frames',         category: 'Slots' },
   'slots.defaultBet':           { default: 1,   type: 'number', label: 'Default Bet',              desc: 'Starting bet amount (SGC)',                      category: 'Slots' },

@@ -20,34 +20,33 @@ const { manager } = require('./workers/workerManager');
 const { getSetting } = require('./panelSettings');
 
 const ENGINE = 'slots';
+const BET_OPTIONS = [1, 5, 10, 25];
 
 /** @type {Map<string, { lobbyMessage: object, collector: object|null }>} */
 const sessions = new Map();
 let listenerInstalled = false;
 
-// ---------------------------------------------------------------------------
-// Buttons & embed rebuild
-// ---------------------------------------------------------------------------
-
 function buildButtons(disabled = false) {
-  const row = new ActionRowBuilder().addComponents(
+  const controlRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('sl_spin').setLabel('Spin').setEmoji('🎰').setStyle(ButtonStyle.Success).setDisabled(disabled),
     new ButtonBuilder().setCustomId('sl_bet_1').setLabel('1 SGC').setEmoji('1️⃣').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('sl_bet_5').setLabel('5 SGC').setEmoji('5️⃣').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
     new ButtonBuilder().setCustomId('sl_bet_10').setLabel('10 SGC').setEmoji('🔟').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId('sl_bet_25').setLabel('25 SGC').setEmoji('💰').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+  );
+  const utilityRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('sl_leave').setLabel('Leave').setEmoji('❌').setStyle(ButtonStyle.Danger).setDisabled(disabled),
   );
-  return [row];
+  return [controlRow, utilityRow];
 }
 
 function buildEmbedFromPayload(embed) {
-  const e = new EmbedBuilder()
+  return new EmbedBuilder()
     .setColor(embed.color ?? 0xC0392B)
     .setTitle(embed.title || '🎰 Slot Machine')
     .setDescription(embed.description || '')
     .addFields(embed.fields || [])
     .setFooter({ text: embed.footer || ' ' });
-  return e;
 }
 
 function buildLobbyPayload(payload) {
@@ -57,10 +56,6 @@ function buildLobbyPayload(payload) {
     components: buildButtons(false),
   };
 }
-
-// ---------------------------------------------------------------------------
-// Slash command schema (mirrors src/slots.js)
-// ---------------------------------------------------------------------------
 
 function buildSlotsCommand() {
   return new SlashCommandBuilder()
@@ -74,10 +69,6 @@ function buildSlotsCommand() {
       .setDescription('Leave the slot machine.'))
     .toJSON();
 }
-
-// ---------------------------------------------------------------------------
-// Slash handlers
-// ---------------------------------------------------------------------------
 
 async function handleSlotsCommand(interaction) {
   installListener();
@@ -117,14 +108,19 @@ async function handleStart(interaction) {
   if (result.isNew) {
     await interaction.reply(buildLobbyPayload(result));
     let lobbyMessage;
-    try { lobbyMessage = await interaction.fetchReply(); }
-    catch (err) { logger.warn('slots adapter: fetchReply failed', err.message); return; }
+    try {
+      lobbyMessage = await interaction.fetchReply();
+    } catch (err) {
+      logger.warn('slots adapter: fetchReply failed', err.message);
+      return;
+    }
     sessions.set(channelId, { lobbyMessage, collector: null });
     setupCollector(channelId);
-  } else {
-    await interaction.reply({ content: 'You joined the slot machine! Set your bet and hit Spin.', ephemeral: true });
-    await editLobbyMessage(channelId, result);
+    return;
   }
+
+  await interaction.reply({ content: 'You joined the slot machine! Set your bet and hit Spin.', ephemeral: true });
+  await editLobbyMessage(channelId, result);
 }
 
 async function handleLeave(interaction) {
@@ -151,28 +147,28 @@ async function handleLeave(interaction) {
   if (!result.closed) {
     await editLobbyMessage(channelId, result);
   }
-  // closed → lobbyClosed event handles the message edit
 }
-
-// ---------------------------------------------------------------------------
-// Collector
-// ---------------------------------------------------------------------------
 
 function setupCollector(channelId) {
   const session = sessions.get(channelId);
   if (!session || !session.lobbyMessage) return;
   if (session.collector) {
-    try { session.collector.stop('replaced'); } catch { /* ignore */ }
+    try {
+      session.collector.stop('replaced');
+    } catch {
+      // ignore
+    }
     session.collector = null;
   }
 
   const collector = session.lobbyMessage.createMessageComponentCollector({
-    filter: (i) => i.customId.startsWith('sl_'),
+    filter: (interaction) => interaction.customId.startsWith('sl_'),
     idle: 5 * 60 * 1000,
   });
   session.collector = collector;
-  collector.on('collect', (btn) => { void onCollect(channelId, btn); });
-  collector.on('end', () => { /* worker manages real lifetime */ });
+  collector.on('collect', (btn) => {
+    void onCollect(channelId, btn);
+  });
 }
 
 async function onCollect(channelId, btn) {
@@ -220,23 +216,23 @@ async function onCollect(channelId, btn) {
     return;
   }
 
-  if (btn.customId.startsWith('sl_bet_')) {
-    const amount = parseInt(btn.customId.replace('sl_bet_', ''), 10);
-    let result;
-    try {
-      result = await manager.sendCommand(ENGINE, 'setBet', { channelId, userId, username, amount }, { channelId });
-    } catch (err) {
-      logger.error('slots adapter: setBet failed', err.message);
-      await btn.deferUpdate().catch(() => {});
-      return;
-    }
-    if (!result.ok) {
-      await btn.reply({ content: betFailureMessage(result, amount), ephemeral: true }).catch(() => {});
-      return;
-    }
-    await btn.reply({ content: `Bet set to **${amount} SGC**.`, ephemeral: true }).catch(() => {});
-    await editLobbyMessage(channelId, result);
+  if (!btn.customId.startsWith('sl_bet_')) return;
+
+  const amount = parseInt(btn.customId.replace('sl_bet_', ''), 10);
+  let result;
+  try {
+    result = await manager.sendCommand(ENGINE, 'setBet', { channelId, userId, username, amount }, { channelId });
+  } catch (err) {
+    logger.error('slots adapter: setBet failed', err.message);
+    await btn.deferUpdate().catch(() => {});
+    return;
   }
+  if (!result.ok) {
+    await btn.reply({ content: betFailureMessage(result, amount), ephemeral: true }).catch(() => {});
+    return;
+  }
+  await btn.reply({ content: `Bet set to **${amount} SGC**.`, ephemeral: true }).catch(() => {});
+  await editLobbyMessage(channelId, result);
 }
 
 function spinFailureMessage(result) {
@@ -255,14 +251,10 @@ function betFailureMessage(result, amount) {
     case 'spinning': return 'You cannot change your bet while your reels are spinning.';
     case 'insufficient': return `❌ You only have **${(result.balance ?? 0).toLocaleString()} SGC**.`;
     case 'full': return `This slot bank is full (${result.max}/${result.max}).`;
-    case 'bad_amount': return '❌ Invalid bet amount.';
+    case 'bad_amount': return `❌ Slots only allow bets of ${BET_OPTIONS.join(', ')} SGC.`;
     default: return `Could not set bet to ${amount}.`;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Worker -> main events
-// ---------------------------------------------------------------------------
 
 function installListener() {
   if (listenerInstalled) return;
@@ -278,7 +270,7 @@ function installListener() {
       return;
     }
     if (evt.name === 'spinComplete') {
-      logger.info(`Slots: user=${evt.userId} bet=${evt.bet} payout=${evt.payout} mult=${evt.multiplier} wins=${evt.winCount}`);
+      logger.info(`Slots: user=${evt.userId} bet=${evt.bet} points=${evt.points ?? evt.multiplier} payout=${evt.payout} wins=${evt.winCount}`);
       return;
     }
     if (evt.name === 'payoutFailed') {
@@ -302,7 +294,11 @@ async function onLobbyClosed(evt) {
   if (!session) return;
   sessions.delete(evt.channelId);
   if (session.collector) {
-    try { session.collector.stop('lobbyClosed'); } catch { /* ignore */ }
+    try {
+      session.collector.stop('lobbyClosed');
+    } catch {
+      // ignore
+    }
   }
   try {
     await session.lobbyMessage.edit({
@@ -315,10 +311,6 @@ async function onLobbyClosed(evt) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Settings reload
-// ---------------------------------------------------------------------------
-
 async function reloadSettings() {
   try {
     const next = {
@@ -326,13 +318,15 @@ async function reloadSettings() {
       spinFrameMs: getSetting('slots.spinFrameMs'),
       defaultBet: getSetting('slots.defaultBet'),
       maxPlayers: getSetting('slots.maxPlayers'),
-      horizontalMultiplier: getSetting('slots.horizontalMultiplier'),
-      diagonalMultiplier: getSetting('slots.diagonalMultiplier'),
-      handMultiplier: getSetting('slots.handMultiplier'),
     };
-    try { await manager.sendCommand(ENGINE, 'setSettings', next); }
-    catch { /* workers not started yet */ }
-  } catch { /* DB not ready */ }
+    try {
+      await manager.sendCommand(ENGINE, 'setSettings', next);
+    } catch {
+      // workers not started yet
+    }
+  } catch {
+    // DB not ready
+  }
 }
 
 module.exports = { buildSlotsCommand, handleSlotsCommand, reloadSettings };

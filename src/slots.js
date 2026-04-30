@@ -5,17 +5,15 @@
  * /lumi-slots leave   Leave the lobby.
  *
  * Players use button controls:
- *   🎰 Spin   — Pull the lever (costs your current bet)
- *   1️⃣ 5️⃣ 🔟 — Set bet to 1 / 5 / 10 SGC
- *   ❌ Leave   — Walk away
+ *   🎰 Spin                  Pull the lever (costs your current bet)
+ *   1️⃣ 5️⃣ 🔟 💰             Set bet to 1 / 5 / 10 / 25 SGC
+ *   ❌ Leave                 Walk away
  *
- * The machine has a 3×3 grid of symbols. After spinning:
- *   • Horizontal 3-of-a-kind on any row  → 4× bet per matching row
- *   • Diagonal 3-of-a-kind               → 3× bet per matching diagonal
- *   • Winning hand combo on any row       → 2× bet (💎💎⭐ · 7️⃣7️⃣💎 · 🍒🍒🔔)
- *   • Multiple wins stack!
+ * The machine uses 5 hands (3 rows + 2 diagonals). A hand wins when:
+ *   • all 3 symbols match, or
+ *   • 2 matching symbols are completed by a 🔔 wildcard.
  *
- * Payouts come from the Momiji Casino bank account.
+ * Payout = sum of winning hand points × bet.
  */
 
 const {
@@ -33,145 +31,14 @@ const {
   payCasinoPayout,
 } = require('./sadgirlEconomyStore');
 const { getSetting } = require('./panelSettings');
+const Engine = require('./workers/engines/slots/engine');
 
-// ---------------------------------------------------------------------------
-// Constants (configurable via panel settings)
-// ---------------------------------------------------------------------------
+let SPIN_FRAMES = Engine.DEFAULTS.spinFrames;
+let SPIN_FRAME_MS = Engine.DEFAULTS.spinFrameMs;
+let DEFAULT_BET = Engine.DEFAULTS.defaultBet;
+let MAX_PLAYERS = Engine.DEFAULTS.maxPlayers;
 
-const SYMBOLS = ['🍒', '🍋', '🔔', '💎', '7️⃣', '⭐'];
-const GRID_ROWS = 3;
-const GRID_COLS = 3;
-let SPIN_FRAMES = 6;             // number of animation frames
-let SPIN_FRAME_MS = 400;         // ms between frames
-let DEFAULT_BET = 1;
-let MAX_PLAYERS = 3;
-let HORIZONTAL_MULTIPLIER = 4;   // 4× for a row 3-of-a-kind
-let DIAGONAL_MULTIPLIER = 3;     // 3× for a diagonal 3-of-a-kind
-let HAND_MULTIPLIER = 2;         // 2× for a winning hand combo
-
-/** Winning hand combos — order doesn't matter, checked per row. */
-const WINNING_HANDS = [
-  { symbols: ['💎', '💎', '⭐'], name: 'Diamond Star' },
-  { symbols: ['7️⃣', '7️⃣', '💎'], name: 'Lucky Sevens' },
-  { symbols: ['🍒', '🍒', '🔔'], name: 'Cherry Bells' },
-];
-
-// ---------------------------------------------------------------------------
-// Grid helpers
-// ---------------------------------------------------------------------------
-
-/** Generate a random 3×3 grid of symbols. */
-function randomGrid() {
-  const grid = [];
-  for (let r = 0; r < GRID_ROWS; r++) {
-    const row = [];
-    for (let c = 0; c < GRID_COLS; c++) {
-      row.push(SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
-    }
-    grid.push(row);
-  }
-  return grid;
-}
-
-function renderCompactGrid(grid) {
-  return grid.map((row) => row.join(' ')).join('\n');
-}
-
-function createSlotPlayer(userId, username) {
-  return {
-    userId,
-    username,
-    bet: DEFAULT_BET,
-    grid: randomGrid(),
-    statusText: 'Ready',
-    spinning: false,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Win detection
-// ---------------------------------------------------------------------------
-
-/**
- * Check if three cells match a hand combo (order-independent).
- */
-function matchesHand(cells, hand) {
-  const sorted = [...cells].sort();
-  const handSorted = [...hand.symbols].sort();
-  return sorted[0] === handSorted[0] && sorted[1] === handSorted[1] && sorted[2] === handSorted[2];
-}
-
-/**
- * Returns { totalMultiplier, wins[] } where each win describes what matched.
- *
- * Priority per line: 3-of-a-kind (4× row / 3× diag) beats hand combo (2×).
- * Multiple wins across different rows / diagonals stack.
- */
-function evaluateGrid(grid) {
-  const wins = [];
-  let totalMultiplier = 0;
-  const matchedRows = new Set();
-
-  // ── Horizontal 3-of-a-kind (4×) ──
-  for (let r = 0; r < GRID_ROWS; r++) {
-    if (grid[r][0] === grid[r][1] && grid[r][1] === grid[r][2]) {
-      wins.push(`Row ${r + 1} — ${grid[r][0]}${grid[r][1]}${grid[r][2]} (${HORIZONTAL_MULTIPLIER}×)`);
-      totalMultiplier += HORIZONTAL_MULTIPLIER;
-      matchedRows.add(r);
-    }
-  }
-
-  // ── Diagonal 3-of-a-kind (3×) ──
-  if (grid[0][0] === grid[1][1] && grid[1][1] === grid[2][2]) {
-    wins.push(`Diagonal ↘ — ${grid[0][0]}${grid[1][1]}${grid[2][2]} (${DIAGONAL_MULTIPLIER}×)`);
-    totalMultiplier += DIAGONAL_MULTIPLIER;
-  }
-  if (grid[0][2] === grid[1][1] && grid[1][1] === grid[2][0]) {
-    wins.push(`Diagonal ↙ — ${grid[0][2]}${grid[1][1]}${grid[2][0]} (${DIAGONAL_MULTIPLIER}×)`);
-    totalMultiplier += DIAGONAL_MULTIPLIER;
-  }
-
-  // ── Hand combos (2×) — rows not already matched as 3-of-a-kind ──
-  for (let r = 0; r < GRID_ROWS; r++) {
-    if (matchedRows.has(r)) continue;
-    const cells = [grid[r][0], grid[r][1], grid[r][2]];
-    for (const hand of WINNING_HANDS) {
-      if (matchesHand(cells, hand)) {
-        wins.push(`Row ${r + 1} — ${cells.join('')} ${hand.name} (${HAND_MULTIPLIER}×)`);
-        totalMultiplier += HAND_MULTIPLIER;
-        break; // one hand per row max
-      }
-    }
-  }
-
-  return { totalMultiplier, wins };
-}
-
-// ---------------------------------------------------------------------------
-// Buttons
-// ---------------------------------------------------------------------------
-
-function buildSlotButtons() {
-  const controlRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('sl_spin').setLabel('Spin').setEmoji('🎰').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('sl_bet_1').setLabel('1 SGC').setEmoji('1️⃣').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('sl_bet_5').setLabel('5 SGC').setEmoji('5️⃣').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('sl_bet_10').setLabel('10 SGC').setEmoji('🔟').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('sl_leave').setLabel('Leave').setEmoji('❌').setStyle(ButtonStyle.Danger),
-  );
-  return [controlRow];
-}
-
-function disabledButtons() {
-  return buildSlotButtons().map((row) => {
-    row.components.forEach((b) => b.setDisabled(true));
-    return row;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Lobby state — one per channel
-// ---------------------------------------------------------------------------
+const BET_OPTIONS = [...Engine.BET_OPTIONS];
 
 /**
  * @type {Map<string, {
@@ -192,9 +59,34 @@ function disabledButtons() {
  */
 const lobbies = new Map();
 
-// ---------------------------------------------------------------------------
-// Lobby message
-// ---------------------------------------------------------------------------
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createSlotPlayer(userId, username) {
+  return Engine.createPlayer(userId, username, { defaultBet: DEFAULT_BET });
+}
+
+function buildSlotButtons() {
+  const controlRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('sl_spin').setLabel('Spin').setEmoji('🎰').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('sl_bet_1').setLabel('1 SGC').setEmoji('1️⃣').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('sl_bet_5').setLabel('5 SGC').setEmoji('5️⃣').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('sl_bet_10').setLabel('10 SGC').setEmoji('🔟').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('sl_bet_25').setLabel('25 SGC').setEmoji('💰').setStyle(ButtonStyle.Secondary),
+  );
+  const utilityRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('sl_leave').setLabel('Leave').setEmoji('❌').setStyle(ButtonStyle.Danger),
+  );
+  return [controlRow, utilityRow];
+}
+
+function disabledButtons() {
+  return buildSlotButtons().map((row) => {
+    row.components.forEach((button) => button.setDisabled(true));
+    return row;
+  });
+}
 
 function buildPlayerField(player) {
   return {
@@ -202,7 +94,7 @@ function buildPlayerField(player) {
     value: [
       `Bet: **${player.bet}** SGC`,
       player.statusText,
-      renderCompactGrid(player.grid),
+      Engine.renderCompactGrid(player.grid),
     ].join('\n'),
     inline: true,
   };
@@ -213,7 +105,7 @@ function buildOpenSeatField(seatNumber) {
     name: `Open Seat ${seatNumber}`,
     value: [
       'Available',
-      renderCompactGrid(Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill('🎰'))),
+      Engine.renderCompactGrid(Engine.placeholderGrid()),
       '`/lumi-slots start` to join',
     ].join('\n'),
     inline: true,
@@ -233,13 +125,12 @@ function buildLobbyEmbed(lobby) {
     .setTitle(`🎰 Slot Machine — Momiji Casino (${players.length}/${MAX_PLAYERS} seats)`)
     .setDescription([
       'Set your bet and hit **Spin**.',
-      `3-of-a-kind: row **${HORIZONTAL_MULTIPLIER}×** · diagonal **${DIAGONAL_MULTIPLIER}×** | Hands **${HAND_MULTIPLIER}×**: 💎💎⭐ · 7️⃣7️⃣💎 · 🍒🍒🔔`,
+      Engine.buildPayoutSummary(),
+      `Bet buttons: ${BET_OPTIONS.join(' / ')} SGC.`,
       'Up to 3 players can share this play area at once.',
     ].join('\n'))
     .addFields(fields)
-    .setFooter({
-      text: lobby.lastEvent || 'Pick a bet, then pull the lever.',
-    });
+    .setFooter({ text: lobby.lastEvent || 'Pick a bet, then pull the lever.' });
 }
 
 function buildLobbyMessagePayload(lobby) {
@@ -279,10 +170,6 @@ async function updateLobbyMessage(lobby) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Spin animation + resolution
-// ---------------------------------------------------------------------------
-
 async function handleSpin(lobby, btn) {
   const userId = btn.user.id;
   const player = lobby.players.get(userId);
@@ -297,11 +184,10 @@ async function handleSpin(lobby, btn) {
     return;
   }
 
-  // Validate & deduct bet
   ensureAccount(userId, player.username);
-  const bal = getBalance(userId);
-  if (bal < player.bet) {
-    await btn.reply({ content: `❌ You only have **${bal.toLocaleString()} SGC** but your bet is **${player.bet}**.`, ephemeral: true }).catch(() => {});
+  const balance = getBalance(userId);
+  if (balance < player.bet) {
+    await btn.reply({ content: `❌ You only have **${balance.toLocaleString()} SGC** but your bet is **${player.bet}**.`, ephemeral: true }).catch(() => {});
     return;
   }
 
@@ -315,15 +201,12 @@ async function handleSpin(lobby, btn) {
   player.statusText = 'Spinning...';
   lobby.lastEvent = `${player.username} spins for ${player.bet} SGC.`;
 
-  // Acknowledge the button press
   await btn.deferUpdate().catch(() => {});
 
-  // Animate spinning frames by editing the lobby message
-  const finalGrid = randomGrid();
+  const finalGrid = Engine.randomGrid();
 
-  // Update this player's machine immediately so other players can spin too
   try {
-    player.grid = randomGrid();
+    player.grid = Engine.randomGrid();
     await lobby.lobbyMessage.edit({
       content: null,
       ...buildLobbyMessagePayload(lobby),
@@ -335,37 +218,36 @@ async function handleSpin(lobby, btn) {
     return;
   }
 
-  // Intermediate spin frames
-  for (let f = 1; f < SPIN_FRAMES; f++) {
+  for (let frame = 1; frame < SPIN_FRAMES; frame++) {
     await sleep(SPIN_FRAME_MS);
-    const frameGrid = f === SPIN_FRAMES - 1 ? finalGrid : randomGrid();
-    player.grid = frameGrid;
-    player.statusText = f < SPIN_FRAMES - 1 ? 'Spinning...' : 'Stopping...';
+    player.grid = frame === SPIN_FRAMES - 1 ? finalGrid : Engine.randomGrid();
+    player.statusText = frame < SPIN_FRAMES - 1 ? 'Spinning...' : 'Stopping...';
     try {
       await lobby.lobbyMessage.edit({
         content: null,
         ...buildLobbyMessagePayload(lobby),
       });
-    } catch { /* ignore */ }
+    } catch {
+      // ignore transient edit errors during animation
+    }
   }
 
-  // Evaluate result
-  const { totalMultiplier, wins } = evaluateGrid(finalGrid);
-  const payout = Math.floor(player.bet * totalMultiplier);
+  const { totalPoints, wins } = Engine.evaluateGrid(finalGrid);
+  const payout = player.bet * totalPoints;
+  const newBalance = (() => {
+    if (wins.length > 0 && payout > 0) payCasinoPayout(userId, payout, 'slots');
+    return getBalance(userId);
+  })();
 
   if (wins.length > 0) {
-    if (payout > 0) payCasinoPayout(userId, payout, 'slots');
-    const newBal = getBalance(userId);
-    player.statusText = `Won ${payout.toLocaleString()} • Bal ${newBal.toLocaleString()}`;
-    lobby.lastEvent = `${player.username}: +${payout.toLocaleString()} SGC, bal ${newBal.toLocaleString()}.`;
+    player.statusText = `Won ${payout.toLocaleString()} • ${totalPoints} pts × ${player.bet} • Bal ${newBalance.toLocaleString()}`;
+    lobby.lastEvent = `${player.username}: ${totalPoints} pts × ${player.bet} = +${payout.toLocaleString()} SGC, bal ${newBalance.toLocaleString()}.`;
   } else {
-    const newBal = getBalance(userId);
-    player.statusText = `Lost ${player.bet.toLocaleString()} • Bal ${newBal.toLocaleString()}`;
-    lobby.lastEvent = `${player.username}: -${player.bet.toLocaleString()} SGC, bal ${newBal.toLocaleString()}.`;
+    player.statusText = `Lost ${player.bet.toLocaleString()} • Bal ${newBalance.toLocaleString()}`;
+    lobby.lastEvent = `${player.username}: -${player.bet.toLocaleString()} SGC, bal ${newBalance.toLocaleString()}.`;
   }
   player.spinning = false;
 
-  // Show result + re-enable buttons on the same message
   try {
     await lobby.lobbyMessage.edit({
       content: null,
@@ -375,17 +257,13 @@ async function handleSpin(lobby, btn) {
     logger.error('Slots: failed to edit spin result', err.message);
   }
 
-  logger.info(`Slots: ${player.username} bet=${player.bet} mult=${totalMultiplier} payout=${payout} wins=${wins.length}`);
+  logger.info(`Slots: ${player.username} bet=${player.bet} points=${totalPoints} payout=${payout} wins=${wins.length}`);
 }
-
-// ---------------------------------------------------------------------------
-// Button collector
-// ---------------------------------------------------------------------------
 
 function setupCollector(lobby) {
   const collector = lobby.lobbyMessage.createMessageComponentCollector({
-    filter: (i) => i.customId.startsWith('sl_'),
-    idle: 300_000, // 5 min idle → close
+    filter: (interaction) => interaction.customId.startsWith('sl_'),
+    idle: 300_000,
   });
   lobby.collector = collector;
 
@@ -393,7 +271,6 @@ function setupCollector(lobby) {
     const userId = btn.user.id;
     const username = btn.user.username;
 
-    // ── Leave ──
     if (btn.customId === 'sl_leave') {
       if (!lobby.players.has(userId)) {
         await btn.reply({ content: "You're not at this machine.", ephemeral: true }).catch(() => {});
@@ -416,16 +293,17 @@ function setupCollector(lobby) {
             embeds: [],
             components: disabledButtons(),
           });
-        } catch { /* ignore */ }
+        } catch {
+          // ignore
+        }
         return;
       }
+
       await updateLobbyMessage(lobby);
       return;
     }
 
-    // ── Spin ──
     if (btn.customId === 'sl_spin') {
-      // Auto-join if clicking spin while not in lobby
       if (!lobby.players.has(userId)) {
         ensureAccount(userId, username);
         const addResult = tryAddPlayerToLobby(lobby, userId, username);
@@ -439,42 +317,45 @@ function setupCollector(lobby) {
       return;
     }
 
-    // ── Bet amount ──
-    if (btn.customId.startsWith('sl_bet_')) {
-      const amount = parseInt(btn.customId.replace('sl_bet_', ''), 10);
-      ensureAccount(userId, username);
+    if (!btn.customId.startsWith('sl_bet_')) return;
 
-      if (!lobby.players.has(userId)) {
-        const addResult = tryAddPlayerToLobby(lobby, userId, username);
-        if (!addResult.ok) {
-          await btn.reply({ content: addResult.error, ephemeral: true }).catch(() => {});
-          return;
-        }
-      }
+    const amount = parseInt(btn.customId.replace('sl_bet_', ''), 10);
+    ensureAccount(userId, username);
 
-      const player = lobby.players.get(userId);
-      if (player.spinning) {
-        await btn.reply({ content: 'You cannot change your bet while your reels are spinning.', ephemeral: true }).catch(() => {});
-        return;
-      }
-      const bal = getBalance(userId);
-      if (bal < amount) {
-        await btn.reply({ content: `❌ You only have **${bal.toLocaleString()} SGC**.`, ephemeral: true }).catch(() => {});
-        return;
-      }
-
-      player.bet = amount;
-      player.statusText = 'Ready';
-      lobby.lastEvent = `${username} set their bet to ${amount} SGC.`;
-      await btn.reply({ content: `Bet set to **${amount} SGC**.`, ephemeral: true }).catch(() => {});
-      await updateLobbyMessage(lobby);
+    if (!Engine.isAllowedBet(amount)) {
+      await btn.reply({ content: `❌ Slots only allow bets of ${BET_OPTIONS.join(', ')} SGC.`, ephemeral: true }).catch(() => {});
       return;
     }
+
+    if (!lobby.players.has(userId)) {
+      const addResult = tryAddPlayerToLobby(lobby, userId, username);
+      if (!addResult.ok) {
+        await btn.reply({ content: addResult.error, ephemeral: true }).catch(() => {});
+        return;
+      }
+    }
+
+    const player = lobby.players.get(userId);
+    if (player.spinning) {
+      await btn.reply({ content: 'You cannot change your bet while your reels are spinning.', ephemeral: true }).catch(() => {});
+      return;
+    }
+
+    const balance = getBalance(userId);
+    if (balance < amount) {
+      await btn.reply({ content: `❌ You only have **${balance.toLocaleString()} SGC**.`, ephemeral: true }).catch(() => {});
+      return;
+    }
+
+    player.bet = amount;
+    player.statusText = 'Ready';
+    lobby.lastEvent = `${username} set their bet to ${amount} SGC.`;
+    await btn.reply({ content: `Bet set to **${amount} SGC**.`, ephemeral: true }).catch(() => {});
+    await updateLobbyMessage(lobby);
   });
 
   collector.on('end', async (_, reason) => {
     if (reason === 'allLeft') return;
-    // Idle timeout
     lobbies.delete(lobby.channelId);
     try {
       await lobby.lobbyMessage.edit({
@@ -482,13 +363,11 @@ function setupCollector(lobby) {
         embeds: [],
         components: disabledButtons(),
       });
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    }
   });
 }
-
-// ---------------------------------------------------------------------------
-// Command definition
-// ---------------------------------------------------------------------------
 
 function buildSlotsCommand() {
   return new SlashCommandBuilder()
@@ -502,10 +381,6 @@ function buildSlotsCommand() {
       .setDescription('Leave the slot machine.'))
     .toJSON();
 }
-
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
 
 async function handleSlotsCommand(interaction) {
   const sub = interaction.options.getSubcommand();
@@ -540,7 +415,6 @@ async function handleStart(interaction) {
     return;
   }
 
-  // Create new lobby — use interaction reply as the lobby message
   lobby = {
     channelId,
     channel,
@@ -586,18 +460,14 @@ async function handleLeave(interaction) {
           embeds: [],
           components: disabledButtons(),
         });
-      } catch { /* ignore */ }
+      } catch {
+        // ignore
+      }
     }
     return;
   }
 
   await updateLobbyMessage(lobby);
-}
-
-// ---------------------------------------------------------------------------
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function reloadSettings() {
@@ -606,10 +476,9 @@ function reloadSettings() {
     SPIN_FRAME_MS = getSetting('slots.spinFrameMs');
     DEFAULT_BET = getSetting('slots.defaultBet');
     MAX_PLAYERS = getSetting('slots.maxPlayers');
-    HORIZONTAL_MULTIPLIER = getSetting('slots.horizontalMultiplier');
-    DIAGONAL_MULTIPLIER = getSetting('slots.diagonalMultiplier');
-    HAND_MULTIPLIER = getSetting('slots.handMultiplier');
-  } catch { /* DB not ready */ }
+  } catch {
+    // DB not ready
+  }
 }
 
 const { config } = require('./config');
