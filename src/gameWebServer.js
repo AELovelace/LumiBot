@@ -73,6 +73,7 @@ const {
   handleLogoutRoute,
   requireUserAuth,
   validateSameOrigin,
+  validateWebSocketOrigin,
 } = require('./webPanelAuth');
 
 let GAME_WEB_PORT = Number(process.env.GAME_WEB_PORT) || 7172;
@@ -90,7 +91,7 @@ const GAME_WEB_POSTMESSAGE_TARGET_ORIGIN =
 const GAME_WEB_SESSION_SAMESITE =
   process.env.GAME_WEB_SESSION_SAMESITE?.trim()
   || process.env.WEB_APP_SESSION_SAMESITE?.trim()
-  || 'None';
+  || 'Lax';
 const GAME_WEB_SESSION_SECURE =
   String(process.env.GAME_WEB_SESSION_SECURE || process.env.WEB_APP_SESSION_SECURE || '').trim()
     ? ['1', 'true', 'yes', 'on'].includes(String(process.env.GAME_WEB_SESSION_SECURE || process.env.WEB_APP_SESSION_SECURE).trim().toLowerCase())
@@ -98,8 +99,10 @@ const GAME_WEB_SESSION_SECURE =
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
+  'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
   'cache-control': 'no-store',
 };
 
@@ -958,6 +961,11 @@ function handleWsUpgrade(req, socket) {
   const parsedUrl = parseUrl(req);
   const pathname = routePath(parsedUrl.pathname);
   if (pathname !== '/ws') return socket.destroy();
+  const originCheck = validateWebSocketOrigin(req);
+  if (!originCheck.ok) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    return socket.destroy();
+  }
   const session = requireUserAuth(req);
   if (!session) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -1039,12 +1047,19 @@ function renderSlotsIndexPage(session) {
       <h2>Open Lobbies</h2>
       <div id="slots-lobby-list"><div class="item">Loading open lobbies...</div></div>
     </div>
-  `, {
-    active: '/slots',
-    pageScripts: `<script>
+	`, {
+		active: '/slots',
+		pageScripts: `<script>
 const listEl = document.getElementById('slots-lobby-list');
 const slotsApiPath = ${slotsApiPath};
 const slotsPageBase = ${slotsPageBase};
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -1089,7 +1104,7 @@ async function refreshLobbyList() {
 }
 document.getElementById('create-slots-lobby').addEventListener('click', async () => {
   const result = document.getElementById('slots-create-result');
-  result.innerHTML = '<div class="flash">Creating lobby...</div>';
+  setFlash(result, '', 'Creating lobby...');
   const res = await fetch(slotsApiPath, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1097,7 +1112,7 @@ document.getElementById('create-slots-lobby').addEventListener('click', async ()
   });
   const data = await res.json();
   if (!res.ok) {
-    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    setFlash(result, 'error', data.error?.message || 'Create failed.');
     return;
   }
   window.location.href = slotsPageBase + data.lobbyId;
@@ -1138,6 +1153,20 @@ const lobbyId = ${JSON.stringify(lobbyId)};
 const stateEl = document.getElementById('slots-lobby-state');
 const resultEl = document.getElementById('slots-action-result');
 let socket;
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function renderSlotsState(state) {
   if (!state) {
     stateEl.innerHTML = '<div class="item">Lobby is empty.</div>';
@@ -1145,12 +1174,12 @@ function renderSlotsState(state) {
   }
   const players = Array.isArray(state.players) ? state.players : [];
   stateEl.innerHTML = [
-    '<div class="item"><strong>' + (state.title || 'Slots Lobby') + '</strong><div>' + (state.description || '') + '</div><div class="muted">' + (state.footer || '') + '</div></div>',
-    '<div class="slots-grid">' + players.map((player) => '<div class="item"><strong>' + player.name + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + player.value + '</pre></div>').join('') + '</div>'
+    '<div class="item"><strong>' + escapeHtml(state.title || 'Slots Lobby') + '</strong><div>' + escapeHtml(state.description || '') + '</div><div class="muted">' + escapeHtml(state.footer || '') + '</div></div>',
+    '<div class="slots-grid">' + players.map((player) => '<div class="item"><strong>' + escapeHtml(player.name || '') + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + escapeHtml(player.value || '') + '</pre></div>').join('') + '</div>'
   ].join('');
 }
 async function postAction(path, payload) {
-  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  setFlash(resultEl, '', 'Working...');
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1158,10 +1187,10 @@ async function postAction(path, payload) {
   });
   const data = await res.json();
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Request failed.');
     return null;
   }
-  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  setFlash(resultEl, 'success', data.message || 'Done.');
   if (data.state) renderSlotsState(data.state);
   return data;
 }
@@ -1184,7 +1213,7 @@ function connectWs() {
     const msg = JSON.parse(event.data);
     if (msg.type === 'slots.render' && msg.lobbyId === lobbyId) renderSlotsState(msg.state);
     if (msg.type === 'slots.closed' && msg.lobbyId === lobbyId) {
-      stateEl.innerHTML = '<div class="item"><strong>Lobby closed</strong><div>' + (msg.content || '') + '</div></div>';
+      stateEl.innerHTML = '<div class="item"><strong>Lobby closed</strong><div>' + escapeHtml(msg.content || '') + '</div></div>';
     }
   });
 }
@@ -1241,17 +1270,31 @@ function renderBlackjackIndexPage(session) {
       <h2>Open Tables</h2>
       <div id="blackjack-lobby-list"><div class="item">Loading blackjack tables...</div></div>
     </div>
-  `, {
-    active: '/blackjack',
-    pageScripts: `<script>
+	`, {
+		active: '/blackjack',
+		pageScripts: `<script>
 const listEl = document.getElementById('blackjack-lobby-list');
 const apiPath = ${apiPath};
 const pageBase = ${pageBase};
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function renderList(lobbies) {
   listEl.innerHTML = ${JSON.stringify('')} + (Array.isArray(lobbies) && lobbies.length
     ? lobbies.map((lobby) => {
         const joinUrl = pageBase + encodeURIComponent(lobby.lobbyId);
-        return '<div class="item"><strong>Lobby ' + lobby.lobbyId + '</strong><pre class="board">' + (lobby.content || 'Waiting for first hand...') + '</pre><a class="pill" href="' + joinUrl + '">Open Table</a></div>';
+        return '<div class="item"><strong>Lobby ' + escapeHtml(lobby.lobbyId) + '</strong><pre class="board">' + escapeHtml(lobby.content || 'Waiting for first hand...') + '</pre><a class="pill" href="' + escapeHtml(joinUrl) + '">Open Table</a></div>';
       }).join('')
     : '<div class="item">No open blackjack tables yet.</div>');
 }
@@ -1270,11 +1313,11 @@ async function refreshList() {
 }
 document.getElementById('create-blackjack-lobby').addEventListener('click', async () => {
   const result = document.getElementById('blackjack-create-result');
-  result.innerHTML = '<div class="flash">Creating table...</div>';
+  setFlash(result, '', 'Creating table...');
   const res = await fetch(apiPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
   const data = await res.json();
   if (!res.ok) {
-    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    setFlash(result, 'error', data.error?.message || 'Create failed.');
     return;
   }
   window.location.href = pageBase + data.lobbyId;
@@ -1316,6 +1359,13 @@ const dingUrl = ${dingUrl};
 let socket;
 let lastTurnActive = false;
 let dingAudio = null;
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function viewerTurnActive(state) {
   if (!state || !state.content || !viewerName) return false;
   const lower = state.content.toLowerCase();
@@ -1344,11 +1394,11 @@ function renderState(state) {
   lastTurnActive = turnActive;
 }
 async function postAction(path, payload) {
-  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  setFlash(resultEl, '', 'Working...');
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
   const data = await res.json();
-  if (!res.ok) { resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>'; return null; }
-  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (!res.ok) { setFlash(resultEl, 'error', data.error?.message || 'Request failed.'); return null; }
+  setFlash(resultEl, 'success', data.message || 'Done.');
   if (data.state) renderState(data.state);
   return data;
 }
@@ -1413,15 +1463,29 @@ function renderHoldemIndexPage(session) {
   return renderPage('Holdem', session, `
     <div class="card"><h2>Holdem Tables</h2><p class="muted">Create a hold'em table or join an existing one.</p><button class="primary" id="create-holdem-lobby" type="button">Create Holdem Table</button><div id="holdem-create-result" style="margin-top:12px;"></div></div>
     <div class="card"><h2>Open Tables</h2><div id="holdem-lobby-list"><div class="item">Loading hold'em tables...</div></div></div>
-  `, {
-    active: '/holdem',
-    pageScripts: `<script>
+	`, {
+		active: '/holdem',
+		pageScripts: `<script>
 const listEl = document.getElementById('holdem-lobby-list');
 const apiPath = ${apiPath};
 const pageBase = ${pageBase};
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function refreshListHtml(lobbies) {
   listEl.innerHTML = Array.isArray(lobbies) && lobbies.length
-    ? lobbies.map((lobby) => '<div class="item"><strong>Lobby ' + lobby.lobbyId + '</strong><pre class="board">' + (lobby.content || 'Waiting for players...') + '</pre><a class="pill" href="' + pageBase + encodeURIComponent(lobby.lobbyId) + '">Open Table</a></div>').join('')
+    ? lobbies.map((lobby) => '<div class="item"><strong>Lobby ' + escapeHtml(lobby.lobbyId) + '</strong><pre class="board">' + escapeHtml(lobby.content || 'Waiting for players...') + '</pre><a class="pill" href="' + escapeHtml(pageBase + encodeURIComponent(lobby.lobbyId)) + '">Open Table</a></div>').join('')
     : '<div class="item">No open hold\\'em tables yet.</div>';
 }
 async function refreshList() {
@@ -1433,10 +1497,10 @@ async function refreshList() {
 }
 document.getElementById('create-holdem-lobby').addEventListener('click', async () => {
   const result = document.getElementById('holdem-create-result');
-  result.innerHTML = '<div class="flash">Creating table...</div>';
+  setFlash(result, '', 'Creating table...');
   const res = await fetch(apiPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
   const data = await res.json();
-  if (!res.ok) { result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>'; return; }
+  if (!res.ok) { setFlash(result, 'error', data.error?.message || 'Create failed.'); return; }
   window.location.href = pageBase + data.lobbyId;
 });
 refreshList();
@@ -1480,6 +1544,13 @@ const dingUrl = ${dingUrl};
 let socket;
 let lastTurnActive = false;
 let dingAudio = null;
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function viewerTurnActive(state) {
   if (!state || !state.content || !viewerName) return false;
   return state.content.includes('Turn: <@${escapeHtml(session.discordId || '')}>');
@@ -1508,11 +1579,11 @@ function renderState(state) {
   lastTurnActive = turnActive;
 }
 async function postAction(path, payload) {
-  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  setFlash(resultEl, '', 'Working...');
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
   const data = await res.json();
-  if (!res.ok) { resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>'; return null; }
-  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (!res.ok) { setFlash(resultEl, 'error', data.error?.message || 'Request failed.'); return null; }
+  setFlash(resultEl, 'success', data.message || 'Done.');
   if (data.state) renderState(data.state);
   if (data.peek) peekEl.textContent = data.peek;
   return data;
@@ -1577,15 +1648,29 @@ function renderHorseracingIndexPage(session) {
   return renderPage('Horse Racing', session, `
     <div class="card"><h2>Horse Racing Lobbies</h2><p class="muted">Create a race lobby or join one already taking bets.</p><button class="primary" id="create-race-lobby" type="button">Create Race Lobby</button><div id="race-create-result" style="margin-top:12px;"></div></div>
     <div class="card"><h2>Open Races</h2><div id="race-lobby-list"><div class="item">Loading races...</div></div></div>
-  `, {
-    active: '/horseracing',
-    pageScripts: `<script>
+	`, {
+		active: '/horseracing',
+		pageScripts: `<script>
 const listEl = document.getElementById('race-lobby-list');
 const apiPath = ${apiPath};
 const pageBase = ${pageBase};
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function refreshListHtml(lobbies) {
   listEl.innerHTML = Array.isArray(lobbies) && lobbies.length
-    ? lobbies.map((lobby) => '<div class="item"><strong>Lobby ' + lobby.lobbyId + '</strong><pre class="board">' + (lobby.content || 'Waiting for first bettor...') + '</pre><a class="pill" href="' + pageBase + encodeURIComponent(lobby.lobbyId) + '">Open Race</a></div>').join('')
+    ? lobbies.map((lobby) => '<div class="item"><strong>Lobby ' + escapeHtml(lobby.lobbyId) + '</strong><pre class="board">' + escapeHtml(lobby.content || 'Waiting for first bettor...') + '</pre><a class="pill" href="' + escapeHtml(pageBase + encodeURIComponent(lobby.lobbyId)) + '">Open Race</a></div>').join('')
     : '<div class="item">No open horse racing lobbies yet.</div>';
 }
 async function refreshList() {
@@ -1597,10 +1682,10 @@ async function refreshList() {
 }
 document.getElementById('create-race-lobby').addEventListener('click', async () => {
   const result = document.getElementById('race-create-result');
-  result.innerHTML = '<div class="flash">Creating race...</div>';
+  setFlash(result, '', 'Creating race...');
   const res = await fetch(apiPath, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
   const data = await res.json();
-  if (!res.ok) { result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>'; return; }
+  if (!res.ok) { setFlash(result, 'error', data.error?.message || 'Create failed.'); return; }
   window.location.href = pageBase + data.lobbyId;
 });
 refreshList();
@@ -1638,12 +1723,19 @@ const resultEl = document.getElementById('race-result');
 const baseApi = ${baseApi};
 let socket;
 function renderState(state) { stateEl.textContent = state && state.content ? state.content : 'Lobby is empty.'; }
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 async function postAction(path, payload) {
-  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  setFlash(resultEl, '', 'Working...');
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
   const data = await res.json();
-  if (!res.ok) { resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>'; return null; }
-  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  if (!res.ok) { setFlash(resultEl, 'error', data.error?.message || 'Request failed.'); return null; }
+  setFlash(resultEl, 'success', data.message || 'Done.');
   if (data.state) renderState(data.state);
   return data;
 }
@@ -1716,6 +1808,13 @@ const stateEl = document.getElementById('pachinko-state');
 const resultEl = document.getElementById('pachinko-result');
 const sessionId = 'pachinko-' + Math.random().toString(16).slice(2);
 let socket;
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
@@ -1726,12 +1825,12 @@ function connectWs() {
     if (msg.type === 'pachinko.frame') stateEl.textContent = msg.content || '';
     if (msg.type === 'pachinko.finalresult') {
       stateEl.textContent = msg.resultText || '';
-      resultEl.innerHTML = '<div class="flash success">Drop resolved.</div>';
+      setFlash(resultEl, 'success', 'Drop resolved.');
     }
   });
 }
 document.getElementById('pachinko-drop').addEventListener('click', async () => {
-  resultEl.innerHTML = '<div class="flash">Dropping...</div>';
+  setFlash(resultEl, '', 'Dropping...');
   const res = await fetch(${JSON.stringify(p('/api/pachinko/drop'))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1743,7 +1842,7 @@ document.getElementById('pachinko-drop').addEventListener('click', async () => {
   });
   const data = await res.json();
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Drop failed.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Drop failed.');
     return;
   }
   stateEl.textContent = (data.state && data.state.content) || 'Drop started.';
@@ -1774,6 +1873,13 @@ const resultEl = document.getElementById('cig-result');
 const buffEl = document.getElementById('cig-buff');
 const caseEl = document.getElementById('cig-case');
 const leaderboardEl = document.getElementById('cig-leaderboard');
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 async function fetchJson(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json();
@@ -1811,24 +1917,24 @@ async function refreshAll() {
   renderLeaderboard(leaderboardResp.data.rows || []);
 }
 document.getElementById('cig-gacha').addEventListener('click', async () => {
-  resultEl.innerHTML = '<div class="flash">Pulling...</div>';
+  setFlash(resultEl, '', 'Pulling...');
   const { res, data } = await fetchJson(${JSON.stringify(p('/api/cigarettes/gacha'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Pull failed.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Pull failed.');
     return;
   }
-  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(resultEl, 'success', data.message || 'Pull complete.');
   refreshAll();
 });
 document.getElementById('cig-smoke').addEventListener('click', async () => {
-  resultEl.innerHTML = '<div class="flash">Lighting up...</div>';
+  setFlash(resultEl, '', 'Lighting up...');
   const slot = Number(document.getElementById('cig-smoke-slot').value);
   const { res, data } = await fetchJson(${JSON.stringify(p('/api/cigarettes/smoke'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slot }) });
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Smoke failed.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Smoke failed.');
     return;
   }
-  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(resultEl, 'success', data.message || 'Smoke complete.');
   refreshAll();
 });
 refreshAll();
@@ -1878,6 +1984,13 @@ const collectionEl = document.getElementById('touhou-collection');
 const marketEl = document.getElementById('touhou-market');
 const listingsEl = document.getElementById('touhou-listings');
 const statsEl = document.getElementById('touhou-stats');
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 async function fetchJson(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json();
@@ -1924,13 +2037,13 @@ async function refreshAll() {
   renderStats(statsResp.data);
 }
 async function doPost(path, payload, fallback) {
-  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  setFlash(resultEl, '', 'Working...');
   const { res, data } = await fetchJson(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload || {}) });
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || fallback) + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || fallback);
     return;
   }
-  resultEl.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(resultEl, 'success', data.message || 'Done.');
   refreshAll();
 }
 document.getElementById('touhou-adopt').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/adopt'))}, {}, 'Adopt failed.'));
@@ -1958,6 +2071,13 @@ function renderTouhouBattleIndexPage(session) {
     pageScripts: `<script>
 const resultEl = document.getElementById('touhou-battle-result');
 const partyEl = document.getElementById('touhou-party');
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 async function fetchJson(path, opts) {
   const res = await fetch(path, opts);
   const data = await res.json();
@@ -2005,7 +2125,7 @@ async function refreshParty() {
   renderParty(data.items || []);
 }
 async function startBattle(name, rarity) {
-  resultEl.innerHTML = '<div class="flash">Starting battle...</div>';
+  setFlash(resultEl, '', 'Starting battle...');
   const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/battle/start'))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -2015,7 +2135,7 @@ async function startBattle(name, rarity) {
     }),
   });
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Could not start battle.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Could not start battle.');
     return;
   }
   window.location.href = ${JSON.stringify(p('/touhou/battle/'))} + data.battleId;
@@ -2052,6 +2172,13 @@ const portraitsEl = document.getElementById('touhou-battle-portraits');
 const baseApi = ${baseApi};
 const touhouImageBase = ${touhouImageBase};
 let returnTimer = null;
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 function renderState(state) {
   if (!state) {
     stateEl.textContent = 'Battle unavailable.';
@@ -2073,7 +2200,7 @@ function renderState(state) {
     document.getElementById('touhou-battle-potion').disabled = true;
     document.getElementById('touhou-battle-run').disabled = true;
     if (!returnTimer) {
-      resultEl.innerHTML = '<div class="flash success">' + (state.outcome ? 'Battle ended: ' + state.outcome + '. Returning in 6 seconds.' : 'Battle ended. Returning in 6 seconds.') + '</div>';
+      setFlash(resultEl, 'success', state.outcome ? 'Battle ended: ' + state.outcome + '. Returning in 6 seconds.' : 'Battle ended. Returning in 6 seconds.');
       returnTimer = setTimeout(() => {
         window.location.href = ${JSON.stringify(p('/touhou/battle'))};
       }, 6000);
@@ -2101,7 +2228,7 @@ async function fetchState() {
   return data.state;
 }
 async function postAction(action) {
-  resultEl.innerHTML = '<div class="flash">Resolving turn...</div>';
+  setFlash(resultEl, '', 'Resolving turn...');
   const res = await fetch(baseApi + battleId + '/action', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -2109,10 +2236,10 @@ async function postAction(action) {
   });
   const data = await res.json();
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Action failed.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Action failed.');
     return;
   }
-  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Turn resolved.') + '</div>';
+  setFlash(resultEl, 'success', data.message || 'Turn resolved.');
   renderState(data.state);
 }
 document.getElementById('touhou-battle-defend').addEventListener('click', () => postAction({ kind: 'defend' }));

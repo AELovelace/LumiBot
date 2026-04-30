@@ -44,6 +44,7 @@ const {
   handleLogoutRoute,
   requireUserAuth,
   validateSameOrigin,
+  validateWebSocketOrigin,
 } = require('./webPanelAuth');
 const {
   initWebAppStore,
@@ -67,7 +68,7 @@ let WEB_APP_DISCORD_OAUTH_REDIRECT_URI =
 const WEB_APP_POSTMESSAGE_TARGET_ORIGIN =
   process.env.WEB_APP_POSTMESSAGE_TARGET_ORIGIN?.trim() || '*';
 const WEB_APP_SESSION_SAMESITE =
-  process.env.WEB_APP_SESSION_SAMESITE?.trim() || 'None';
+  process.env.WEB_APP_SESSION_SAMESITE?.trim() || 'Lax';
 const WEB_APP_SESSION_SECURE =
   String(process.env.WEB_APP_SESSION_SECURE || '').trim()
     ? ['1', 'true', 'yes', 'on'].includes(String(process.env.WEB_APP_SESSION_SECURE).trim().toLowerCase())
@@ -75,8 +76,10 @@ const WEB_APP_SESSION_SECURE =
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
+  'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
   'cache-control': 'no-store',
 };
 
@@ -655,38 +658,56 @@ const result = document.getElementById('send-result');
 const searchBox = document.getElementById('recipient-search');
 const searchResults = document.getElementById('search-results');
 
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
+
 async function searchUsers(query) {
   if (!query || query.trim().length < 2) {
-    searchResults.innerHTML = '';
+    searchResults.textContent = '';
     return;
   }
   const res = await fetch(${JSON.stringify(p('/api/users/search?q='))} + encodeURIComponent(query));
   const data = await res.json();
   if (!res.ok) {
-    searchResults.innerHTML = '<div class="flash error">Search failed.</div>';
+    setFlash(searchResults, 'error', 'Search failed.');
     return;
   }
-  searchResults.innerHTML = data.results.map((user) => {
+  searchResults.textContent = '';
+  for (const user of (data.results || [])) {
     const label = (user.username || user.userId) + ' (' + user.userId + ')';
-    return '<div class="item"><button type="button" class="primary pick-user" data-user-id="' + user.userId + '" data-user-label="' + label.replace(/"/g, '&quot;') + '">Use</button> <span style="margin-left:8px;">' + label + '</span></div>';
-  }).join('');
-  document.querySelectorAll('.pick-user').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.getElementById('recipient-user-id').value = btn.dataset.userId;
-      document.getElementById('recipient-user-label').textContent = btn.dataset.userLabel;
+    const row = document.createElement('div');
+    row.className = 'item';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'primary pick-user';
+    button.textContent = 'Use';
+    button.addEventListener('click', () => {
+      document.getElementById('recipient-user-id').value = String(user.userId || '');
+      document.getElementById('recipient-user-label').textContent = label;
     });
-  });
+    const text = document.createElement('span');
+    text.style.marginLeft = '8px';
+    text.textContent = label;
+    row.appendChild(button);
+    row.appendChild(text);
+    searchResults.appendChild(row);
+  }
 }
 
 searchBox.addEventListener('input', (event) => {
   searchUsers(event.target.value).catch(() => {
-    searchResults.innerHTML = '<div class="flash error">Search failed.</div>';
+    setFlash(searchResults, 'error', 'Search failed.');
   });
 });
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  result.innerHTML = '<div class="flash">Sending...</div>';
+  setFlash(result, '', 'Sending...');
   const payload = {
     recipientUserId: document.getElementById('recipient-user-id').value,
     amount: Number(document.getElementById('amount').value),
@@ -700,10 +721,10 @@ form.addEventListener('submit', async (event) => {
   });
   const data = await res.json();
   if (!res.ok) {
-    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Send failed.') + '</div>';
+    setFlash(result, 'error', data.error?.message || 'Send failed.');
     return;
   }
-  result.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(result, 'success', data.message || 'Sent.');
   form.reset();
   document.getElementById('recipient-user-label').textContent = 'No recipient selected yet.';
 });
@@ -740,8 +761,15 @@ function renderRafflePage(session) {
   const pageScripts = `<script>
 const raffleBtn = document.getElementById('raffle-buy');
 const raffleResult = document.getElementById('raffle-result');
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 raffleBtn.addEventListener('click', async () => {
-  raffleResult.innerHTML = '<div class="flash">Buying ticket...</div>';
+  setFlash(raffleResult, '', 'Buying ticket...');
   const res = await fetch(${JSON.stringify(p('/api/wallet/raffle'))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -749,10 +777,10 @@ raffleBtn.addEventListener('click', async () => {
   });
   const data = await res.json();
   if (!res.ok) {
-    raffleResult.innerHTML = '<div class="flash error">' + (data.error?.message || 'Purchase failed.') + '</div>';
+    setFlash(raffleResult, 'error', data.error?.message || 'Purchase failed.');
     return;
   }
-  raffleResult.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(raffleResult, 'success', data.message || 'Purchase complete.');
 });
 </script>`;
 
@@ -807,8 +835,15 @@ function renderStockDetailPage(session, ticker) {
   const { stock, summary, transactions, viewerHolding } = detail;
   const pageScripts = `<script>
 const stockActionResult = document.getElementById('stock-action-result');
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 async function submitStockAction(path, payload) {
-  stockActionResult.innerHTML = '<div class="flash">Processing...</div>';
+  setFlash(stockActionResult, '', 'Processing...');
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -816,10 +851,10 @@ async function submitStockAction(path, payload) {
   });
   const data = await res.json();
   if (!res.ok) {
-    stockActionResult.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>';
+    setFlash(stockActionResult, 'error', data.error?.message || 'Request failed.');
     return;
   }
-  stockActionResult.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(stockActionResult, 'success', data.message || 'Request complete.');
   setTimeout(() => window.location.reload(), 800);
 }
 
@@ -938,10 +973,17 @@ function renderBetsPage(session) {
   `, {
     active: '/bets',
     pageScripts: `<script>
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 document.getElementById('create-market-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const result = document.getElementById('create-market-result');
-  result.innerHTML = '<div class="flash">Creating...</div>';
+  setFlash(result, '', 'Creating...');
   const res = await fetch(${JSON.stringify(p('/api/bets'))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -953,10 +995,10 @@ document.getElementById('create-market-form').addEventListener('submit', async (
   });
   const data = await res.json();
   if (!res.ok) {
-    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    setFlash(result, 'error', data.error?.message || 'Create failed.');
     return;
   }
-  result.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(result, 'success', data.message || 'Created.');
   setTimeout(() => window.location.href = ${JSON.stringify(p('/bets/'))} + data.marketId, 700);
 });
 </script>`,
@@ -970,10 +1012,17 @@ function renderBetDetailPage(session, marketId) {
   }
   const view = buildMarketView(market, session.discordId);
   const pageScripts = `<script>
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 document.getElementById('bet-buy-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const result = document.getElementById('bet-buy-result');
-  result.innerHTML = '<div class="flash">Buying position...</div>';
+  setFlash(result, '', 'Buying position...');
   const res = await fetch(${JSON.stringify(p(`/api/bets/${market.id}/buy`))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -985,10 +1034,10 @@ document.getElementById('bet-buy-form').addEventListener('submit', async (event)
   });
   const data = await res.json();
   if (!res.ok) {
-    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Buy failed.') + '</div>';
+    setFlash(result, 'error', data.error?.message || 'Buy failed.');
     return;
   }
-  result.innerHTML = '<div class="flash success">' + data.message + '</div>';
+  setFlash(result, 'success', data.message || 'Bought.');
   setTimeout(() => window.location.reload(), 700);
 });
 </script>`;
@@ -1058,9 +1107,16 @@ function renderSlotsIndexPage(session) {
   `, {
     active: '/casino/slots',
     pageScripts: `<script>
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 document.getElementById('create-slots-lobby').addEventListener('click', async () => {
   const result = document.getElementById('slots-create-result');
-  result.innerHTML = '<div class="flash">Creating lobby...</div>';
+  setFlash(result, '', 'Creating lobby...');
   const res = await fetch(${JSON.stringify(p('/api/casino/slots/lobbies'))}, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1068,7 +1124,7 @@ document.getElementById('create-slots-lobby').addEventListener('click', async ()
   });
   const data = await res.json();
   if (!res.ok) {
-    result.innerHTML = '<div class="flash error">' + (data.error?.message || 'Create failed.') + '</div>';
+    setFlash(result, 'error', data.error?.message || 'Create failed.');
     return;
   }
   window.location.href = ${JSON.stringify(p('/casino/slots/'))} + data.lobbyId;
@@ -1100,13 +1156,29 @@ function renderSlotsLobbyPage(session, lobbyId) {
         <div class="item"><button class="primary" id="slots-leave" type="button">Leave Lobby</button></div>
       </div>
     </div>
-  `, {
-    active: '/casino/slots',
-    pageScripts: `<script>
+	`, {
+		active: '/casino/slots',
+		pageScripts: `<script>
 const lobbyId = ${JSON.stringify(lobbyId)};
 const stateEl = document.getElementById('slots-lobby-state');
 const resultEl = document.getElementById('slots-action-result');
 let socket;
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function setFlash(target, type, message) {
+  target.textContent = '';
+  const box = document.createElement('div');
+  box.className = 'flash' + (type ? ' ' + type : '');
+  box.textContent = message;
+  target.appendChild(box);
+}
 
 function renderSlotsState(state) {
   if (!state) {
@@ -1115,13 +1187,13 @@ function renderSlotsState(state) {
   }
   const players = Array.isArray(state.players) ? state.players : [];
   stateEl.innerHTML = [
-    '<div class="item"><strong>' + (state.title || 'Slots Lobby') + '</strong><div>' + (state.description || '') + '</div><div class="muted">' + (state.footer || '') + '</div></div>',
-    '<div class="slots-grid">' + players.map((player) => '<div class="item"><strong>' + player.name + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + player.value + '</pre></div>').join('') + '</div>'
+    '<div class="item"><strong>' + escapeHtml(state.title || 'Slots Lobby') + '</strong><div>' + escapeHtml(state.description || '') + '</div><div class="muted">' + escapeHtml(state.footer || '') + '</div></div>',
+    '<div class="slots-grid">' + players.map((player) => '<div class="item"><strong>' + escapeHtml(player.name || '') + '</strong><pre style="white-space:pre-wrap;margin:8px 0 0;">' + escapeHtml(player.value || '') + '</pre></div>').join('') + '</div>'
   ].join('');
 }
 
 async function postAction(path, payload) {
-  resultEl.innerHTML = '<div class="flash">Working...</div>';
+  setFlash(resultEl, '', 'Working...');
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1129,10 +1201,10 @@ async function postAction(path, payload) {
   });
   const data = await res.json();
   if (!res.ok) {
-    resultEl.innerHTML = '<div class="flash error">' + (data.error?.message || 'Request failed.') + '</div>';
+    setFlash(resultEl, 'error', data.error?.message || 'Request failed.');
     return null;
   }
-  resultEl.innerHTML = '<div class="flash success">' + (data.message || 'Done.') + '</div>';
+  setFlash(resultEl, 'success', data.message || 'Done.');
   if (data.state) renderSlotsState(data.state);
   return data;
 }
@@ -1159,7 +1231,7 @@ function connectWs() {
       renderSlotsState(msg.state);
     }
     if (msg.type === 'slots.closed' && msg.lobbyId === lobbyId) {
-      stateEl.innerHTML = '<div class="item"><strong>Lobby closed</strong><div>' + (msg.content || '') + '</div></div>';
+      stateEl.innerHTML = '<div class="item"><strong>Lobby closed</strong><div>' + escapeHtml(msg.content || '') + '</div></div>';
     }
   });
 }
@@ -1543,6 +1615,12 @@ function handleWsUpgrade(req, socket) {
   }
   const pathname = routePath(parsedUrl.pathname);
   if (pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+  const originCheck = validateWebSocketOrigin(req);
+  if (!originCheck.ok) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     socket.destroy();
     return;
   }

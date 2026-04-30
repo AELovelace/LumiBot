@@ -41,7 +41,7 @@ function getPanelAuthConfig(overrides = {}) {
     panelGuildId: process.env.DISCORD_PANEL_GUILD_ID?.trim() || '895446230967148544',
     sessionSecret: process.env.WEB_PANEL_SESSION_SECRET?.trim() || '',
     sessionTtlMs: parseEnvPositiveInt(process.env.WEB_PANEL_SESSION_TTL_MS, 7_200_000),
-    secureCookies: parseEnvBoolean(process.env.WEB_PANEL_SECURE_COOKIES, false),
+    secureCookies: parseEnvBoolean(process.env.WEB_PANEL_SECURE_COOKIES, true),
     ...overrides,
   };
 }
@@ -321,11 +321,21 @@ async function handleCallbackRoute(req, res, parsedUrl, opts = {}) {
   const cfg = getPanelAuthConfig(opts.authConfig);
   const loginPath = opts.loginPath || `${opts.basePath || ''}/auth/discord/login`;
   const buildError = (status, msg) => {
+    const safeMsg = String(msg || '')
+      .replace(/&/gu, '&amp;')
+      .replace(/</gu, '&lt;')
+      .replace(/>/gu, '&gt;')
+      .replace(/"/gu, '&quot;');
+    const safeLoginPath = String(loginPath || '')
+      .replace(/&/gu, '&amp;')
+      .replace(/</gu, '&lt;')
+      .replace(/>/gu, '&gt;')
+      .replace(/"/gu, '&quot;');
     res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Login Error</title>
       <style>body{background:#0a0a0f;color:#c9c9d1;font-family:monospace;padding:40px;}</style>
-      </head><body><h1 style="color:#ff4444;">Access Denied</h1><p>${msg}</p>
-      <br><a href="${loginPath}" style="color:#ff69b4;">Try again</a></body></html>`);
+      </head><body><h1 style="color:#ff4444;">Access Denied</h1><p>${safeMsg}</p>
+      <br><a href="${safeLoginPath}" style="color:#ff69b4;">Try again</a></body></html>`);
   };
 
   const code = parsedUrl.searchParams.get('code');
@@ -416,6 +426,16 @@ function handleLogoutRoute(req, res, opts = {}) {
 
 function renderLoginPage(message, opts = {}) {
   const loginPath = `${opts.basePath || ''}/auth/discord/login`;
+  const safeMessage = String(message || '')
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
+  const safeLoginPath = String(loginPath)
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -464,8 +484,8 @@ function renderLoginPage(message, opts = {}) {
 <div class="login-box">
   <h1>SGC PANEL</h1>
   <div class="subtitle">SadGirlsClub Economy Control // auth required</div>
-  ${message ? `<div class="error-msg">${message}</div>` : ''}
-  <a href="${loginPath}" class="discord-btn">Sign in with Discord</a>
+  ${message ? `<div class="error-msg">${safeMessage}</div>` : ''}
+  <a href="${safeLoginPath}" class="discord-btn">Sign in with Discord</a>
   <div class="notice">Access is limited to server modmins.<br>
     Questions? <a href="https://discord.gg/">Join the server</a>.</div>
 </div>
@@ -529,14 +549,42 @@ function validateSameOrigin(req) {
   return { ok: false, reason: 'missing Origin and Referer headers' };
 }
 
+function validateWebSocketOrigin(req) {
+  const host = getRealHost(req);
+  const trusted = getTrustedHosts();
+  const allowed = new Set([host, ...trusted].filter(Boolean));
+  if (allowed.size === 0) return { ok: false, reason: 'missing host header' };
+
+  const origin = req.headers.origin;
+  if (!origin || origin === 'null') {
+    return { ok: false, reason: 'missing Origin header' };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return { ok: false, reason: `malformed origin: ${origin}` };
+  }
+  if (!allowed.has(parsed.host)) {
+    return { ok: false, reason: `origin host ${parsed.host} not in allowed [${[...allowed].join(', ')}]` };
+  }
+  return { ok: true };
+}
+
 function buildUserBadgeHtml(session) {
   if (!session) return '';
   const avatarUrl = session.avatar
     ? `https://cdn.discordapp.com/avatars/${encodeURIComponent(session.discordId)}/${encodeURIComponent(session.avatar)}.png?size=32`
     : 'https://cdn.discordapp.com/embed/avatars/0.png';
+  const safeUsername = String(session.username || '')
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
   return `<div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
     <img src="${avatarUrl}" alt="" style="width:26px;height:26px;border-radius:50%;border:1px solid #ff69b4;vertical-align:middle;">
-    <span style="font-family:'VT323',monospace;font-size:18px;color:#ff69b4;">${session.username}</span>
+    <span style="font-family:'VT323',monospace;font-size:18px;color:#ff69b4;">${safeUsername}</span>
     <form method="POST" action="${panelPath('/auth/logout')}" style="display:inline;margin:0;">
       <button type="submit" style="background:transparent;border:1px solid #666;color:#888;font-family:'VT323',monospace;font-size:16px;padding:4px 10px;cursor:pointer;">Logout</button>
     </form>
@@ -554,6 +602,7 @@ module.exports = {
   requireUserAuth,
   buildUserBadgeHtml,
   validateSameOrigin,
+  validateWebSocketOrigin,
   getSession,
   destroySession,
 };

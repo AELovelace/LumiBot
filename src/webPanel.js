@@ -679,7 +679,20 @@ function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
   <footer>sadgirlsclub.wtf // economy control panel // local access only</footer>
 </div>
 </body>
-</html>`;
+  </html>`;
+}
+
+function renderInlinePostAction(action, label, confirmMessage = '') {
+  const safeConfirm = String(confirmMessage || '')
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;')
+    .replace(/'/gu, '&#39;');
+  const confirmAttr = safeConfirm ? ` onclick="return confirm('${safeConfirm}')"` : '';
+  return `<form method="POST" action="${escapeHtml(action)}" style="display:inline;">
+    <button type="submit" class="btn btn-danger"${confirmAttr}>${escapeHtml(label)}</button>
+  </form>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1390,7 +1403,7 @@ function renderSettingsGroup(categoryMap, formAction, pageTitle) {
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save All Settings</button>
-        <a href="${escapeHtml(formAction)}/reset" class="btn btn-danger" onclick="return confirm('Reset all settings on this page to defaults?')">Reset to Defaults</a>
+        ${renderInlinePostAction(`${formAction}/reset`, 'Reset to Defaults', 'Reset all settings on this page to defaults?')}
       </div>
     </form>
   `);
@@ -1438,7 +1451,7 @@ function renderEconomy(flash = null) {
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save Economy Settings</button>
-        <a href="${p('/economy/reset')}" class="btn btn-danger" onclick="return confirm('Reset ALL economy settings to defaults?')">Reset to Defaults</a>
+        ${renderInlinePostAction(p('/economy/reset'), 'Reset to Defaults', 'Reset ALL economy settings to defaults?')}
       </div>
     </form>
   `);
@@ -1486,7 +1499,7 @@ function renderRuntime(flash = null) {
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save Runtime Settings</button>
-        <a href="${p('/runtime/reset')}" class="btn btn-danger" onclick="return confirm('Reset ALL runtime settings to defaults?')">Reset to Defaults</a>
+        ${renderInlinePostAction(p('/runtime/reset'), 'Reset to Defaults', 'Reset ALL runtime settings to defaults?')}
       </div>
     </form>
   `);
@@ -1538,7 +1551,7 @@ function renderCasino(flash = null) {
       ${groupsHtml}
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button type="submit" class="btn btn-success">Save Casino Settings</button>
-        <a href="${p('/casino/reset')}" class="btn btn-danger" onclick="return confirm('Reset ALL casino settings to defaults?')">Reset to Defaults</a>
+        ${renderInlinePostAction(p('/casino/reset'), 'Reset to Defaults', 'Reset ALL casino settings to defaults?')}
       </div>
     </form>
   `);
@@ -3107,7 +3120,7 @@ async function handleRequest(req, res) {
       return;
     }
 
-    if (pathname === '/runtime/reset' && method === 'GET') {
+    if (pathname === '/runtime/reset' && method === 'POST') {
       const cats = ['Runtime Channels', 'Chatbot', 'Search', 'Big Business', 'VC Rewards'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
@@ -3125,7 +3138,7 @@ async function handleRequest(req, res) {
       return;
     }
 
-    if (pathname === '/economy/reset' && method === 'GET') {
+    if (pathname === '/economy/reset' && method === 'POST') {
       const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
@@ -3149,7 +3162,7 @@ async function handleRequest(req, res) {
       return;
     }
 
-    if (pathname === '/casino/reset' && method === 'GET') {
+    if (pathname === '/casino/reset' && method === 'POST') {
       const cats = ['Slots', 'Pachinko', 'Blackjack', "Texas Hold'em", 'Horse Racing'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
