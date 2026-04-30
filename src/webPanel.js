@@ -53,6 +53,7 @@ const {
 } = require('./sadgirlEconomyStore');
 const {
   VALID_SCOPES,
+  WEBHOOK_ALLOWLIST_ENV,
   createApiApp,
   getApiApp,
   listApiApps,
@@ -2053,6 +2054,7 @@ function renderApiAppNew(flash = null, prev = {}) {
       <p><label>Description<br><textarea name="description" maxlength="500" rows="3" style="width:100%">${escapeHtml(prev.description || '')}</textarea></label></p>
       <p><label>Rate limit (req/min)<br><input type="number" name="rate_limit_per_min" value="${escapeHtml(prev.rate_limit_per_min || '60')}" min="1" max="6000"></label></p>
       <p><label>Webhook URL (optional)<br><input type="url" name="webhook_url" value="${escapeHtml(prev.webhook_url || '')}" style="width:100%"></label></p>
+      <p style="color:#888;">Webhook hosts must be explicitly allowlisted in <code>${escapeHtml(WEBHOOK_ALLOWLIST_ENV)}</code>.</p>
       <p><label><input type="checkbox" name="can_mint" ${prev.can_mint ? 'checked' : ''}> Allow minting (debits Central Bank)</label></p>
       <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
       <p><button type="submit">Create app + issue first key</button> <a href="${p('/api-apps')}">cancel</a></p>
@@ -2275,6 +2277,8 @@ function renderApiAppDetail(appId, flash = null) {
     <form method="POST" action="${p(`/api-apps/${appId}/update`)}" style="max-width:640px;">
       <p style="color:#888;">Adjust API permissions and request budget for this app.</p>
       <p><label>Rate limit (req/min)<br><input type="number" name="rate_limit_per_min" value="${escapeHtml(String(app.rateLimitPerMin || 60))}" min="1" max="100000" required></label></p>
+      <p><label>Webhook URL (optional)<br><input type="url" name="webhook_url" value="${escapeHtml(app.webhookUrl || '')}" style="width:100%"></label></p>
+      <p style="color:#888;">Leave blank to disable webhooks. Hosts must be explicitly allowlisted in <code>${escapeHtml(WEBHOOK_ALLOWLIST_ENV)}</code>.</p>
       <p><label><input type="checkbox" name="can_mint" ${app.canMint ? 'checked' : ''}> Allow minting (required for /v1/mint)</label></p>
       <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
       <p><button type="submit">Save settings</button></p>
@@ -2390,12 +2394,52 @@ function getRealProto(req) {
   return req.headers['x-forwarded-proto'] || 'http';
 }
 
+function buildMemoryServiceTarget(subPath, method) {
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  const rawPath = String(subPath || '');
+  const normalizedSubPath = `/${rawPath.replace(/^\/+/u, '')}`;
+
+  const allowedRoutes = [
+    { pattern: /^\/state$/u, methods: new Set(['GET', 'PUT']) },
+    { pattern: /^\/memory\/users$/u, methods: new Set(['GET']) },
+    { pattern: /^\/memory\/user\/[^/]+$/u, methods: new Set(['GET']) },
+    { pattern: /^\/memory\/search$/u, methods: new Set(['POST']) },
+  ];
+
+  const route = allowedRoutes.find((entry) => entry.pattern.test(normalizedSubPath));
+  if (!route) {
+    throw new Error('Unsupported memory API path.');
+  }
+
+  if (!route.methods.has(normalizedMethod)) {
+    throw new Error('Unsupported memory API method.');
+  }
+
+  const baseUrl = new URL(MEMORY_SERVICE_URL);
+  const basePath = baseUrl.pathname.endsWith('/')
+    ? baseUrl.pathname.slice(0, -1)
+    : baseUrl.pathname;
+  baseUrl.pathname = `${basePath}${normalizedSubPath}`;
+  baseUrl.search = '';
+  baseUrl.hash = '';
+  return baseUrl;
+}
+
 /**
  * Proxy a request to the Python memory service.
  */
 function proxyToMemoryService(subPath, req, res) {
   return new Promise((resolve, reject) => {
-    const targetUrl = new URL(subPath, MEMORY_SERVICE_URL);
+    let targetUrl;
+    try {
+      targetUrl = buildMemoryServiceTarget(subPath, req.method);
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+      resolve();
+      return;
+    }
+
     // Forward query string
     const realHost = getRealHost(req);
     const realProto = getRealProto(req);
@@ -3320,14 +3364,18 @@ async function handleRequest(req, res) {
         const rateLimit = Math.max(1, Math.min(100000, Math.floor(Number(body.rate_limit_per_min) || 60)));
         const scopes = Object.keys(body).filter((k) => k.startsWith('scope_')).map((k) => k.slice(6));
         const canMint = body.can_mint === 'on' || body.can_mint === '1';
+        const webhookUrl = String(body.webhook_url || '').trim() || null;
         try {
           const app = getApiApp(appId);
           if (!app) {
             res.end(renderApiAppList({ type: 'error', message: 'App not found.' }));
             return;
           }
-          updateApp(appId, { rateLimitPerMin: rateLimit, scopes, canMint });
-          res.end(renderApiAppDetail(appId, { type: 'success', message: `App settings updated. Rate limit ${rateLimit}/min, mint ${canMint ? 'enabled' : 'disabled'}.` }));
+          updateApp(appId, { rateLimitPerMin: rateLimit, scopes, canMint, webhookUrl });
+          res.end(renderApiAppDetail(appId, {
+            type: 'success',
+            message: `App settings updated. Rate limit ${rateLimit}/min, mint ${canMint ? 'enabled' : 'disabled'}.`,
+          }));
         } catch (err) {
           res.end(renderApiAppDetail(appId, { type: 'error', message: err.message }));
         }

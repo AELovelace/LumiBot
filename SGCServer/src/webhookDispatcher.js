@@ -19,7 +19,7 @@ const { URL } = require('node:url');
 
 const { logger } = require('./logger');
 const { getEconomyDb } = require('./economyStore');
-const { getApiApp } = require('./apiKeyStore');
+const { getApiApp, validateWebhookUrl } = require('./apiKeyStore');
 
 let dispatchTimer = null;
 const DISPATCH_INTERVAL_MS = 60_000;
@@ -36,7 +36,7 @@ async function postWebhookEvent(event, webhookUrl, webhookSecret) {
   const signature = 'sha256=' + crypto.createHmac('sha256', webhookSecret).update(payload, 'utf8').digest('hex');
   return new Promise((resolve) => {
     let urlObj;
-    try { urlObj = new URL(webhookUrl); }
+    try { urlObj = new URL(validateWebhookUrl(webhookUrl)); }
     catch (err) { return resolve({ ok: false, error: `Invalid URL: ${err.message}`, status: 0 }); }
 
     const protocol = urlObj.protocol === 'https:' ? https : http;

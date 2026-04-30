@@ -15,7 +15,7 @@ const { URL } = require('node:url');
 
 const { logger } = require('./logger');
 const { getEconomyDb } = require('./sadgirlEconomyStore');
-const { getApiApp } = require('./apiKeyStore');
+const { getApiApp, validateWebhookUrl } = require('./apiKeyStore');
 
 let dispatchTimer = null;
 const DISPATCH_INTERVAL_MS = 60_000; // Every 60 seconds
@@ -47,7 +47,7 @@ async function postWebhookEvent(event, webhookUrl, webhookSecret) {
   return new Promise((resolve) => {
     let urlObj;
     try {
-      urlObj = new URL(webhookUrl);
+      urlObj = new URL(validateWebhookUrl(webhookUrl));
     } catch (err) {
       return resolve({ ok: false, error: `Invalid URL: ${err.message}`, status: 0 });
     }

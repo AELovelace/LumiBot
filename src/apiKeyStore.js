@@ -12,6 +12,7 @@
  */
 
 const crypto = require('node:crypto');
+const net = require('node:net');
 const { logger } = require('./logger');
 const {
   getEconomyDb,
@@ -37,6 +38,7 @@ const VALID_SCOPES = Object.freeze([
 
 const KEY_PLAINTEXT_PREFIX = 'sgc_live_';
 const APP_TREASURY_PREFIX = '__APP_';
+const WEBHOOK_ALLOWLIST_ENV = 'SGC_WEBHOOK_ALLOWLIST';
 
 function db() { return getEconomyDb(); }
 
@@ -104,6 +106,76 @@ function normalizeScopes(scopes) {
   return out;
 }
 
+function normalizeWebhookHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  try {
+    const parsed = raw.includes('://') ? new URL(raw) : new URL(`https://${raw}`);
+    return parsed.hostname.replace(/\.+$/u, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function getWebhookAllowlistHosts() {
+  return new Set(
+    String(process.env[WEBHOOK_ALLOWLIST_ENV] || '')
+      .split(',')
+      .map((entry) => normalizeWebhookHost(entry))
+      .filter(Boolean),
+  );
+}
+
+function validateWebhookUrl(value) {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(String(value).trim());
+  } catch {
+    throw new Error('Webhook URL must be a valid absolute URL.');
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Webhook URL must use HTTPS.');
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error('Webhook URL cannot include a username or password.');
+  }
+
+  const hostname = normalizeWebhookHost(parsed.hostname);
+  if (!hostname) {
+    throw new Error('Webhook URL must include a valid hostname.');
+  }
+
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    throw new Error('Webhook URL cannot target localhost.');
+  }
+
+  if (net.isIP(hostname)) {
+    throw new Error('Webhook URL must use an allowlisted hostname, not a direct IP address.');
+  }
+
+  const allowlist = getWebhookAllowlistHosts();
+  if (allowlist.size === 0) {
+    throw new Error(`Webhook destinations are disabled until ${WEBHOOK_ALLOWLIST_ENV} is configured.`);
+  }
+
+  if (!allowlist.has(hostname)) {
+    throw new Error(`Webhook host "${hostname}" is not allowlisted.`);
+  }
+
+  parsed.hostname = hostname;
+  parsed.hash = '';
+  return parsed.toString();
+}
+
 function rowToApp(row) {
   if (!row) return null;
   let scopes = [];
@@ -140,7 +212,8 @@ function createApiApp({
   if (!name || !ownerDiscordId) throw new Error('name and ownerDiscordId are required');
   const normScopes = normalizeScopes(scopes);
   const id = randomId('app', 6);
-  const webhookSecret = webhookUrl ? crypto.randomBytes(32).toString('hex') : null;
+  const normalizedWebhookUrl = validateWebhookUrl(webhookUrl);
+  const webhookSecret = normalizedWebhookUrl ? crypto.randomBytes(32).toString('hex') : null;
 
   db().prepare(`
     INSERT INTO api_apps (id, name, owner_discord_id, description, scopes,
@@ -154,7 +227,7 @@ function createApiApp({
     JSON.stringify(normScopes),
     Math.max(1, Math.floor(Number(rateLimitPerMin) || 60)),
     canMint ? 1 : 0,
-    webhookUrl || null,
+    normalizedWebhookUrl,
     webhookSecret,
   );
 
@@ -203,9 +276,10 @@ function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, na
     params.push(JSON.stringify(normalizeScopes(scopes)));
   }
   if (webhookUrl !== undefined) {
+    const normalizedWebhookUrl = validateWebhookUrl(webhookUrl);
     sets.push('webhook_url = ?');
-    params.push(webhookUrl || null);
-    if (webhookUrl && !app.webhookSecret) {
+    params.push(normalizedWebhookUrl);
+    if (normalizedWebhookUrl && !app.webhookSecret) {
       sets.push('webhook_secret = ?');
       params.push(crypto.randomBytes(32).toString('hex'));
     }
@@ -753,10 +827,13 @@ function cleanUpRateLimitLog() {
 module.exports = {
   VALID_SCOPES,
   KEY_PLAINTEXT_PREFIX,
+  WEBHOOK_ALLOWLIST_ENV,
   hashApiKey,
   generateApiKeyPlaintext,
   appTreasuryUserId,
   ensureAppTreasury,
+  getWebhookAllowlistHosts,
+  validateWebhookUrl,
   // Apps
   createApiApp,
   getApiApp,

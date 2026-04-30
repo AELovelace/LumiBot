@@ -560,6 +560,12 @@ else:
 
 If the operator configured a webhook URL when registering your app, LumiBot will POST events to it as JSON, signed with `X-SGC-Signature: sha256=<hex hmac>` over the raw body using your app's `webhook_secret` (shown once when the webhook URL is first set).
 
+Webhook policy:
+
+- Webhook URLs must use `https://`.
+- Webhook URLs must use an exact hostname listed in `SGC_WEBHOOK_ALLOWLIST`.
+- Direct IP addresses and localhost-style hosts are rejected.
+
 Events (v1):
 
 - `link.revoked` — a user revoked your access. Stop charging them immediately.
