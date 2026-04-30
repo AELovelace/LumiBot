@@ -25,6 +25,7 @@ const E = require('./engine');
 const tables = new Map();
 const idleTimers = new Map();
 const betweenHandsTimers = new Map();
+const WEB_PRESENCE_TIMEOUT_MS = 45 * 1000;
 
 let settings = { ...E.DEFAULTS };
 
@@ -55,6 +56,29 @@ function clearBetweenHandsTimer(channelId) {
     clearTimeout(t);
     betweenHandsTimers.delete(channelId);
   }
+}
+
+function markWebPresence(player) {
+  if (!player) return;
+  player.webLastSeenAt = Date.now();
+}
+
+function pruneStaleWebPlayers(channelId) {
+  const table = tables.get(channelId);
+  if (!table || table.players.size === 0) return { removed: [] };
+  const cutoff = Date.now() - WEB_PRESENCE_TIMEOUT_MS;
+  const removed = [];
+  for (const [userId, player] of [...table.players]) {
+    if (!player?.webLastSeenAt || player.webLastSeenAt >= cutoff) continue;
+    removed.push(player.username || userId);
+    table.players.delete(userId);
+  }
+  if (removed.length === 0) return { removed };
+  if (table.players.size === 0) {
+    tearDownTable(channelId, '🃏 **Blackjack Table — Closed** (web players timed out)');
+    return { removed, closed: true };
+  }
+  return { removed, closed: false };
 }
 
 function startBetweenHandsTimer(channelId) {
@@ -163,6 +187,8 @@ async function dealNewHand(channelId) {
   clearBetweenHandsTimer(channelId);
   const table = tables.get(channelId);
   if (!table) return;
+  pruneStaleWebPlayers(channelId);
+  if (!tables.has(channelId)) return;
 
   const kicked = [];
   for (const [uid, player] of [...table.players]) {
@@ -287,6 +313,7 @@ registerCommand('play', async ({ channelId, userId, username, bet } = {}) => {
     status: E.isNaturalBlackjack(hand) ? 'blackjack' : 'playing',
     result: null,
     surrendered: false,
+    webLastSeenAt: Date.now(),
   });
 
   startIdleTimer(channelId);
@@ -308,6 +335,7 @@ function _commonAct(channelId, userId, mutate) {
   if (!player || player.status !== 'playing') {
     return { ok: false, reason: 'not_playing' };
   }
+  markWebPresence(player);
   const guard = mutate(table, player);
   if (guard && guard.error) return guard.error;
 
@@ -350,6 +378,7 @@ registerCommand('leave', async ({ channelId, userId } = {}) => {
   if (!table) return { ok: false, reason: 'no_table' };
   const player = table.players.get(userId);
   if (!player) return { ok: false, reason: 'not_playing' };
+  markWebPresence(player);
 
   const duringHand = !table.resolving;
   const lostBet = player.bet;
@@ -381,8 +410,18 @@ registerCommand('setBet', async ({ channelId, userId, amount } = {}) => {
   if (!table) return { ok: false, reason: 'no_table' };
   const player = table.players.get(userId);
   if (!player) return { ok: false, reason: 'not_at_table' };
+  markWebPresence(player);
   player.nextBet = amount;
   return { ok: true, amount };
+});
+
+registerCommand('touch', async ({ channelId, userId } = {}) => {
+  const table = tables.get(channelId);
+  if (!table) return { ok: false, reason: 'no_table' };
+  const player = table.players.get(userId);
+  if (!player) return { ok: false, reason: 'not_at_table' };
+  markWebPresence(player);
+  return { ok: true };
 });
 
 registerCommand('reset', async ({ channelId } = {}) => {
@@ -412,6 +451,7 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
 });
 
 registerCommand('getTable', async ({ channelId } = {}) => {
+  pruneStaleWebPlayers(channelId);
   const table = tables.get(channelId);
   if (!table) return { ok: false, exists: false };
   const mode = table.resolving ? 'finalresults' : 'play';

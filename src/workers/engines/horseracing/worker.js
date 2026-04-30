@@ -33,9 +33,28 @@ let settings = { ...E.DEFAULTS };
 const lobbies = new Map();
 const bettingTimers = new Map();
 const raceTimers = new Map();
+const WEB_PRESENCE_TIMEOUT_MS = 45 * 1000;
 
 let winStats = null;
 let winStatsLoading = null;
+
+function markWebPresence(player) {
+  if (!player) return;
+  player.webLastSeenAt = Date.now();
+}
+
+function pruneStaleWebPlayers(channelId) {
+  const lobby = lobbies.get(channelId);
+  if (!lobby) return { removed: [] };
+  const cutoff = Date.now() - WEB_PRESENCE_TIMEOUT_MS;
+  const removed = [];
+  for (const [userId, player] of [...lobby.players]) {
+    if (!player?.webLastSeenAt || player.webLastSeenAt >= cutoff) continue;
+    removed.push(player.username || userId);
+    lobby.players.delete(userId);
+  }
+  return { removed };
+}
 
 async function ensureWinStats() {
   if (winStats) return winStats;
@@ -119,6 +138,12 @@ async function startBettingRound(channelId, isFirst = false) {
   const lobby = lobbies.get(channelId);
   if (!lobby) return null;
   await ensureWinStats();
+  pruneStaleWebPlayers(channelId);
+  if (!lobbies.has(channelId)) return null;
+  if (lobby.players.size === 0) {
+    tearDown(channelId, 'allLeft');
+    return null;
+  }
   lobby.phase = 'betting';
   for (const p of lobby.players.values()) p.horse = null;
 
@@ -146,6 +171,12 @@ async function runRace(channelId) {
   const lobby = lobbies.get(channelId);
   if (!lobby) return;
   await ensureWinStats();
+  pruneStaleWebPlayers(channelId);
+  if (!lobbies.has(channelId)) return;
+  if (lobby.players.size === 0) {
+    tearDown(channelId, 'allLeft');
+    return;
+  }
 
   // Collect funded bets
   const racers = [];
@@ -312,6 +343,7 @@ registerCommand('join', async ({ channelId, userId, username } = {}) => {
     return { ok: false, reason: 'already_joined' };
   }
   lobby.players.set(userId, E.createPlayer(userId, username, settings.defaultBet));
+  markWebPresence(lobby.players.get(userId));
 
   if (isNew) {
     const content = await startBettingRound(channelId, true);
@@ -357,8 +389,10 @@ registerCommand('pickHorse', async ({ channelId, userId, username, horse } = {})
       return { ok: false, reason: 'insufficient_to_join', balance, minBet: settings.defaultBet };
     }
     lobby.players.set(userId, E.createPlayer(userId, username, settings.defaultBet));
+    markWebPresence(lobby.players.get(userId));
   }
   const player = lobby.players.get(userId);
+  markWebPresence(player);
   if (balance < player.bet) {
     return { ok: false, reason: 'cannot_afford_bet', balance, bet: player.bet };
   }
@@ -381,8 +415,10 @@ registerCommand('setBet', async ({ channelId, userId, username, amount } = {}) =
   if (!lobby.players.has(userId)) {
     if (balance < amount) return { ok: false, reason: 'insufficient', balance, amount };
     lobby.players.set(userId, E.createPlayer(userId, username, settings.defaultBet));
+    markWebPresence(lobby.players.get(userId));
   }
   const player = lobby.players.get(userId);
+  markWebPresence(player);
   if (balance < amount) return { ok: false, reason: 'insufficient', balance, amount };
   player.bet = amount;
   const content = await buildBettingContentFromDb(lobby);
@@ -402,7 +438,17 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
   };
 });
 
+registerCommand('touch', async ({ channelId, userId } = {}) => {
+  const lobby = lobbies.get(channelId);
+  if (!lobby) return { ok: false, reason: 'no_lobby' };
+  const player = lobby.players.get(userId);
+  if (!player) return { ok: false, reason: 'not_in_lobby' };
+  markWebPresence(player);
+  return { ok: true };
+});
+
 registerCommand('getLobby', async ({ channelId } = {}) => {
+  pruneStaleWebPlayers(channelId);
   const lobby = lobbies.get(channelId);
   if (!lobby) return { ok: false, exists: false };
   return {

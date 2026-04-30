@@ -23,10 +23,35 @@ let settings = { ...E.DEFAULTS };
 const tables = new Map();
 const turnTimers = new Map();
 const nextHandTimers = new Map();
+const WEB_PRESENCE_TIMEOUT_MS = 45 * 1000;
 // Tables that have been opened by `play` but are waiting for the adapter to
 // signal `tableReady` before the first hand is started. Prevents render events
 // from racing the adapter's fetchReply().
 const pendingReady = new Set();
+
+function markWebPresence(player) {
+  if (!player || E.isCpuPlayer(player)) return;
+  player.webLastSeenAt = Date.now();
+}
+
+async function pruneStaleWebPlayers(table) {
+  if (!table) return { removed: [] };
+  const cutoff = Date.now() - WEB_PRESENCE_TIMEOUT_MS;
+  const staleIds = [];
+  for (const player of E.getHumanPlayers(table)) {
+    if (!player?.webLastSeenAt || player.webLastSeenAt >= cutoff) continue;
+    staleIds.push(player.userId);
+  }
+  const removed = [];
+  for (const userId of staleIds) {
+    const player = table.players.get(userId);
+    if (!player) continue;
+    removed.push(player.username || userId);
+    await removePlayerFromTable(table, userId, { publicReason: `${player.username} timed out and was removed from the web table.` });
+    if (!tables.has(table.channelId)) break;
+  }
+  return { removed };
+}
 
 function clearTurnTimer(channelId) {
   const t = turnTimers.get(channelId);
@@ -233,6 +258,8 @@ async function startHand(table) {
     p.bestHand = null;
   }
   syncCpuSeat(table);
+  await pruneStaleWebPlayers(table);
+  if (!tables.has(table.channelId)) return;
   const seated = E.getSeatedPlayers(table);
   if (seated.length < 2) {
     await prepareWaitingState(table, '*Waiting for one more player...*');
@@ -460,6 +487,7 @@ registerCommand('play', async ({ channelId, userId, username, bet } = {}) => {
   if (!table) {
     table = E.makeTable(channelId);
     table.players.set(userId, E.createPlayerState(userId, username, bet));
+    markWebPresence(table.players.get(userId));
     syncCpuSeat(table);
     tables.set(channelId, table);
     pendingReady.add(channelId);
@@ -469,6 +497,7 @@ registerCommand('play', async ({ channelId, userId, username, bet } = {}) => {
   }
 
   table.players.set(userId, E.createPlayerState(userId, username, bet));
+  markWebPresence(table.players.get(userId));
   syncCpuSeat(table);
   const handOpen = E.isHandActive(table);
   if (table.phase === 'waiting' && E.getSeatedPlayers(table).length >= 2) {
@@ -496,6 +525,7 @@ registerCommand('leave', async ({ channelId, userId } = {}) => {
   const table = tables.get(channelId);
   if (!table || !table.players.has(userId)) return { ok: false, reason: 'not_seated' };
   const player = table.players.get(userId);
+  markWebPresence(player);
   const duringHand = player.inHand && E.isHandActive(table);
   const ante = player.bet;
   await removePlayerFromTable(table, userId, { publicReason: `${player.username} left the table.` });
@@ -508,6 +538,7 @@ registerCommand('bet', async ({ channelId, userId, amount } = {}) => {
   if (!Number.isInteger(amount) || amount <= 0) return { ok: false, reason: 'bad_amount' };
   const player = table.players.get(userId);
   player.nextBet = amount;
+  markWebPresence(player);
   if (!player.inHand) player.bet = amount;
   if (!E.isHandActive(table)) emitRender(table);
   return { ok: true, amount };
@@ -518,6 +549,7 @@ registerCommand('peek', async ({ channelId, userId } = {}) => {
   if (!table) return { ok: false, reason: 'no_table' };
   const player = table.players.get(userId);
   if (!player) return { ok: false, reason: 'not_seated' };
+  markWebPresence(player);
   if (!player.inHand || player.holeCards.length !== 2) {
     return { ok: false, reason: 'not_in_hand' };
   }
@@ -538,6 +570,7 @@ registerCommand('check', async ({ channelId, userId } = {}) => {
   if (!table) return { ok: false, reason: 'no_table' };
   const player = table.players.get(userId);
   if (!player) return { ok: false, reason: 'not_seated' };
+  markWebPresence(player);
   if (!E.isHandActive(table) || !player.inHand || player.status !== 'active') {
     return { ok: false, reason: 'not_active' };
   }
@@ -568,6 +601,7 @@ registerCommand('fold', async ({ channelId, userId } = {}) => {
   if (!table) return { ok: false, reason: 'no_table' };
   const player = table.players.get(userId);
   if (!player) return { ok: false, reason: 'not_seated' };
+  markWebPresence(player);
   if (!E.isHandActive(table) || !player.inHand || player.status !== 'active') {
     return { ok: false, reason: 'not_active' };
   }
@@ -587,6 +621,7 @@ registerCommand('raise', async ({ channelId, userId, username, amount } = {}) =>
   if (!table) return { ok: false, reason: 'no_table' };
   const player = table.players.get(userId);
   if (!player) return { ok: false, reason: 'not_seated' };
+  markWebPresence(player);
   if (!E.isHandActive(table) || !player.inHand || player.status !== 'active') {
     return { ok: false, reason: 'not_active' };
   }
@@ -630,9 +665,20 @@ registerCommand('debugSnapshot', async ({ channelId } = {}) => {
   };
 });
 
+registerCommand('touch', async ({ channelId, userId } = {}) => {
+  const table = tables.get(channelId);
+  if (!table) return { ok: false, reason: 'no_table' };
+  const player = table.players.get(userId);
+  if (!player || E.isCpuPlayer(player)) return { ok: false, reason: 'not_seated' };
+  markWebPresence(player);
+  return { ok: true };
+});
+
 registerCommand('getTable', async ({ channelId } = {}) => {
   const table = tables.get(channelId);
   if (!table) return { ok: false, exists: false };
+  await pruneStaleWebPlayers(table);
+  if (!tables.has(channelId)) return { ok: false, exists: false };
   return {
     ok: true,
     exists: true,

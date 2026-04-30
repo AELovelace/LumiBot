@@ -120,6 +120,10 @@ function touhouImagePath(name) {
   return p(`/media/touhou/${encodeURIComponent(String(name || ''))}`);
 }
 
+function gamesMediaPath(name) {
+  return p(`/media/${String(name || '')}`);
+}
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/gu, '&amp;')
@@ -438,10 +442,11 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
     (() => {
       const balanceChip = document.getElementById('games-balance-chip');
       if (!balanceChip) return;
-      let refreshBalanceTimer = null;
+      const originalFetch = window.fetch.bind(window);
+      const refreshBalanceTimers = new Set();
       async function refreshGamesBalance() {
         try {
-          const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'same-origin' });
+          const res = await originalFetch(${JSON.stringify(p('/api/me'))}, { credentials: 'same-origin' });
           if (!res.ok) return;
           const data = await res.json();
           if (!data || !data.viewer) return;
@@ -449,14 +454,20 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
           balanceChip.textContent = data.viewer.balance + ' SGC';
         } catch {}
       }
-      function scheduleBalanceRefresh(delayMs = 150) {
-        if (refreshBalanceTimer) clearTimeout(refreshBalanceTimer);
-        refreshBalanceTimer = setTimeout(() => {
-          refreshBalanceTimer = null;
-          refreshGamesBalance();
-        }, delayMs);
+      function clearBalanceRefreshTimers() {
+        for (const timer of refreshBalanceTimers) clearTimeout(timer);
+        refreshBalanceTimers.clear();
       }
-      const originalFetch = window.fetch.bind(window);
+      function scheduleBalanceRefresh(delaysMs = [120, 900, 2200, 4500]) {
+        clearBalanceRefreshTimers();
+        for (const delayMs of delaysMs) {
+          const timer = setTimeout(() => {
+            refreshBalanceTimers.delete(timer);
+            refreshGamesBalance();
+          }, delayMs);
+          refreshBalanceTimers.add(timer);
+        }
+      }
       window.fetch = async (...args) => {
         const response = await originalFetch(...args);
         try {
@@ -468,19 +479,20 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
               ? resource.url
               : String(resource || '');
           if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && /\/api\//u.test(url)) {
-            scheduleBalanceRefresh(response.ok ? 80 : 150);
+            scheduleBalanceRefresh(response.ok ? [80, 700, 1800, 4000] : [150, 1200]);
           }
         } catch {}
         return response;
       };
       window.__lumigamesRefreshBalance = refreshGamesBalance;
-      window.addEventListener('focus', () => scheduleBalanceRefresh(0));
+      window.addEventListener('focus', () => scheduleBalanceRefresh([0, 900]));
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) scheduleBalanceRefresh(0);
+        if (!document.hidden) scheduleBalanceRefresh([0, 900]);
       });
+      refreshGamesBalance();
       setInterval(() => {
         if (!document.hidden) refreshGamesBalance();
-      }, 10000);
+      }, 2000);
     })();
   </script>
   ${pageScripts}
@@ -1058,6 +1070,18 @@ function connectWs() {
     }
   });
 }
+let leaving = false;
+function leaveLobbyOnExit() {
+  if (leaving) return;
+  leaving = true;
+  const url = ${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/leave';
+  try {
+    navigator.sendBeacon(url, new Blob(['{}'], { type: 'application/json' }));
+  } catch {
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
+  }
+}
+window.addEventListener('pagehide', leaveLobbyOnExit);
 document.getElementById('slots-join').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/join'));
 document.getElementById('slots-set-bet').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/bet', { amount: Number(document.getElementById('slots-bet-amount').value) }));
 document.getElementById('slots-spin').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/spin'));
@@ -1146,6 +1170,7 @@ setInterval(refreshList, 5000);
 function renderBlackjackLobbyPage(session, lobbyId) {
   const baseApi = JSON.stringify(p('/api/blackjack/lobbies/'));
   const viewerName = JSON.stringify(session.username || '');
+  const dingUrl = JSON.stringify(gamesMediaPath('ding.wav'));
   return renderPage(`Blackjack ${lobbyId}`, session, `
     <div class="card"><h2>Blackjack ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Table</h2><pre id="blackjack-state" class="board">Connecting...</pre></div>
@@ -1169,7 +1194,22 @@ const resultEl = document.getElementById('blackjack-result');
 const cardControlsEl = document.getElementById('blackjack-card-controls');
 const leaveWrapEl = document.getElementById('blackjack-leave-wrap');
 const baseApi = ${baseApi};
+const dingUrl = ${dingUrl};
 let socket;
+let lastTurnActive = false;
+let dingAudio = null;
+function viewerTurnActive(state) {
+  if (!state || !state.content || !viewerName) return false;
+  const lower = state.content.toLowerCase();
+  return lower.includes(viewerName + ' (') && lower.includes('hit or stay?');
+}
+function playTurnDing() {
+  try {
+    if (!dingAudio) dingAudio = new Audio(dingUrl);
+    dingAudio.currentTime = 0;
+    dingAudio.play().catch(() => {});
+  } catch {}
+}
 function viewerIsSeated(state) {
   return Boolean(state && state.content && viewerName && state.content.toLowerCase().includes(viewerName));
 }
@@ -1181,6 +1221,9 @@ function setJoinedUi(joined) {
 function renderState(state) {
   stateEl.textContent = state && state.content ? state.content : 'Table is empty.';
   setJoinedUi(viewerIsSeated(state));
+  const turnActive = viewerTurnActive(state);
+  if (turnActive && !lastTurnActive) playTurnDing();
+  lastTurnActive = turnActive;
 }
 async function postAction(path, payload) {
   resultEl.innerHTML = '<div class="flash">Working...</div>';
@@ -1207,6 +1250,31 @@ function connectWs() {
     if (msg.type === 'blackjack.closed') stateEl.textContent = msg.content || 'Table closed.';
   });
 }
+async function keepAlive() {
+  try {
+    await fetch(baseApi + lobbyId + '/touch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true });
+  } catch {}
+}
+let leaving = false;
+function leaveTableOnExit() {
+  if (leaving) return;
+  leaving = true;
+  const url = baseApi + lobbyId + '/leave';
+  try {
+    navigator.sendBeacon(url, new Blob(['{}'], { type: 'application/json' }));
+  } catch {
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
+  }
+}
+window.addEventListener('pagehide', leaveTableOnExit);
+const keepAliveTimer = setInterval(() => {
+  if (!document.hidden) keepAlive();
+}, 15000);
+window.addEventListener('focus', keepAlive);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) keepAlive();
+});
+window.addEventListener('pagehide', () => clearInterval(keepAliveTimer));
 document.getElementById('blackjack-play').addEventListener('click', () => postAction(baseApi + lobbyId + '/play', { bet: Number(document.getElementById('blackjack-ante').value) }));
 document.getElementById('blackjack-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('blackjack-next-bet').value) }));
 document.getElementById('blackjack-hit').addEventListener('click', () => postAction(baseApi + lobbyId + '/hit'));
@@ -1215,6 +1283,7 @@ document.getElementById('blackjack-surrender').addEventListener('click', () => p
 document.getElementById('blackjack-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
 setJoinedUi(false);
 connectWs();
+keepAlive();
 refreshState();
 </script>`,
   });
@@ -1261,6 +1330,7 @@ setInterval(refreshList, 5000);
 function renderHoldemLobbyPage(session, lobbyId) {
   const baseApi = JSON.stringify(p('/api/holdem/lobbies/'));
   const viewerName = JSON.stringify(session.username || '');
+  const dingUrl = JSON.stringify(gamesMediaPath('ding.wav'));
   return renderPage(`Holdem ${lobbyId}`, session, `
     <div class="card"><h2>Holdem ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Table</h2><pre id="holdem-state" class="board">Connecting...</pre></div>
@@ -1288,7 +1358,21 @@ const cardControlsEl = document.getElementById('holdem-card-controls');
 const raiseWrapEl = document.getElementById('holdem-raise-wrap');
 const leaveWrapEl = document.getElementById('holdem-leave-wrap');
 const baseApi = ${baseApi};
+const dingUrl = ${dingUrl};
 let socket;
+let lastTurnActive = false;
+let dingAudio = null;
+function viewerTurnActive(state) {
+  if (!state || !state.content || !viewerName) return false;
+  return state.content.includes('Turn: <@${escapeHtml(session.discordId || '')}>');
+}
+function playTurnDing() {
+  try {
+    if (!dingAudio) dingAudio = new Audio(dingUrl);
+    dingAudio.currentTime = 0;
+    dingAudio.play().catch(() => {});
+  } catch {}
+}
 function viewerIsSeated(state) {
   return Boolean(state && state.content && viewerName && state.content.toLowerCase().includes(viewerName));
 }
@@ -1301,6 +1385,9 @@ function setJoinedUi(joined) {
 function renderState(state) {
   stateEl.textContent = state && state.content ? state.content : 'Table is empty.';
   setJoinedUi(viewerIsSeated(state));
+  const turnActive = viewerTurnActive(state);
+  if (turnActive && !lastTurnActive) playTurnDing();
+  lastTurnActive = turnActive;
 }
 async function postAction(path, payload) {
   resultEl.innerHTML = '<div class="flash">Working...</div>';
@@ -1326,6 +1413,31 @@ function connectWs() {
     if (msg.type === 'holdem.closed') stateEl.textContent = msg.content || 'Table closed.';
   });
 }
+async function keepAlive() {
+  try {
+    await fetch(baseApi + lobbyId + '/touch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true });
+  } catch {}
+}
+let leaving = false;
+function leaveTableOnExit() {
+  if (leaving) return;
+  leaving = true;
+  const url = baseApi + lobbyId + '/leave';
+  try {
+    navigator.sendBeacon(url, new Blob(['{}'], { type: 'application/json' }));
+  } catch {
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
+  }
+}
+window.addEventListener('pagehide', leaveTableOnExit);
+const keepAliveTimer = setInterval(() => {
+  if (!document.hidden) keepAlive();
+}, 15000);
+window.addEventListener('focus', keepAlive);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) keepAlive();
+});
+window.addEventListener('pagehide', () => clearInterval(keepAliveTimer));
 document.getElementById('holdem-play').addEventListener('click', () => postAction(baseApi + lobbyId + '/play', { bet: Number(document.getElementById('holdem-ante').value) }));
 document.getElementById('holdem-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('holdem-next-bet').value) }));
 document.getElementById('holdem-peek-btn').addEventListener('click', () => postAction(baseApi + lobbyId + '/peek'));
@@ -1335,6 +1447,7 @@ document.getElementById('holdem-raise').addEventListener('click', () => postActi
 document.getElementById('holdem-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
 setJoinedUi(false);
 connectWs();
+keepAlive();
 refreshState();
 </script>`,
   });
@@ -1429,6 +1542,31 @@ function connectWs() {
     if (msg.type.startsWith('horseracing.')) renderState(msg.state || { content: msg.content || '' });
   });
 }
+async function keepAlive() {
+  try {
+    await fetch(baseApi + lobbyId + '/touch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true });
+  } catch {}
+}
+let leaving = false;
+function leaveRaceOnExit() {
+  if (leaving) return;
+  leaving = true;
+  const url = baseApi + lobbyId + '/leave';
+  try {
+    navigator.sendBeacon(url, new Blob(['{}'], { type: 'application/json' }));
+  } catch {
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
+  }
+}
+window.addEventListener('pagehide', leaveRaceOnExit);
+const keepAliveTimer = setInterval(() => {
+  if (!document.hidden) keepAlive();
+}, 15000);
+window.addEventListener('focus', keepAlive);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) keepAlive();
+});
+window.addEventListener('pagehide', () => clearInterval(keepAliveTimer));
 document.getElementById('race-join').addEventListener('click', () => postAction(baseApi + lobbyId + '/join'));
 document.getElementById('race-leave').addEventListener('click', () => postAction(baseApi + lobbyId + '/leave'));
 document.getElementById('race-set-bet').addEventListener('click', () => postAction(baseApi + lobbyId + '/bet', { amount: Number(document.getElementById('race-bet').value) }));
@@ -1436,6 +1574,7 @@ for (const button of document.querySelectorAll('[data-race-horse]')) {
   button.addEventListener('click', () => postAction(baseApi + lobbyId + '/horse', { horse: button.getAttribute('data-race-horse') }));
 }
 connectWs();
+keepAlive();
 refreshState();
 </script>`,
   });
@@ -2015,6 +2154,18 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (pathname === '/media/ding.wav' && method === 'GET') {
+    const soundPath = path.resolve(process.cwd(), 'ding.wav');
+    let buffer;
+    try {
+      buffer = fs.readFileSync(soundPath);
+    } catch {
+      return sendError(res, 404, 'not_found', 'Sound not found.');
+    }
+    sendBuffer(res, 200, 'audio/wav', buffer);
+    return;
+  }
+
   if (pathname === '/api/touhou/party' && method === 'GET') {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
@@ -2380,6 +2531,24 @@ async function handleRequest(req, res) {
     return;
   }
 
+  const blackjackTouchApiMatch = pathname.match(/^\/api\/blackjack\/lobbies\/([^/]+)\/touch$/u);
+  if (blackjackTouchApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(blackjackTouchApiMatch[1]);
+    const channelId = getWebBlackjackChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('blackjack', 'touch', { channelId, userId: session.discordId }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'touch_failed', 'Could not refresh blackjack presence');
+      sendJson(res, 200, { ok: true });
+    } catch (error) {
+      sendError(res, 503, 'blackjack_unavailable', error.message);
+    }
+    return;
+  }
+
   for (const action of ['hit', 'stay', 'surrender', 'leave']) {
     const match = pathname.match(new RegExp(`^/api/blackjack/lobbies/([^/]+)/${action}$`, 'u'));
     if (match && method === 'POST') {
@@ -2501,6 +2670,24 @@ async function handleRequest(req, res) {
     return;
   }
 
+  const holdemTouchApiMatch = pathname.match(/^\/api\/holdem\/lobbies\/([^/]+)\/touch$/u);
+  if (holdemTouchApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(holdemTouchApiMatch[1]);
+    const channelId = getWebHoldemChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('holdem', 'touch', { channelId, userId: session.discordId }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'touch_failed', 'Could not refresh hold\'em presence');
+      sendJson(res, 200, { ok: true });
+    } catch (error) {
+      sendError(res, 503, 'holdem_unavailable', error.message);
+    }
+    return;
+  }
+
   for (const action of ['check', 'fold', 'leave']) {
     const match = pathname.match(new RegExp(`^/api/holdem/lobbies/([^/]+)/${action}$`, 'u'));
     if (match && method === 'POST') {
@@ -2593,6 +2780,24 @@ async function handleRequest(req, res) {
     try {
       const result = await manager.sendCommand('horseracing', 'getLobby', { channelId }, { channelId });
       sendJson(res, 200, { ok: true, lobbyId, state: result && result.ok ? { content: result.content || '' } : null });
+    } catch (error) {
+      sendError(res, 503, 'horseracing_unavailable', error.message);
+    }
+    return;
+  }
+
+  const horseracingTouchApiMatch = pathname.match(/^\/api\/horseracing\/lobbies\/([^/]+)\/touch$/u);
+  if (horseracingTouchApiMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) return sendError(res, 403, 'forbidden', `Cross-site POST blocked: ${originCheck.reason}`);
+    const session = requireMemberSession(req, res, { api: true });
+    if (!session) return;
+    const lobbyId = decodeURIComponent(horseracingTouchApiMatch[1]);
+    const channelId = getWebHorseracingChannelId(lobbyId);
+    try {
+      const result = await manager.sendCommand('horseracing', 'touch', { channelId, userId: session.discordId }, { channelId });
+      if (!result.ok) return sendError(res, 400, result.reason || 'touch_failed', 'Could not refresh horse racing presence');
+      sendJson(res, 200, { ok: true });
     } catch (error) {
       sendError(res, 503, 'horseracing_unavailable', error.message);
     }
