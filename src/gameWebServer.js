@@ -524,6 +524,86 @@ function getWebPachinkoChannelId(sessionId) {
   return `games:web:pachinko:${String(sessionId)}`;
 }
 
+const WEB_MULTIPLAYER_LOBBY_TTL_MS = 6 * 60 * 60 * 1000;
+const webMultiplayerLobbyRegistry = {
+  slots: new Map(),
+  blackjack: new Map(),
+};
+
+function getWebLobbyRegistry(game) {
+  return webMultiplayerLobbyRegistry[game] || null;
+}
+
+function getWebLobbyChannelId(game, lobbyId) {
+  if (game === 'slots') return getWebSlotsChannelId(lobbyId);
+  if (game === 'blackjack') return getWebBlackjackChannelId(lobbyId);
+  if (game === 'holdem') return getWebHoldemChannelId(lobbyId);
+  if (game === 'horseracing') return getWebHorseracingChannelId(lobbyId);
+  if (game === 'pachinko') return getWebPachinkoChannelId(lobbyId);
+  return `games:web:${String(game)}:${String(lobbyId)}`;
+}
+
+function parseWebLobbyId(channelId, game) {
+  const prefix = `games:web:${String(game)}:`;
+  const raw = String(channelId || '');
+  if (!raw.startsWith(prefix)) return null;
+  return raw.slice(prefix.length);
+}
+
+function rememberWebLobby(game, lobbyId) {
+  const registry = getWebLobbyRegistry(game);
+  const normalizedLobbyId = String(lobbyId || '').trim();
+  if (!registry || !normalizedLobbyId) return;
+  const now = Date.now();
+  const existing = registry.get(normalizedLobbyId);
+  registry.set(normalizedLobbyId, {
+    lobbyId: normalizedLobbyId,
+    channelId: getWebLobbyChannelId(game, normalizedLobbyId),
+    firstSeenAt: existing?.firstSeenAt || now,
+    lastSeenAt: now,
+  });
+}
+
+function pruneWebLobbies(game) {
+  const registry = getWebLobbyRegistry(game);
+  if (!registry) return;
+  const cutoff = Date.now() - WEB_MULTIPLAYER_LOBBY_TTL_MS;
+  for (const [lobbyId, entry] of registry.entries()) {
+    if ((entry?.lastSeenAt || 0) < cutoff) {
+      registry.delete(lobbyId);
+    }
+  }
+}
+
+function mergeKnownWebLobbies(game, activeLobbies, buildPlaceholder) {
+  pruneWebLobbies(game);
+  const registry = getWebLobbyRegistry(game);
+  const merged = new Map();
+  const activeIds = new Set();
+
+  for (const lobby of Array.isArray(activeLobbies) ? activeLobbies : []) {
+    if (!lobby?.lobbyId) continue;
+    rememberWebLobby(game, lobby.lobbyId);
+    activeIds.add(lobby.lobbyId);
+    merged.set(lobby.lobbyId, lobby);
+  }
+
+  if (registry) {
+    for (const entry of registry.values()) {
+      if (activeIds.has(entry.lobbyId)) continue;
+      merged.set(entry.lobbyId, buildPlaceholder(entry));
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    const playerDelta = (Number(b.playerCount) || 0) - (Number(a.playerCount) || 0);
+    if (playerDelta !== 0) return playerDelta;
+    const aSeen = registry?.get(a.lobbyId)?.lastSeenAt || 0;
+    const bSeen = registry?.get(b.lobbyId)?.lastSeenAt || 0;
+    return bSeen - aSeen;
+  });
+}
+
 function serializeSlotsPayload(payload) {
   if (!payload || !payload.embed) return null;
   return {
@@ -538,28 +618,38 @@ function serializeSlotsPayload(payload) {
   };
 }
 
-function parseLobbyIdFromChannelId(channelId) {
-  return String(channelId || '').replace(/^games:web:slots:/u, '');
-}
-
 function parsePrefixedId(channelId, prefix) {
   return String(channelId || '').replace(new RegExp(`^games:web:${prefix}:`, 'u'), '');
 }
 
 function serializeSlotsLobbyList(result) {
-  if (!result || !Array.isArray(result.lobbies)) return [];
-  return result.lobbies.map((lobby) => ({
-    lobbyId: parseLobbyIdFromChannelId(lobby.channelId),
-    channelId: lobby.channelId,
-    playerCount: Number(lobby.playerCount) || 0,
-    maxPlayers: Number(lobby.maxPlayers) || 0,
-    lastEvent: lobby.lastEvent || 'Pick a bet, then pull the lever.',
-    players: Array.isArray(lobby.players) ? lobby.players.map((player) => ({
-      username: player.username,
-      bet: player.bet,
-      spinning: Boolean(player.spinning),
-      statusText: player.statusText || '',
-    })) : [],
+  const activeLobbies = Array.isArray(result?.lobbies) ? result.lobbies
+    .map((lobby) => {
+      const lobbyId = parseWebLobbyId(lobby.channelId, 'slots');
+      if (!lobbyId) return null;
+      return {
+        lobbyId,
+        channelId: lobby.channelId,
+        playerCount: Number(lobby.playerCount) || 0,
+        maxPlayers: Number(lobby.maxPlayers) || 0,
+        lastEvent: lobby.lastEvent || 'Pick a bet, then pull the lever.',
+        players: Array.isArray(lobby.players) ? lobby.players.map((player) => ({
+          username: player.username,
+          bet: player.bet,
+          spinning: Boolean(player.spinning),
+          statusText: player.statusText || '',
+        })) : [],
+      };
+    })
+    .filter(Boolean) : [];
+
+  return mergeKnownWebLobbies('slots', activeLobbies, (entry) => ({
+    lobbyId: entry.lobbyId,
+    channelId: entry.channelId,
+    playerCount: 0,
+    maxPlayers: 3,
+    lastEvent: 'Lobby created. Waiting for players.',
+    players: [],
   }));
 }
 
@@ -573,6 +663,34 @@ function serializeTextTables(result, prefix, fallbackMaxPlayers = null) {
     content: table.content || '',
     phase: table.phase || '',
     resolving: Boolean(table.resolving),
+  }));
+}
+
+function serializeBlackjackLobbyList(result) {
+  const activeTables = Array.isArray(result?.tables) ? result.tables
+    .map((table) => {
+      const lobbyId = parseWebLobbyId(table.channelId, 'blackjack');
+      if (!lobbyId) return null;
+      return {
+        lobbyId,
+        channelId: table.channelId,
+        playerCount: Number(table.playerCount) || 0,
+        maxPlayers: Number.isFinite(Number(table.maxPlayers)) ? Number(table.maxPlayers) : null,
+        content: table.content || '',
+        phase: table.phase || '',
+        resolving: Boolean(table.resolving),
+      };
+    })
+    .filter(Boolean) : [];
+
+  return mergeKnownWebLobbies('blackjack', activeTables, (entry) => ({
+    lobbyId: entry.lobbyId,
+    channelId: entry.channelId,
+    playerCount: 0,
+    maxPlayers: null,
+    content: 'Waiting for first hand...',
+    phase: '',
+    resolving: false,
   }));
 }
 
@@ -2456,7 +2574,7 @@ async function handleRequest(req, res) {
     if (!session) return;
     try {
       const result = await manager.sendCommand('blackjack', 'listTables', {}, { channelId: 'games:web:blackjack:lobby-directory' });
-      sendJson(res, 200, { ok: true, lobbies: serializeTextTables(result, 'blackjack') });
+      sendJson(res, 200, { ok: true, lobbies: serializeBlackjackLobbyList(result) });
     } catch (error) {
       sendError(res, 503, 'blackjack_unavailable', error.message);
     }
@@ -2469,6 +2587,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = generateLobbyId('blackjack');
+    rememberWebLobby('blackjack', lobbyId);
     sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/blackjack/${lobbyId}`) });
     return;
   }
@@ -2478,6 +2597,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = decodeURIComponent(blackjackLobbyApiMatch[1]);
+    rememberWebLobby('blackjack', lobbyId);
     const channelId = getWebBlackjackChannelId(lobbyId);
     try {
       const result = await manager.sendCommand('blackjack', 'getTable', { channelId }, { channelId });
@@ -2927,6 +3047,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = generateLobbyId('slots');
+    rememberWebLobby('slots', lobbyId);
     sendJson(res, 200, { ok: true, lobbyId, joinUrl: p(`/slots/${lobbyId}`) });
     return;
   }
@@ -2936,6 +3057,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = decodeURIComponent(slotsLobbyApiMatch[1]);
+    rememberWebLobby('slots', lobbyId);
     const channelId = getWebSlotsChannelId(lobbyId);
     try {
       const result = await manager.sendCommand('slots', 'getLobby', { channelId }, { channelId });
@@ -3039,7 +3161,9 @@ async function handleRequest(req, res) {
   if (blackjackLobbyPageMatch && method === 'GET') {
     const session = requireMemberSession(req, res, { nextPath: p(`/blackjack/${blackjackLobbyPageMatch[1]}`) });
     if (!session) return;
-    sendHtml(res, 200, renderBlackjackLobbyPage(session, decodeURIComponent(blackjackLobbyPageMatch[1])));
+    const lobbyId = decodeURIComponent(blackjackLobbyPageMatch[1]);
+    rememberWebLobby('blackjack', lobbyId);
+    sendHtml(res, 200, renderBlackjackLobbyPage(session, lobbyId));
     return;
   }
   if (pathname === '/holdem' && method === 'GET') {
@@ -3109,7 +3233,9 @@ async function handleRequest(req, res) {
   if (slotsLobbyPageMatch && method === 'GET') {
     const session = requireMemberSession(req, res, { nextPath: p(`/slots/${slotsLobbyPageMatch[1]}`) });
     if (!session) return;
-    sendHtml(res, 200, renderSlotsLobbyPage(session, decodeURIComponent(slotsLobbyPageMatch[1])));
+    const lobbyId = decodeURIComponent(slotsLobbyPageMatch[1]);
+    rememberWebLobby('slots', lobbyId);
+    sendHtml(res, 200, renderSlotsLobbyPage(session, lobbyId));
     return;
   }
 
