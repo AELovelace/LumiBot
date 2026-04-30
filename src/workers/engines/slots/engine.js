@@ -76,7 +76,14 @@ function evaluatePayline(cells) {
     };
   }
 
-  if (nonBellSymbols.length === 2 && uniqueNonBellSymbols.length === 1 && cells.includes(BELL)) {
+  const bellIndex = cells.indexOf(BELL);
+  const bellIsOnEdge = bellIndex === 0 || bellIndex === cells.length - 1;
+  const matchingPairIsAdjacent = cells[0] === cells[1] || cells[1] === cells[2];
+
+  if (nonBellSymbols.length === 2
+    && uniqueNonBellSymbols.length === 1
+    && bellIsOnEdge
+    && matchingPairIsAdjacent) {
     const matchedSymbol = uniqueNonBellSymbols[0];
     return {
       matchedSymbol,
@@ -110,7 +117,7 @@ function buildPayoutSummary() {
     'Hands: 3 rows + 2 diagonals.',
     'Payout = total winning hand points × bet.',
     `Values: 🍋 ${SYMBOL_VALUES['🍋']} • 🍒 ${SYMBOL_VALUES['🍒']} • ⭐ ${SYMBOL_VALUES['⭐']} • 💎 ${SYMBOL_VALUES['💎']} • 7️⃣ ${SYMBOL_VALUES['7️⃣']}`,
-    '🔔 is a wild only with exactly 2 matching non-bell symbols.',
+    '🔔 is a wild only on an outside reel with 2 matching non-bell symbols beside it.',
   ].join('\n');
 }
 
