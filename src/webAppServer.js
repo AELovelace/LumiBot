@@ -68,7 +68,7 @@ let WEB_APP_DISCORD_OAUTH_REDIRECT_URI =
 const WEB_APP_POSTMESSAGE_TARGET_ORIGIN =
   process.env.WEB_APP_POSTMESSAGE_TARGET_ORIGIN?.trim() || '*';
 const WEB_APP_SESSION_SAMESITE =
-  process.env.WEB_APP_SESSION_SAMESITE?.trim() || 'Lax';
+  process.env.WEB_APP_SESSION_SAMESITE?.trim() || 'None';
 const WEB_APP_SESSION_SECURE =
   String(process.env.WEB_APP_SESSION_SECURE || '').trim()
     ? ['1', 'true', 'yes', 'on'].includes(String(process.env.WEB_APP_SESSION_SECURE).trim().toLowerCase())
@@ -76,10 +76,9 @@ const WEB_APP_SESSION_SECURE =
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
-  'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+  'content-security-policy': "base-uri 'self'; form-action 'self'; object-src 'none'",
   'cache-control': 'no-store',
 };
 

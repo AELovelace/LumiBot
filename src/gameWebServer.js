@@ -91,7 +91,7 @@ const GAME_WEB_POSTMESSAGE_TARGET_ORIGIN =
 const GAME_WEB_SESSION_SAMESITE =
   process.env.GAME_WEB_SESSION_SAMESITE?.trim()
   || process.env.WEB_APP_SESSION_SAMESITE?.trim()
-  || 'Lax';
+  || 'None';
 const GAME_WEB_SESSION_SECURE =
   String(process.env.GAME_WEB_SESSION_SECURE || process.env.WEB_APP_SESSION_SECURE || '').trim()
     ? ['1', 'true', 'yes', 'on'].includes(String(process.env.GAME_WEB_SESSION_SECURE || process.env.WEB_APP_SESSION_SECURE).trim().toLowerCase())
@@ -99,10 +99,9 @@ const GAME_WEB_SESSION_SECURE =
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
-  'content-security-policy': "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+  'content-security-policy': "base-uri 'self'; form-action 'self'; object-src 'none'",
   'cache-control': 'no-store',
 };
 
