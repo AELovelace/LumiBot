@@ -78,6 +78,18 @@ process.on('unhandledRejection', (reason) => {
   try { ensureMigrations(); } catch (err) { logger.warn(`api_apps migration failed: ${err.message}`); }
   try { ensureOAuthSchema(); } catch (err) { logger.warn(`OAuth schema init failed: ${err.message}`); }
 
+  // Diagnostic: dump every api_app and the oauth-identity flag SGCServer sees
+  // RIGHT NOW, after migrations. If this disagrees with the raw sqlite3 query
+  // run by an operator, the problem is a separate db file or stale cache.
+  try {
+    const { listApiApps } = require('./apiKeyStore');
+    const apps = listApiApps();
+    logger.info(`[startup] api_apps visible to SGCServer (${apps.length}):`);
+    for (const a of apps) {
+      logger.info(`[startup]   ${a.id} name="${a.name}" oauthExposeDiscordName=${a.oauthExposeDiscordName} disabled=${Boolean(a.disabledAt)} scopes=[${a.scopes.join(',')}]`);
+    }
+  } catch (err) { logger.warn(`api_apps startup dump failed: ${err.message}`); }
+
   try { startApiServer(); }
   catch (err) {
     logger.error(`Failed to start API server: ${err.message}`);

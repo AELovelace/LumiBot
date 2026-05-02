@@ -224,12 +224,27 @@ function issueAccessToken({ clientId, appId, discordId = null, scope = '', grant
   return { plaintext, expiresIn: ACCESS_TOKEN_TTL_S };
 }
 
-function buildOAuthUserProfile(discordId, appId) {
-  if (!discordId) return null;
+function buildOAuthUserProfile(discordId, appId, grantedScope = '') {
+  if (!discordId) {
+    logger.warn(`OAuth identity profile suppressed: missing discord_id (app=${appId || '-'})`);
+    return null;
+  }
   const app = getApiApp(appId);
-  if (!app || !app.oauthExposeDiscordName) return null;
+  if (!app) {
+    logger.warn(`OAuth identity profile suppressed: app not found (app=${appId})`);
+    return null;
+  }
+  const scopeList = String(grantedScope || '').split(/\s+/).filter(Boolean);
+  const grantedIdentityRead = scopeList.includes('identity:read');
+  if (!app.oauthExposeDiscordName && !grantedIdentityRead) {
+    logger.warn(`OAuth identity profile suppressed: app=${appId} oauthExposeDiscordName=${app.oauthExposeDiscordName} grantedScope="${grantedScope}" (enable the per-app flag or grant identity:read)`);
+    return null;
+  }
   const account = getAccountInfo(discordId);
   const discordUsername = String(account?.username || '').trim() || null;
+  if (!discordUsername) {
+    logger.warn(`OAuth identity profile: no username on accounts row for discord=${discordId} (app=${appId})`);
+  }
   return {
     discord_id: String(discordId),
     discord_username: discordUsername,
@@ -265,7 +280,7 @@ function lookupAccessToken(plaintext) {
     discordId: row.discord_id,
     scope: row.scope,
     tokenId: row.token_hash,
-    userProfile: buildOAuthUserProfile(row.discord_id, row.app_id),
+    userProfile: buildOAuthUserProfile(row.discord_id, row.app_id, row.scope),
   };
 }
 
@@ -511,16 +526,24 @@ async function handleTokenEndpoint(req, res, { readJsonOrForm, sendJson, sendErr
       clientId, appId: result.appId, discordId: result.discordId,
       scope: result.scope, grantType: 'authorization_code',
     });
+    // Diagnostic: dump exactly what SGCServer sees for this token exchange.
+    try {
+      const _app = getApiApp(result.appId);
+      logger.info(`[oauth][token] authorization_code exchange: client=${clientId} app=${result.appId} appName="${_app?.name || '?'}" oauthExposeDiscordName=${_app?.oauthExposeDiscordName} scope="${result.scope}" discord_id=${result.discordId || '-'}`);
+    } catch (e) { logger.warn(`[oauth][token] diagnostic dump failed: ${e.message}`); }
     const response = {
       access_token: plaintext, token_type: 'Bearer',
       expires_in: expiresIn, scope: result.scope,
     };
-    const userProfile = buildOAuthUserProfile(result.discordId, result.appId);
+    const userProfile = buildOAuthUserProfile(result.discordId, result.appId, result.scope);
     if (userProfile) {
       response.user = userProfile;
       response.discord_id = userProfile.discord_id;
       response.discord_username = userProfile.discord_username;
       response.discord_name = userProfile.discord_name;
+      logger.info(`[oauth][token] identity attached: app=${result.appId} discord_id=${userProfile.discord_id} username=${userProfile.discord_username || '(null)'}`);
+    } else {
+      logger.warn(`[oauth][token] identity NOT attached: app=${result.appId} discord_id=${result.discordId || '-'} scope="${result.scope}" — see suppression reason above`);
     }
     return sendJson(res, 200, response);
   }
