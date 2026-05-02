@@ -2003,9 +2003,10 @@ function renderApiAppList(flash = null) {
       <td>${escapeHtml(a.scopes.join(', ') || '-')}</td>
       <td>${a.rateLimitPerMin}/min</td>
       <td>${a.canMint ? 'yes' : 'no'}</td>
+      <td>${a.oauthExposeDiscordName ? 'enabled' : 'off'}</td>
       <td>${escapeHtml(a.createdAt)}</td>
     </tr>
-  `).join('') || '<tr><td colspan="6" style="color:#888;">No API apps registered yet.</td></tr>';
+  `).join('') || '<tr><td colspan="7" style="color:#888;">No API apps registered yet.</td></tr>';
 
   return buildPageHtml(`
     <h2>&gt; External API Apps</h2>
@@ -2032,7 +2033,7 @@ function renderApiAppList(flash = null) {
       </p>
     </form>
     <table class="data-table">
-      <thead><tr><th>Name</th><th>Status</th><th>Scopes</th><th>Rate</th><th>Mint</th><th>Created</th></tr></thead>
+      <thead><tr><th>Name</th><th>Status</th><th>Scopes</th><th>Rate</th><th>Mint</th><th>OAuth Name</th><th>Created</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `, 'API Apps — SGC Control Panel');
@@ -2056,6 +2057,8 @@ function renderApiAppNew(flash = null, prev = {}) {
       <p><label>Webhook URL (optional)<br><input type="url" name="webhook_url" value="${escapeHtml(prev.webhook_url || '')}" style="width:100%"></label></p>
       <p style="color:#888;">Webhook hosts must be explicitly allowlisted in <code>${escapeHtml(WEBHOOK_ALLOWLIST_ENV)}</code>.</p>
       <p><label><input type="checkbox" name="can_mint" ${prev.can_mint ? 'checked' : ''}> Allow minting (debits Central Bank)</label></p>
+      <p><label><input type="checkbox" name="oauth_include_discord_name" ${prev.oauth_include_discord_name ? 'checked' : ''}> Expose Discord username in OAuth responses for this app</label></p>
+      <p style="color:#888;">When enabled, authorization_code OAuth tokens and <code>/v1/me</code> include <code>discord_username</code> / <code>discord_name</code>. Off by default for v1 compatibility.</p>
       <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
       <p><button type="submit">Create app + issue first key</button> <a href="${p('/api-apps')}">cancel</a></p>
     </form>
@@ -2267,6 +2270,7 @@ function renderApiAppDetail(appId, flash = null) {
       <li>Scopes: <code>${escapeHtml(app.scopes.join(', ') || '-')}</code></li>
       <li>Rate limit: ${app.rateLimitPerMin}/min</li>
       <li>Mint: ${app.canMint ? 'yes' : 'no'}</li>
+      <li>OAuth Discord username exposure: ${app.oauthExposeDiscordName ? 'enabled' : 'off'}</li>
       <li>Treasury account: <code>${escapeHtml(app.treasuryUserId)}</code> (balance: ${getBalance(app.treasuryUserId).toLocaleString()} SGC)</li>
       <li>Webhook: ${escapeHtml(app.webhookUrl || '-')}</li>
       <li>Owner: <code>${escapeHtml(app.ownerDiscordId)}</code></li>
@@ -2280,6 +2284,8 @@ function renderApiAppDetail(appId, flash = null) {
       <p><label>Webhook URL (optional)<br><input type="url" name="webhook_url" value="${escapeHtml(app.webhookUrl || '')}" style="width:100%"></label></p>
       <p style="color:#888;">Leave blank to disable webhooks. Hosts must be explicitly allowlisted in <code>${escapeHtml(WEBHOOK_ALLOWLIST_ENV)}</code>.</p>
       <p><label><input type="checkbox" name="can_mint" ${app.canMint ? 'checked' : ''}> Allow minting (required for /v1/mint)</label></p>
+      <p><label><input type="checkbox" name="oauth_include_discord_name" ${app.oauthExposeDiscordName ? 'checked' : ''}> Expose Discord username in OAuth responses for this app</label></p>
+      <p style="color:#888;">Enables <code>discord_username</code> / <code>discord_name</code> in authorization_code token responses and <code>/v1/me</code>. Keep it off for legacy apps that expect the older payload shape.</p>
       <fieldset><legend>Scopes</legend>${scopeBoxes}</fieldset>
       <p><button type="submit">Save settings</button></p>
     </form>
@@ -3287,6 +3293,7 @@ async function handleRequest(req, res) {
         const scopes = Object.keys(body).filter((k) => k.startsWith('scope_')).map((k) => k.slice(6));
         const rateLimit = Math.max(1, Number(body.rate_limit_per_min) || 60);
         const canMint = body.can_mint === 'on' || body.can_mint === '1';
+        const oauthExposeDiscordName = body.oauth_include_discord_name === 'on' || body.oauth_include_discord_name === '1';
         const webhookUrl = String(body.webhook_url || '').trim() || null;
         try {
           const app = createApiApp({
@@ -3296,6 +3303,7 @@ async function handleRequest(req, res) {
             scopes,
             rateLimitPerMin: rateLimit,
             canMint,
+            oauthExposeDiscordName,
             webhookUrl,
           });
           const issued = issueApiKey(app.id);
@@ -3364,6 +3372,7 @@ async function handleRequest(req, res) {
         const rateLimit = Math.max(1, Math.min(100000, Math.floor(Number(body.rate_limit_per_min) || 60)));
         const scopes = Object.keys(body).filter((k) => k.startsWith('scope_')).map((k) => k.slice(6));
         const canMint = body.can_mint === 'on' || body.can_mint === '1';
+        const oauthExposeDiscordName = body.oauth_include_discord_name === 'on' || body.oauth_include_discord_name === '1';
         const webhookUrl = String(body.webhook_url || '').trim() || null;
         try {
           const app = getApiApp(appId);
@@ -3371,10 +3380,10 @@ async function handleRequest(req, res) {
             res.end(renderApiAppList({ type: 'error', message: 'App not found.' }));
             return;
           }
-          updateApp(appId, { rateLimitPerMin: rateLimit, scopes, canMint, webhookUrl });
+          updateApp(appId, { rateLimitPerMin: rateLimit, scopes, canMint, oauthExposeDiscordName, webhookUrl });
           res.end(renderApiAppDetail(appId, {
             type: 'success',
-            message: `App settings updated. Rate limit ${rateLimit}/min, mint ${canMint ? 'enabled' : 'disabled'}.`,
+            message: `App settings updated. Rate limit ${rateLimit}/min, mint ${canMint ? 'enabled' : 'disabled'}, OAuth name ${oauthExposeDiscordName ? 'enabled' : 'disabled'}.`,
           }));
         } catch (err) {
           res.end(renderApiAppDetail(appId, { type: 'error', message: err.message }));

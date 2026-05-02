@@ -453,6 +453,9 @@ async function handlePublicRequest(req, res) {
     };
     if (auth.via === 'oauth' && auth.userProfile) {
       response.user = auth.userProfile;
+      response.discord_id = auth.userProfile.discord_id;
+      response.discord_username = auth.userProfile.discord_username;
+      response.discord_name = auth.userProfile.discord_name;
     }
     return sendJson(res, 200, response);
   }

@@ -182,6 +182,7 @@ function createSchema() {
       scopes              TEXT NOT NULL DEFAULT '[]',
       rate_limit_per_min  INTEGER NOT NULL DEFAULT 60,
       can_mint            INTEGER NOT NULL DEFAULT 0,
+      oauth_include_discord_name INTEGER NOT NULL DEFAULT 0,
       webhook_url         TEXT DEFAULT NULL,
       webhook_secret      TEXT DEFAULT NULL,
       created_at          TEXT NOT NULL DEFAULT (datetime('now')),

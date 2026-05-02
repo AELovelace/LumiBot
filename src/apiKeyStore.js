@@ -43,6 +43,22 @@ const WEBHOOK_ALLOWLIST_ENV = 'SGC_WEBHOOK_ALLOWLIST';
 
 function db() { return getEconomyDb(); }
 
+let migrationsRun = false;
+function ensureMigrations() {
+  if (migrationsRun) return;
+  if (!db()) return;
+  try {
+    const cols = db().pragma('table_info(api_apps)').map((c) => c.name);
+    if (!cols.includes('oauth_include_discord_name')) {
+      logger.info('Migrating api_apps: adding oauth_include_discord_name column.');
+      db().exec("ALTER TABLE api_apps ADD COLUMN oauth_include_discord_name INTEGER NOT NULL DEFAULT 0");
+    }
+    migrationsRun = true;
+  } catch (err) {
+    logger.warn(`api_apps migration check failed (non-fatal): ${err.message}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ID + hash helpers
 // ---------------------------------------------------------------------------
@@ -178,6 +194,7 @@ function validateWebhookUrl(value) {
 }
 
 function rowToApp(row) {
+  ensureMigrations();
   if (!row) return null;
   let scopes = [];
   try { scopes = JSON.parse(row.scopes || '[]'); } catch { scopes = []; }
@@ -189,6 +206,7 @@ function rowToApp(row) {
     scopes,
     rateLimitPerMin: row.rate_limit_per_min,
     canMint: Boolean(row.can_mint),
+    oauthExposeDiscordName: Boolean(row.oauth_include_discord_name),
     webhookUrl: row.webhook_url || null,
     webhookSecret: row.webhook_secret || null,
     createdAt: row.created_at,
@@ -208,8 +226,10 @@ function createApiApp({
   scopes = [],
   rateLimitPerMin = 60,
   canMint = false,
+  oauthExposeDiscordName = false,
   webhookUrl = null,
 }) {
+  ensureMigrations();
   if (!name || !ownerDiscordId) throw new Error('name and ownerDiscordId are required');
   const normScopes = normalizeScopes(scopes);
   const id = randomId('app', 6);
@@ -218,8 +238,8 @@ function createApiApp({
 
   db().prepare(`
     INSERT INTO api_apps (id, name, owner_discord_id, description, scopes,
-                          rate_limit_per_min, can_mint, webhook_url, webhook_secret)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          rate_limit_per_min, can_mint, oauth_include_discord_name, webhook_url, webhook_secret)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     String(name).slice(0, 80),
@@ -228,6 +248,7 @@ function createApiApp({
     JSON.stringify(normScopes),
     Math.max(1, Math.floor(Number(rateLimitPerMin) || 60)),
     canMint ? 1 : 0,
+    oauthExposeDiscordName ? 1 : 0,
     normalizedWebhookUrl,
     webhookSecret,
   );
@@ -239,10 +260,12 @@ function createApiApp({
 }
 
 function getApiApp(appId) {
+  ensureMigrations();
   return rowToApp(db().prepare('SELECT * FROM api_apps WHERE id = ?').get(appId));
 }
 
 function listApiApps({ includeDisabled = true } = {}) {
+  ensureMigrations();
   const rows = includeDisabled
     ? db().prepare('SELECT * FROM api_apps ORDER BY created_at DESC').all()
     : db().prepare('SELECT * FROM api_apps WHERE disabled_at IS NULL ORDER BY created_at DESC').all();
@@ -262,7 +285,8 @@ function enableApp(appId) {
   db().prepare('UPDATE api_apps SET disabled_at = NULL WHERE id = ?').run(appId);
 }
 
-function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, name, canMint } = {}) {
+function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, name, canMint, oauthExposeDiscordName } = {}) {
+  ensureMigrations();
   const app = getApiApp(appId);
   if (!app) throw new Error('App not found');
 
@@ -296,6 +320,10 @@ function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, na
   if (typeof canMint === 'boolean') {
     sets.push('can_mint = ?');
     params.push(canMint ? 1 : 0);
+  }
+  if (typeof oauthExposeDiscordName === 'boolean') {
+    sets.push('oauth_include_discord_name = ?');
+    params.push(oauthExposeDiscordName ? 1 : 0);
   }
   if (!sets.length) return app;
   params.push(appId);

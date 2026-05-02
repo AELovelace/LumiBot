@@ -6,6 +6,7 @@
  * Mostly a port of LumiBot's src/apiKeyStore.js with the following additions
  * for the split:
  *  - `is_internal` column on api_apps (added via lazy migration).
+ *  - `oauth_include_discord_name` column on api_apps for per-app OAuth identity exposure.
  *  - `getInternalApp()` synthesizes a privileged in-memory "app" backed by
  *    the SGC_INTERNAL_TOKEN env var so LumiBot can call /internal/* routes
  *    without registering a real api_apps row.
@@ -60,6 +61,10 @@ function ensureMigrations() {
     if (!cols.includes('is_internal')) {
       logger.info('Migrating api_apps: adding is_internal column.');
       db().exec("ALTER TABLE api_apps ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!cols.includes('oauth_include_discord_name')) {
+      logger.info('Migrating api_apps: adding oauth_include_discord_name column.');
+      db().exec("ALTER TABLE api_apps ADD COLUMN oauth_include_discord_name INTEGER NOT NULL DEFAULT 0");
     }
     migrationsRun = true;
   } catch (err) {
@@ -210,6 +215,7 @@ function rowToApp(row) {
     scopes,
     rateLimitPerMin: row.rate_limit_per_min,
     canMint: Boolean(row.can_mint),
+    oauthExposeDiscordName: Boolean(row.oauth_include_discord_name),
     isInternal: Boolean(row.is_internal),
     webhookUrl: row.webhook_url || null,
     webhookSecret: row.webhook_secret || null,
@@ -232,6 +238,7 @@ function getInternalApp() {
     scopes: VALID_SCOPES.slice(),
     rateLimitPerMin: 0,         // 0 == no rate limit
     canMint: true,
+    oauthExposeDiscordName: false,
     isInternal: true,
     webhookUrl: null,
     webhookSecret: null,
@@ -261,6 +268,7 @@ function createApiApp({
   scopes = [],
   rateLimitPerMin = 60,
   canMint = false,
+  oauthExposeDiscordName = false,
   webhookUrl = null,
   isInternal = false,
 }) {
@@ -273,8 +281,8 @@ function createApiApp({
 
   db().prepare(`
     INSERT INTO api_apps (id, name, owner_discord_id, description, scopes,
-                          rate_limit_per_min, can_mint, webhook_url, webhook_secret, is_internal)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          rate_limit_per_min, can_mint, oauth_include_discord_name, webhook_url, webhook_secret, is_internal)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     String(name).slice(0, 80),
@@ -283,6 +291,7 @@ function createApiApp({
     JSON.stringify(normScopes),
     Math.max(1, Math.floor(Number(rateLimitPerMin) || 60)),
     canMint ? 1 : 0,
+    oauthExposeDiscordName ? 1 : 0,
     normalizedWebhookUrl,
     webhookSecret,
     isInternal ? 1 : 0,
@@ -319,7 +328,7 @@ function enableApp(appId) {
   db().prepare('UPDATE api_apps SET disabled_at = NULL WHERE id = ?').run(appId);
 }
 
-function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, name, canMint } = {}) {
+function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, name, canMint, oauthExposeDiscordName } = {}) {
   const app = getApiApp(appId);
   if (!app) throw new Error('App not found');
   const sets = [];
@@ -336,6 +345,7 @@ function updateApp(appId, { rateLimitPerMin, scopes, webhookUrl, description, na
   if (typeof description === 'string') { sets.push('description = ?'); params.push(description.slice(0, 500)); }
   if (typeof name === 'string' && name.trim()) { sets.push('name = ?'); params.push(name.trim().slice(0, 80)); }
   if (typeof canMint === 'boolean') { sets.push('can_mint = ?'); params.push(canMint ? 1 : 0); }
+  if (typeof oauthExposeDiscordName === 'boolean') { sets.push('oauth_include_discord_name = ?'); params.push(oauthExposeDiscordName ? 1 : 0); }
   if (!sets.length) return app;
   params.push(appId);
   db().prepare(`UPDATE api_apps SET ${sets.join(', ')} WHERE id = ?`).run(...params);

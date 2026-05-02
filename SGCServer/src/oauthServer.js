@@ -224,16 +224,16 @@ function issueAccessToken({ clientId, appId, discordId = null, scope = '', grant
   return { plaintext, expiresIn: ACCESS_TOKEN_TTL_S };
 }
 
-function hasGrantedScope(scopeString, scope) {
-  return String(scopeString || '').split(/\s+/u).filter(Boolean).includes(scope);
-}
-
-function buildOAuthUserProfile(discordId, scopeString) {
-  if (!discordId || !hasGrantedScope(scopeString, 'identity:read')) return null;
+function buildOAuthUserProfile(discordId, appId) {
+  if (!discordId) return null;
+  const app = getApiApp(appId);
+  if (!app || !app.oauthExposeDiscordName) return null;
   const account = getAccountInfo(discordId);
+  const discordUsername = String(account?.username || '').trim() || null;
   return {
     discord_id: String(discordId),
-    discord_username: String(account?.username || '').trim() || null,
+    discord_username: discordUsername,
+    discord_name: discordUsername,
   };
 }
 
@@ -265,7 +265,7 @@ function lookupAccessToken(plaintext) {
     discordId: row.discord_id,
     scope: row.scope,
     tokenId: row.token_hash,
-    userProfile: buildOAuthUserProfile(row.discord_id, row.scope),
+    userProfile: buildOAuthUserProfile(row.discord_id, row.app_id),
   };
 }
 
@@ -515,8 +515,13 @@ async function handleTokenEndpoint(req, res, { readJsonOrForm, sendJson, sendErr
       access_token: plaintext, token_type: 'Bearer',
       expires_in: expiresIn, scope: result.scope,
     };
-    const userProfile = buildOAuthUserProfile(result.discordId, result.scope);
-    if (userProfile) response.user = userProfile;
+    const userProfile = buildOAuthUserProfile(result.discordId, result.appId);
+    if (userProfile) {
+      response.user = userProfile;
+      response.discord_id = userProfile.discord_id;
+      response.discord_username = userProfile.discord_username;
+      response.discord_name = userProfile.discord_name;
+    }
     return sendJson(res, 200, response);
   }
 
