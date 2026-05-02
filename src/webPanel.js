@@ -2177,8 +2177,10 @@ function renderOAuthConsent(session, client, app, payload, flash = null) {
       <div><code>${escapeHtml(client.client_id)}</code></div>
     </div>
     <div class="meta-row">
-      <div class="meta-label">External Account</div>
-      <div><code>${escapeHtml(payload.externalId)}</code>${payload.externalName ? ` // ${escapeHtml(payload.externalName)}` : ''}</div>
+      <div class="meta-label">${payload.externalId ? 'External Account' : 'Sign-in Mode'}</div>
+      <div>${payload.externalId
+        ? `<code>${escapeHtml(payload.externalId)}</code>${payload.externalName ? ` // ${escapeHtml(payload.externalName)}` : ''}`
+        : '<em>Discord sign-in (no external account link)</em>'}</div>
     </div>
     <div class="meta-row">
       <div class="meta-label">Redirect URI</div>
@@ -2379,9 +2381,10 @@ function validateConsentPayload(payload) {
   if (!payload.state) return 'state is required';
   if (!payload.codeChallenge) return 'code_challenge is required';
   if (payload.codeChallengeMethod !== 'S256') return 'code_challenge_method must be S256';
-  if (!payload.externalId) return 'external_id is required';
-  if (payload.externalId.length > 200) return 'external_id is too long';
-  if (payload.externalName.length > 80) return 'external_name is too long';
+  // external_id is optional: omit it for pure Discord sign-in flows where
+  // the app uses discord_id from the token response as its user identity.
+  if (payload.externalId && payload.externalId.length > 200) return 'external_id is too long';
+  if (payload.externalName && payload.externalName.length > 80) return 'external_name is too long';
   return null;
 }
 

@@ -193,7 +193,37 @@ Notes:
 - The OAuth client must allow the `authorization_code` grant.
 - `redirect_uri` must exactly match a registered redirect URI.
 - `state` and PKCE (`code_challenge`, `code_challenge_method=S256`) are required.
-- `external_id` is the identity that will be linked once the browser flow completes.
+- `external_id` is **optional**. If supplied, it will be linked to the player's Discord account once the browser flow completes (legacy linking mode).
+- If `external_id` is omitted, the flow operates in **sign-in mode**: the token response includes `discord_id` (always) and, if the app/scope allows, `discord_username`/`discord_name`. Use `discord_id` as the stable user identifier inside your app.
+
+##### Sign-in mode (no external_id)
+
+For apps that cannot generate a stable external identity, use SGC as a Discord OAuth identity provider:
+
+1. POST `/v1/links/oauth/start` with no `external_id` field.
+2. Player visits the returned `authorize_url`, signs into Discord, approves.
+3. Your callback receives the code; you POST it to `/oauth/token` as normal.
+4. The token response includes `discord_id` — store this as the user identifier in your app's session/db.
+5. If you also want the Discord username, request scope `identity:read` (and have the app flag `oauth_include_discord_name` enabled, or just the scope grant alone is sufficient).
+
+Token response (sign-in mode):
+
+```json
+{
+  "access_token": "sgc_at_...",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "scope": "identity:read balance:read",
+  "discord_id": "319254336402358272",
+  "user": {
+    "discord_id": "319254336402358272",
+    "discord_username": ".doll",
+    "discord_name": ".doll"
+  },
+  "discord_username": ".doll",
+  "discord_name": ".doll"
+}
+```
 
 #### `POST /v1/links/codes/redeem`  *(scope `links:redeem`)*
 

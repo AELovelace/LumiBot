@@ -330,9 +330,12 @@ function validateAuthorizationRequest({
   if (codeChallengeMethod !== 'S256') {
     return { error: 'invalid_request', message: 'code_challenge_method must be S256' };
   }
-  if (!externalId) return { error: 'invalid_request', message: 'external_id is required' };
-  if (externalId.length > 200) return { error: 'invalid_request', message: 'external_id too long' };
-  if (externalName.length > 80) return { error: 'invalid_request', message: 'external_name too long' };
+  // external_id is optional. When supplied, the flow links the player's
+  // Discord account to the app's user identity (legacy behavior). When
+  // omitted, the flow acts as pure sign-in: the app receives discord_id
+  // in the token response and uses it as the stable user identifier.
+  if (externalId && externalId.length > 200) return { error: 'invalid_request', message: 'external_id too long' };
+  if (externalName && externalName.length > 80) return { error: 'invalid_request', message: 'external_name too long' };
   const app = getApiApp(client.app_id);
   if (!app || app.disabledAt) return { error: 'invalid_client', message: 'App disabled' };
   if (scope) {
@@ -391,7 +394,8 @@ function createAuthorizationUrl({
   authorizeUrl.searchParams.set('state', normalizedState);
   authorizeUrl.searchParams.set('code_challenge', normalizedCodeChallenge);
   authorizeUrl.searchParams.set('code_challenge_method', normalizedMethod);
-  authorizeUrl.searchParams.set('external_id', normalizedExternalId);
+  // Sign-in mode: omit external_id when the app didn't supply one.
+  if (normalizedExternalId) authorizeUrl.searchParams.set('external_id', normalizedExternalId);
   if (normalizedScope) authorizeUrl.searchParams.set('scope', normalizedScope);
   if (normalizedExternalName) authorizeUrl.searchParams.set('external_name', normalizedExternalName);
 
@@ -535,10 +539,12 @@ async function handleTokenEndpoint(req, res, { readJsonOrForm, sendJson, sendErr
       access_token: plaintext, token_type: 'Bearer',
       expires_in: expiresIn, scope: result.scope,
     };
+    // Always return discord_id on authorization_code grants so the app has
+    // a stable user identifier even in pure sign-in mode (no external_id).
+    if (result.discordId) response.discord_id = String(result.discordId);
     const userProfile = buildOAuthUserProfile(result.discordId, result.appId, result.scope);
     if (userProfile) {
       response.user = userProfile;
-      response.discord_id = userProfile.discord_id;
       response.discord_username = userProfile.discord_username;
       response.discord_name = userProfile.discord_name;
       logger.info(`[oauth][token] identity attached: app=${result.appId} discord_id=${userProfile.discord_id} username=${userProfile.discord_username || '(null)'}`);
