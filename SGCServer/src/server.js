@@ -207,7 +207,17 @@ function authenticate(req) {
   if (!token) return null;
   if (token.startsWith(oauth.ACCESS_TOKEN_PREFIX)) {
     const r = oauth.lookupAccessToken(token);
-    if (r) return { app: r.app, keyId: r.tokenId, keyPrefix: 'oauth', via: 'oauth' };
+    if (r) {
+      return {
+        app: r.app,
+        keyId: r.tokenId,
+        keyPrefix: 'oauth',
+        via: 'oauth',
+        discordId: r.discordId,
+        scope: r.scope,
+        userProfile: r.userProfile || null,
+      };
+    }
     return null;
   }
   const r = lookupApiKey(token);
@@ -432,7 +442,7 @@ async function handlePublicRequest(req, res) {
 
   // Identity probe.
   if (pathname === '/v1/me' && method === 'GET') {
-    return sendJson(res, 200, {
+    const response = {
       app: {
         id: app.id, name: app.name, scopes: app.scopes,
         rate_limit_per_min: app.rateLimitPerMin,
@@ -440,7 +450,11 @@ async function handlePublicRequest(req, res) {
         treasury_balance: getBalance(app.treasuryUserId),
         auth_via: auth.via,
       },
-    });
+    };
+    if (auth.via === 'oauth' && auth.userProfile) {
+      response.user = auth.userProfile;
+    }
+    return sendJson(res, 200, response);
   }
 
   // ---------- Links ----------

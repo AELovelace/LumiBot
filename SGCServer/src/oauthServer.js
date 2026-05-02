@@ -26,7 +26,7 @@
 
 const crypto = require('node:crypto');
 const { logger } = require('./logger');
-const { getEconomyDb } = require('./economyStore');
+const { getEconomyDb, getAccountInfo } = require('./economyStore');
 const { getApiApp, upsertExternalAccountLink } = require('./apiKeyStore');
 
 const ACCESS_TOKEN_PREFIX = 'sgc_at_';
@@ -224,6 +224,19 @@ function issueAccessToken({ clientId, appId, discordId = null, scope = '', grant
   return { plaintext, expiresIn: ACCESS_TOKEN_TTL_S };
 }
 
+function hasGrantedScope(scopeString, scope) {
+  return String(scopeString || '').split(/\s+/u).filter(Boolean).includes(scope);
+}
+
+function buildOAuthUserProfile(discordId, scopeString) {
+  if (!discordId || !hasGrantedScope(scopeString, 'identity:read')) return null;
+  const account = getAccountInfo(discordId);
+  return {
+    discord_id: String(discordId),
+    discord_username: String(account?.username || '').trim() || null,
+  };
+}
+
 /**
  * Validate an OAuth access token. Returns { app, discordId, scope, tokenId }
  * or null. Used by the API server's bearer auth path.
@@ -252,6 +265,7 @@ function lookupAccessToken(plaintext) {
     discordId: row.discord_id,
     scope: row.scope,
     tokenId: row.token_hash,
+    userProfile: buildOAuthUserProfile(row.discord_id, row.scope),
   };
 }
 
@@ -497,10 +511,13 @@ async function handleTokenEndpoint(req, res, { readJsonOrForm, sendJson, sendErr
       clientId, appId: result.appId, discordId: result.discordId,
       scope: result.scope, grantType: 'authorization_code',
     });
-    return sendJson(res, 200, {
+    const response = {
       access_token: plaintext, token_type: 'Bearer',
       expires_in: expiresIn, scope: result.scope,
-    });
+    };
+    const userProfile = buildOAuthUserProfile(result.discordId, result.scope);
+    if (userProfile) response.user = userProfile;
+    return sendJson(res, 200, response);
   }
 
   return sendError(res, 400, 'unsupported_grant_type', `Unknown grant_type: ${grantType}`);

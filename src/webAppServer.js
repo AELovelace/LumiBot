@@ -56,6 +56,11 @@ const {
   getActionReceiptByKey,
   getReceiptsForUser,
 } = require('./webAppStore');
+const {
+  listLinksForDiscordUser,
+  revokeLinkByIdForDiscordUser,
+  apiUserTransactions,
+} = require('./apiKeyStore');
 
 let WEB_APP_PORT = Number(process.env.WEB_APP_PORT) || 7171;
 let WEB_APP_HOST = process.env.WEB_APP_HOST || '0.0.0.0';
@@ -291,6 +296,7 @@ function renderPage(title, session, body, {
   const nav = [
     ['/', 'Dashboard'],
     ['/bank', 'Bank'],
+    ['/apps', 'Apps'],
     ['/stocks', 'Stocks'],
     ['/portfolio', 'Portfolio'],
     ['/bets', 'Bets'],
@@ -439,6 +445,19 @@ function renderPage(title, session, body, {
     display: inline-block;
     text-decoration: none;
   }
+  button.danger {
+    background: #ff5f7a;
+    border: 0;
+    color: #14080d;
+    padding: 10px 14px;
+    font-family: 'VT323', monospace;
+    font-size: 22px;
+    cursor: pointer;
+  }
+  .inline-form {
+    display: inline;
+    margin: 0;
+  }
   .panel {
     display: grid;
     gap: 14px;
@@ -557,6 +576,12 @@ function renderNotifications(notifications) {
   `).join('')}</div>`;
 }
 
+function renderFlashMessage(flash) {
+  if (!flash || !flash.message) return '';
+  const type = flash.type === 'error' ? 'error' : 'success';
+  return `<div class="flash ${type}">${escapeHtml(flash.message)}</div>`;
+}
+
 function buildWalletSummary(userId) {
   return {
     balance: getBalance(userId),
@@ -574,6 +599,7 @@ function renderDashboard(session) {
   const transactions = getUserTransactions(session.discordId, 8);
   const receipts = getReceiptsForUser(session.discordId, 6);
   const notifications = getNotificationsForUser(session.discordId, 6);
+  const linkedApps = listLinksForDiscordUser(session.discordId);
 
   return renderPage('Lumi Web Dashboard', session, `
     <section class="stack">
@@ -581,12 +607,14 @@ function renderDashboard(session) {
       <div class="card"><h2>Transfer Fee</h2><div class="metric">${Math.round(wallet.transferFeeRate * 100)}%</div><div class="muted">${wallet.lottoDay ? 'Lotto day fee is active.' : 'Normal transfer rate.'}</div></div>
       <div class="card"><h2>Central Bank</h2><div class="metric">${wallet.centralBankBalance.toLocaleString()}</div><div class="muted">System reserve</div></div>
       <div class="card"><h2>Momiji Casino</h2><div class="metric">${wallet.casinoBalance.toLocaleString()}</div><div class="muted">House balance snapshot</div></div>
+      <div class="card"><h2>Linked Apps</h2><div class="metric">${linkedApps.length}</div><div class="muted">External apps with access to your account</div></div>
     </section>
     <div class="panel" style="margin-top:14px;">
       <div class="card">
         <h2>Quick Actions</h2>
         <a class="pill" href="${p('/bank/send')}">Send SGC</a>
         <a class="pill" href="${p('/bank/raffle')}" style="margin-left:8px;">Buy Raffle Ticket</a>
+        <a class="pill" href="${p('/apps')}" style="margin-left:8px;">Manage Apps</a>
         <a class="pill" href="${p('/stocks')}" style="margin-left:8px;">Open Stocks</a>
         <a class="pill" href="${p('/bets')}" style="margin-left:8px;">Open Bets</a>
       </div>
@@ -604,6 +632,65 @@ function renderDashboard(session) {
       </div>
     </div>
   `, { active: '/' });
+}
+
+function renderAppsPage(session, flash = null) {
+  ensureAccount(session.discordId, session.username);
+  const links = listLinksForDiscordUser(session.discordId);
+
+  const content = links.length
+    ? `<div class="list">${links.map((link) => {
+      const recent = apiUserTransactions({
+        app: { id: link.app_id },
+        externalId: link.external_id,
+        limit: 5,
+      });
+      const activity = recent && Array.isArray(recent.transactions) && recent.transactions.length
+        ? `<div class="muted" style="margin-top:8px;">Recent API activity</div>
+           <div class="muted">${recent.transactions.map((txn) => {
+             const sign = txn.from_user_id === session.discordId ? '-' : '+';
+             return `${escapeHtml(txn.created_at)} • ${sign}${Number(txn.amount).toLocaleString()} SGC • ${escapeHtml(txn.type)}`;
+           }).join('<br>')}</div>`
+        : '<div class="muted" style="margin-top:8px;">No recent API activity.</div>';
+      const status = link.app_disabled_at ? 'Disabled by admin' : 'Active';
+      return `
+        <div class="item">
+          <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div><strong>${escapeHtml(link.app_name || link.app_id)}</strong></div>
+              <div class="muted mono">${escapeHtml(link.app_id)}</div>
+              <div class="muted">Linked ${escapeHtml(link.created_at)} • Status: ${escapeHtml(status)}</div>
+              <div class="muted">External id: <span class="mono">${escapeHtml(link.external_id)}</span>${link.external_name ? ` (${escapeHtml(link.external_name)})` : ''}</div>
+            </div>
+            <form class="inline-form" method="POST" action="${p(`/apps/links/${link.id}/revoke`)}">
+              <button class="danger" type="submit">Revoke</button>
+            </form>
+          </div>
+          ${activity}
+        </div>
+      `;
+    }).join('')}</div>`
+    : '<p class="muted">You have no active app links. Use `/lumi-link app` in Discord to link an external app, then come back here to review or revoke it.</p>';
+
+  return renderPage('Linked Apps', session, `
+    <div class="grid">
+      <div class="card">
+        <h2>Linked Apps</h2>
+        <div class="muted">Review which external apps can access your SadGirlCoin account and revoke any link you no longer trust.</div>
+      </div>
+      <div class="card">
+        <h2>How linking works</h2>
+        <div class="muted">Links are created from Discord with \`/lumi-link app\`. Once linked, an app can keep using the scopes it was granted until you revoke it here or with \`/lumi-link revoke\`.</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px;">
+      ${renderFlashMessage(flash)}
+      <div class="card">
+        <h2>Active Links</h2>
+        ${content}
+      </div>
+    </div>
+  `, { active: '/apps' });
 }
 
 function renderBankPage(session) {
@@ -1832,6 +1919,23 @@ async function handleRequest(req, res) {
     return;
   }
 
+  const revokeAppLinkMatch = pathname.match(/^\/apps\/links\/(\d+)\/revoke$/u);
+  if (revokeAppLinkMatch && method === 'POST') {
+    const originCheck = validateSameOrigin(req);
+    if (!originCheck.ok) {
+      sendHtml(res, 403, '<!DOCTYPE html><html lang="en"><body><p>Cross-site request blocked.</p></body></html>');
+      return;
+    }
+    const session = requireMemberSession(req, res, { nextPath: p('/apps') });
+    if (!session) return;
+    const revoked = revokeLinkByIdForDiscordUser(Number(revokeAppLinkMatch[1]), session.discordId);
+    const flash = revoked
+      ? { type: 'success', message: 'App link revoked. That app can no longer access your SadGirlCoin account.' }
+      : { type: 'error', message: 'That app link could not be revoked. It may already be gone or belong to another account.' };
+    sendHtml(res, revoked ? 200 : 404, renderAppsPage(session, flash));
+    return;
+  }
+
   if (pathname === '/api/stocks' && method === 'GET') {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
@@ -2331,6 +2435,13 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { nextPath: p('/bank') });
     if (!session) return;
     sendHtml(res, 200, renderBankPage(session));
+    return;
+  }
+
+  if (pathname === '/apps' && method === 'GET') {
+    const session = requireMemberSession(req, res, { nextPath: p('/apps') });
+    if (!session) return;
+    sendHtml(res, 200, renderAppsPage(session));
     return;
   }
 

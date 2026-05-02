@@ -26,6 +26,7 @@ const {
 let fireWebhookEvent = null; // Lazy-loaded to avoid circular dependency.
 
 const VALID_SCOPES = Object.freeze([
+  'identity:read',
   'balance:read',
   'txn:read',
   'coins:debit',

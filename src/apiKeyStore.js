@@ -25,6 +25,7 @@ const {
 let fireWebhookEvent = null; // Lazy-loaded to avoid circular dependency
 
 const VALID_SCOPES = Object.freeze([
+  'identity:read',
   'balance:read',
   'txn:read',
   'coins:debit',
@@ -532,6 +533,13 @@ function revokeLinkById(linkId) {
   return r.changes > 0;
 }
 
+function revokeLinkByIdForDiscordUser(linkId, discordId) {
+  const r = db().prepare(
+    "UPDATE external_account_links SET revoked_at = datetime('now') WHERE id = ? AND discord_id = ? AND revoked_at IS NULL",
+  ).run(linkId, String(discordId));
+  return r.changes > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Idempotency
 // ---------------------------------------------------------------------------
@@ -856,6 +864,7 @@ module.exports = {
   revokeLinkByExternal,
   revokeLinkByDiscord,
   revokeLinkById,
+  revokeLinkByIdForDiscordUser,
   // Idempotency
   getIdempotentResponse,
   storeIdempotentResponse,
