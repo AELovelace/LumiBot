@@ -786,8 +786,10 @@ function buyShares(userId, username, stockId, investmentAmount) {
   syncStockUniverse();
   const stock = getStockById(stockId);
   if (!stock) return { success: false, error: 'Stock not found.' };
-  if (stock.status !== 'active' || !stock.is_listed) {
-    return { success: false, error: 'This stock is not currently listed for new purchases.' };
+  const listedForPurchase = isSyntheticStock(stock)
+    || (stock.status === 'active' && Number(stock.is_listed) === 1);
+  if (!listedForPurchase) {
+    return { success: false, error: 'This guild stock is not currently listed for new purchases.' };
   }
 
   ensureAccount(userId, username);

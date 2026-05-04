@@ -892,7 +892,7 @@ function renderStocksPage(session) {
   return renderPage('LumiStocks', session, `
     <div class="card">
       <h2>Exchange</h2>
-      <p class="muted">Buy and sell with the same stock logic the Discord bot uses.</p>
+      <p class="muted">Buy and sell guild and synthetic listings with the same stock logic the Discord bot uses.</p>
       <table>
         <thead><tr><th>Ticker</th><th>Name</th><th>Price</th><th>Move</th><th>Market Cap</th><th>Holders</th></tr></thead>
         <tbody>

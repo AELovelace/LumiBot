@@ -136,15 +136,15 @@ async function editReplyChunked(interaction, text, { ephemeral = false } = {}) {
 function buildPrivateStockCommand() {
   return new SlashCommandBuilder()
     .setName('lumi-stocks')
-    .setDescription('Big Business Stock Market — buy and sell shares of Big Businesses.')
+    .setDescription('LumiStocks exchange — buy and sell guild and synthetic listings.')
     .addSubcommand((sub) => sub
       .setName('buy')
-      .setDescription('Buy shares of a Big Business stock.')
+      .setDescription('Buy shares of a guild or synthetic stock.')
       .addStringOption((opt) => opt.setName('ticker').setDescription('Stock ticker (e.g., BBI)').setRequired(true))
       .addIntegerOption((opt) => opt.setName('amount').setDescription('SGC to invest').setMinValue(1).setRequired(true)))
     .addSubcommand((sub) => sub
       .setName('sell')
-      .setDescription('Sell shares of a Big Business stock.')
+      .setDescription('Sell shares of a guild or synthetic stock.')
       .addStringOption((opt) => opt.setName('ticker').setDescription('Stock ticker (e.g., BBI)').setRequired(true))
       .addNumberOption((opt) => opt.setName('shares').setDescription('Number of shares to sell').setMinValue(0.01).setRequired(true)))
     .addSubcommand((sub) => sub
@@ -389,7 +389,7 @@ async function handleStockList(interaction) {
   syncStockUniverse();
   const stocks = getAllStocks();
   if (stocks.length === 0) {
-    await interaction.reply({ content: '📊 No Big Business stocks available yet.', ephemeral: true });
+    await interaction.reply({ content: '📊 No guild or synthetic stocks are available yet.', ephemeral: true });
     return;
   }
 
@@ -406,7 +406,7 @@ async function handleStockList(interaction) {
     ].join('\n');
   });
 
-  await replyChunked(interaction, `📊 **Big Business Stock Market**\n\n${lines.join('\n\n')}`, { ephemeral: true });
+  await replyChunked(interaction, `📊 **LumiStocks Exchange**\n\n${lines.join('\n\n')}`, { ephemeral: true });
 }
 
 // ---------------------------------------------------------------------------
