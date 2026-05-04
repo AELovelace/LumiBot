@@ -434,7 +434,10 @@ function upsertExternalAccountLink({ appId, discordId, externalId, externalName 
     'SELECT * FROM external_account_links WHERE app_id = ? AND discord_id = ? AND revoked_at IS NULL',
   ).get(appId, normalizedDiscordId);
   if (existing && existing.external_id !== normalizedExternalId) {
-    return { error: 'discord_already_linked_to_different_external_id' };
+    return {
+      error: 'discord_already_linked_to_different_external_id',
+      conflictingExternalId: String(existing.external_id || ''),
+    };
   }
   const claim = db().prepare(
     'SELECT discord_id FROM external_account_links WHERE app_id = ? AND external_id = ? AND revoked_at IS NULL',
@@ -474,7 +477,10 @@ function upsertExternalAccountLink({ appId, discordId, externalId, externalName 
       return { error: 'external_id_already_linked' };
     }
     if (byDiscord && byDiscord.external_id !== normalizedExternalId) {
-      return { error: 'discord_already_linked_to_different_external_id' };
+      return {
+        error: 'discord_already_linked_to_different_external_id',
+        conflictingExternalId: String(byDiscord.external_id || ''),
+      };
     }
     throw err;
   }

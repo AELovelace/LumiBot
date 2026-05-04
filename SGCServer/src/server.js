@@ -531,7 +531,11 @@ async function handlePublicRequest(req, res) {
         external_id_already_linked: 409,
         discord_already_linked_to_different_external_id: 409,
       };
-      return sendError(res, map[result.error] || 400, result.error, result.error.replace(/_/g, ' '));
+      const extra = {};
+      if (result.conflictingExternalId) {
+        extra.conflicting_external_id = result.conflictingExternalId;
+      }
+      return sendError(res, map[result.error] || 400, result.error, result.error.replace(/_/g, ' '), extra);
     }
     return sendJson(res, 200, {
       link: {

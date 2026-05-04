@@ -438,7 +438,10 @@ function consumeLinkCode(appId, code, externalId, externalName = '') {
       'SELECT * FROM external_account_links WHERE app_id = ? AND discord_id = ? AND revoked_at IS NULL',
     ).get(appId, row.discord_id);
     if (existing && existing.external_id !== String(externalId)) {
-      return { error: 'discord_already_linked_to_different_external_id' };
+      return {
+        error: 'discord_already_linked_to_different_external_id',
+        conflictingExternalId: String(existing.external_id || ''),
+      };
     }
 
     // Conflict if another discord user already claims this external_id under this app.
@@ -485,7 +488,10 @@ function consumeLinkCode(appId, code, externalId, externalName = '') {
         return { error: 'external_id_already_linked' };
       }
       if (byDiscord && byDiscord.external_id !== String(externalId)) {
-        return { error: 'discord_already_linked_to_different_external_id' };
+        return {
+          error: 'discord_already_linked_to_different_external_id',
+          conflictingExternalId: String(byDiscord.external_id || ''),
+        };
       }
       throw err;
     }

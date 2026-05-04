@@ -461,7 +461,12 @@ function consumeAuthorizationCode({ code, clientId, redirectUri, codeVerifier = 
       externalId: row.external_id,
       externalName: row.external_name,
     });
-    if (linked.error) return { error: linked.error };
+    if (linked.error) {
+      return {
+        error: linked.error,
+        conflictingExternalId: linked.conflictingExternalId || null,
+      };
+    }
   }
 
   return {
@@ -525,7 +530,13 @@ async function handleTokenEndpoint(req, res, { readJsonOrForm, sendJson, sendErr
     const redirectUri = String(body.redirect_uri || '').trim();
     const codeVerifier = String(body.code_verifier || '').trim() || null;
     const result = consumeAuthorizationCode({ code, clientId, redirectUri, codeVerifier });
-    if (result.error) return sendError(res, 400, result.error, result.error);
+    if (result.error) {
+      const extra = {};
+      if (result.conflictingExternalId) {
+        extra.conflicting_external_id = result.conflictingExternalId;
+      }
+      return sendError(res, 400, result.error, result.error, extra);
+    }
     const { plaintext, expiresIn } = issueAccessToken({
       clientId, appId: result.appId, discordId: result.discordId,
       scope: result.scope, grantType: 'authorization_code',
