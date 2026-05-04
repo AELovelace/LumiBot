@@ -527,9 +527,9 @@ function ensureSyntheticStockPool(realNames) {
       const preserveCustomTicker = metadata.customTicker === true;
       let effectiveTicker = existing.ticker;
       if (!preserveCustomTicker) {
+        currentTickers.delete(existing.ticker);
         const candidate = createTicker(effectiveName, currentTickers);
         if (candidate !== existing.ticker) {
-          currentTickers.delete(existing.ticker);
           effectiveTicker = candidate;
         }
         currentTickers.add(effectiveTicker);
