@@ -6,6 +6,8 @@ const { logger } = require('./logger');
 const { awardMessageCoins } = require('./sadgirlEconomyStore');
 const { evaluateRewardEligibility } = require('./antiFarming');
 const { getSmokeBoost } = require('./smokeBoost');
+const { getGuildConfig } = require('./guildConfig');
+const { creditPromotionalValueForGuild } = require('./privateStockStore');
 const { buildEconomyCommands, handleBankCommand, handleBetsCommand } = require('./sadgirlEconomyCommands');
 const { handleApiLinkCommand } = require('./apiLinkCommands');
 const { buildTouhouCommand, handleTouhouCommand } = require('./touhouCommands');
@@ -28,6 +30,48 @@ const {
 const { requestLlmCompletion } = require('./llmClient');
 
 const DISCORD_MAX_CHARS = 2000;
+const PROMOTIONAL_LINK_RE = /https?:\/\/[^\s<>()]+/giu;
+
+function normalizePromotionalDomains(rawDomains) {
+  if (!Array.isArray(rawDomains)) return [];
+  return Array.from(new Set(
+    rawDomains
+      .map((domain) => String(domain || '').trim().toLowerCase())
+      .map((domain) => domain.replace(/^www\./u, ''))
+      .filter(Boolean),
+  ));
+}
+
+function collectPromotionalLinks(content, allowedDomains) {
+  const text = String(content || '');
+  const domains = normalizePromotionalDomains(allowedDomains);
+  if (!text || domains.length === 0) return [];
+
+  const matched = text.match(PROMOTIONAL_LINK_RE) || [];
+  const uniqueLinks = new Set();
+
+  for (const rawMatch of matched) {
+    const cleaned = rawMatch.replace(/[),.!?]+$/u, '').trim();
+    if (!cleaned) continue;
+
+    let parsed;
+    try {
+      parsed = new URL(cleaned);
+    } catch {
+      continue;
+    }
+
+    const host = String(parsed.hostname || '').toLowerCase().replace(/^www\./u, '');
+    if (!host) continue;
+
+    const allowed = domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+    if (!allowed) continue;
+
+    uniqueLinks.add(parsed.toString());
+  }
+
+  return Array.from(uniqueLinks);
+}
 
 /**
  * Split a long string into Discord-safe chunks (≤2000 chars),
@@ -425,6 +469,32 @@ async function handleMessageCreate(message) {
     } catch (error) {
       logger.warn('Failed to award message coins.', error.message);
     }
+  }
+
+  // Promotional channel link value: mint configured SGC value into this guild's stock treasury.
+  try {
+    const guildCfg = getGuildConfig(message.guildId);
+    if (guildCfg?.enabled && guildCfg.promotionalChannelId && message.channelId === guildCfg.promotionalChannelId) {
+      const valuePerLink = Number(guildCfg.promotionalSongValue || 0);
+      if (Number.isFinite(valuePerLink) && valuePerLink > 0) {
+        const qualifyingLinks = collectPromotionalLinks(message.content || '', guildCfg.promotionalSongDomains || []);
+        if (qualifyingLinks.length > 0) {
+          const totalValue = Math.round((qualifyingLinks.length * valuePerLink + Number.EPSILON) * 100) / 100;
+          const note = `Promotional song links by ${message.author.username} (${qualifyingLinks.length} link${qualifyingLinks.length === 1 ? '' : 's'})`;
+          const promoResult = creditPromotionalValueForGuild(message.guildId, totalValue, note);
+
+          if (!promoResult.success) {
+            logger.warn(`Failed promotional value credit in guild ${message.guildId}: ${promoResult.error || 'unknown error'}`);
+          } else {
+            logger.debug(
+              `Promotional value credited: guild=${message.guildId} ticker=${promoResult.ticker} amount=${promoResult.credited} links=${qualifyingLinks.length}`,
+            );
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to process promotional channel link value.', error.message);
   }
 
   // ── ! prefix shortcuts for casino games ──

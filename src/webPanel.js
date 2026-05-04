@@ -1010,6 +1010,21 @@ function extractReactionRoleAssignmentsFromBody(body) {
   };
 }
 
+function extractPromotionalSongDomains(value) {
+  const raw = String(value || '');
+  const domains = Array.from(new Set(
+    raw
+      .split(/[\n,]/u)
+      .map((part) => part.trim().toLowerCase())
+      .map((part) => part.replace(/^https?:\/\//u, ''))
+      .map((part) => part.replace(/^www\./u, ''))
+      .map((part) => part.split('/')[0])
+      .filter(Boolean),
+  ));
+
+  return domains.length > 0 ? domains : ['soundcloud.com', 'bandcamp.com'];
+}
+
 function renderGuildEdit(guildId, flash = null) {
   const cfg = getGuildConfig(guildId);
   if (!cfg) {
@@ -1071,6 +1086,20 @@ function renderGuildEdit(guildId, flash = null) {
             <label>LumiBets Archive Channel ID</label>
             <input type="text" name="lumiBetsArchiveChannelId" value="${escapeHtml(cfg.lumiBetsArchiveChannelId || '')}">
           </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Promotional Song Channel ID</label>
+            <input type="text" name="promotionalChannelId" value="${escapeHtml(cfg.promotionalChannelId || '')}" placeholder="Channel where song links are rewarded">
+          </div>
+          <div>
+            <label>Promotional SGC Value Per Link</label>
+            <input type="number" name="promotionalSongValue" value="${Number(cfg.promotionalSongValue || 0)}" min="0" step="0.01">
+          </div>
+        </div>
+        <div>
+          <label>Promotional Allowed Domains (comma/newline separated)</label>
+          <textarea name="promotionalSongDomains" rows="2" placeholder="soundcloud.com, bandcamp.com">${escapeHtml((cfg.promotionalSongDomains || []).join(', '))}</textarea>
         </div>
         <div class="form-row">
           <div>
@@ -1160,6 +1189,20 @@ function renderGuildNew(flash = null, prefill = {}) {
             <label>LumiBets Archive Channel ID</label>
             <input type="text" name="lumiBetsArchiveChannelId" value="${escapeHtml(prefill.lumiBetsArchiveChannelId || '')}">
           </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Promotional Song Channel ID</label>
+            <input type="text" name="promotionalChannelId" value="${escapeHtml(prefill.promotionalChannelId || '')}" placeholder="Channel where song links are rewarded">
+          </div>
+          <div>
+            <label>Promotional SGC Value Per Link</label>
+            <input type="number" name="promotionalSongValue" value="${escapeHtml(prefill.promotionalSongValue || 0)}" min="0" step="0.01">
+          </div>
+        </div>
+        <div>
+          <label>Promotional Allowed Domains (comma/newline separated)</label>
+          <textarea name="promotionalSongDomains" rows="2" placeholder="soundcloud.com, bandcamp.com">${escapeHtml(prefill.promotionalSongDomains || 'soundcloud.com, bandcamp.com')}</textarea>
         </div>
         <div class="form-row">
           <div>
@@ -2853,6 +2896,17 @@ async function handleRequest(req, res) {
       if (body.bigBusinessRoleId !== undefined) updates.bigBusinessRoleId = String(body.bigBusinessRoleId || '').trim();
       if (body.lumiBetsChannelId !== undefined) updates.lumiBetsChannelId = String(body.lumiBetsChannelId || '').trim();
       if (body.lumiBetsArchiveChannelId !== undefined) updates.lumiBetsArchiveChannelId = String(body.lumiBetsArchiveChannelId || '').trim();
+      if (body.promotionalChannelId !== undefined) updates.promotionalChannelId = String(body.promotionalChannelId || '').trim();
+      if (body.promotionalSongValue !== undefined) {
+        const promoValue = Number(body.promotionalSongValue);
+        updates.promotionalSongValue = Number.isFinite(promoValue) && promoValue > 0 ? promoValue : 0;
+      }
+      if (body.promotionalSongDomains !== undefined) {
+        const domainSource = Array.isArray(body.promotionalSongDomains)
+          ? body.promotionalSongDomains.join(',')
+          : String(body.promotionalSongDomains || '');
+        updates.promotionalSongDomains = extractPromotionalSongDomains(domainSource);
+      }
       if (body.starboardChannelId !== undefined) updates.starboardChannelId = String(body.starboardChannelId || '').trim();
       if (body.starboardEmojiName !== undefined) updates.starboardEmojiName = String(body.starboardEmojiName || 'star').trim();
       if (body.starboardMinStars !== undefined) updates.starboardMinStars = Number(body.starboardMinStars) || 4;
@@ -3039,6 +3093,18 @@ async function handleRequest(req, res) {
         return;
       }
 
+      const promotionalChannelId = String(body.promotionalChannelId || '').trim();
+      if (promotionalChannelId && !/^\d+$/u.test(promotionalChannelId)) {
+        res.end(renderGuildNew({ type: 'error', message: 'Promotional Song Channel ID must be numeric.' }, body));
+        return;
+      }
+
+      const promotionalSongValueRaw = Number(body.promotionalSongValue);
+      const promotionalSongValue = Number.isFinite(promotionalSongValueRaw) && promotionalSongValueRaw > 0
+        ? promotionalSongValueRaw
+        : 0;
+      const promotionalSongDomains = extractPromotionalSongDomains(body.promotionalSongDomains);
+
       if (getGuildConfig(body.guildId)) {
         res.end(renderGuildNew({ type: 'error', message: 'A guild with this ID already exists.' }, body));
         return;
@@ -3052,6 +3118,9 @@ async function handleRequest(req, res) {
         bigBusinessRoleId,
         lumiBetsChannelId: body.lumiBetsChannelId || '',
         lumiBetsArchiveChannelId: body.lumiBetsArchiveChannelId || '',
+        promotionalChannelId,
+        promotionalSongValue,
+        promotionalSongDomains,
         reactionRoleMessageId,
         reactionRoleAssignments: parsedReactionRoles.assignments,
         starboardChannelId: body.starboardChannelId || '',
@@ -3115,6 +3184,18 @@ async function handleRequest(req, res) {
         return;
       }
 
+      const promotionalChannelId = String(body.promotionalChannelId || '').trim();
+      if (promotionalChannelId && !/^\d+$/u.test(promotionalChannelId)) {
+        res.end(renderGuildEdit(originalGuildId, { type: 'error', message: 'Promotional Song Channel ID must be numeric.' }));
+        return;
+      }
+
+      const promotionalSongValueRaw = Number(body.promotionalSongValue);
+      const promotionalSongValue = Number.isFinite(promotionalSongValueRaw) && promotionalSongValueRaw > 0
+        ? promotionalSongValueRaw
+        : 0;
+      const promotionalSongDomains = extractPromotionalSongDomains(body.promotionalSongDomains);
+
       upsertGuildConfig({
         guildId,
         guildName: body.guildName,
@@ -3123,6 +3204,9 @@ async function handleRequest(req, res) {
         bigBusinessRoleId,
         lumiBetsChannelId: body.lumiBetsChannelId || '',
         lumiBetsArchiveChannelId: body.lumiBetsArchiveChannelId || '',
+        promotionalChannelId,
+        promotionalSongValue,
+        promotionalSongDomains,
         reactionRoleMessageId,
         reactionRoleAssignments: parsedReactionRoles.assignments,
         starboardChannelId: body.starboardChannelId || '',

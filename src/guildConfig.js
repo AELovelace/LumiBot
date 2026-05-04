@@ -13,6 +13,9 @@
  *   - bigBusinessRoleId     — role pinged for Big Business/LumiStocks updates
  *   - lumiBetsChannelId     — channel where live LumiBets announcements are posted
  *   - lumiBetsArchiveChannelId — channel where resolved LumiBets are archived
+ *   - promotionalChannelId  — channel where promotional song links are tracked
+ *   - promotionalSongValue  — SGC value minted into company treasury per qualifying link
+ *   - promotionalSongDomains — host allowlist for qualifying links (e.g. soundcloud.com)
  *   - reactionRoleMessageId — message ID Lumi watches for reaction roles
  *   - reactionRoleAssignments — emoji↔role bindings for reaction roles
  *   - starboardMinStars     — minimum stars to post (default 4)
@@ -40,6 +43,9 @@ const MAX_REACTION_ROLE_ASSIGNMENTS = 20;
  * @property {string} bigBusinessRoleId
  * @property {string} lumiBetsChannelId
  * @property {string} lumiBetsArchiveChannelId
+ * @property {string} promotionalChannelId
+ * @property {number} promotionalSongValue
+ * @property {string[]} promotionalSongDomains
  * @property {string} reactionRoleMessageId
  * @property {{ emojiKey: string, emojiLabel: string, roleId: string }[]} reactionRoleAssignments
  * @property {number} starboardMinStars
@@ -61,6 +67,9 @@ const DEFAULT_GUILDS = [
     bigBusinessRoleId: '',
     lumiBetsChannelId: '1494917724323971122',
     lumiBetsArchiveChannelId: '1494931183455436870',
+    promotionalChannelId: '',
+    promotionalSongValue: 0,
+    promotionalSongDomains: ['soundcloud.com', 'bandcamp.com'],
     reactionRoleMessageId: '',
     reactionRoleAssignments: [],
     starboardMinStars: 4,
@@ -76,6 +85,9 @@ const DEFAULT_GUILDS = [
     bigBusinessRoleId: '',
     lumiBetsChannelId: '',
     lumiBetsArchiveChannelId: '',
+    promotionalChannelId: '',
+    promotionalSongValue: 0,
+    promotionalSongDomains: ['soundcloud.com', 'bandcamp.com'],
     reactionRoleMessageId: '',
     reactionRoleAssignments: [],
     starboardMinStars: 4,
@@ -127,6 +139,8 @@ function saveConfig() {
 }
 
 function normalizeEntry(entry) {
+  const normalizedPromoValue = Number(entry.promotionalSongValue);
+
   return {
     guildId: String(entry.guildId || ''),
     guildName: String(entry.guildName || ''),
@@ -136,12 +150,34 @@ function normalizeEntry(entry) {
     bigBusinessRoleId: String(entry.bigBusinessRoleId || ''),
     lumiBetsChannelId: String(entry.lumiBetsChannelId || ''),
     lumiBetsArchiveChannelId: String(entry.lumiBetsArchiveChannelId || ''),
+    promotionalChannelId: String(entry.promotionalChannelId || ''),
+    promotionalSongValue: Number.isFinite(normalizedPromoValue) && normalizedPromoValue > 0
+      ? normalizedPromoValue
+      : 0,
+    promotionalSongDomains: normalizePromotionalSongDomains(entry.promotionalSongDomains),
     reactionRoleMessageId: String(entry.reactionRoleMessageId || ''),
     reactionRoleAssignments: normalizeReactionRoleAssignments(entry.reactionRoleAssignments),
     starboardMinStars: Number(entry.starboardMinStars) || 4,
     starboardEmojiName: String(entry.starboardEmojiName || 'star').toLowerCase(),
     enabled: entry.enabled !== false,
   };
+}
+
+function normalizePromotionalSongDomains(domains) {
+  if (!Array.isArray(domains)) {
+    return ['soundcloud.com', 'bandcamp.com'];
+  }
+
+  const cleaned = Array.from(
+    new Set(
+      domains
+        .map((domain) => String(domain || '').trim().toLowerCase())
+        .map((domain) => domain.replace(/^www\./u, ''))
+        .filter(Boolean),
+    ),
+  );
+
+  return cleaned.length > 0 ? cleaned : ['soundcloud.com', 'bandcamp.com'];
 }
 
 function parseReactionRoleEmojiInput(value) {

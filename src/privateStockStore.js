@@ -1191,6 +1191,56 @@ function getStockSummary(stockId) {
 }
 
 // ---------------------------------------------------------------------------
+// Promotional value credits
+// ---------------------------------------------------------------------------
+
+function creditPromotionalValueForGuild(guildId, amount, note = 'Promotional channel link value') {
+  const normalizedAmount = Number(amount);
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+    return { success: false, error: 'Amount must be positive.' };
+  }
+
+  syncStockUniverse();
+  const stock = getStockByGuild(guildId);
+  if (!stock) {
+    return { success: false, error: `No stock found for guild ${guildId}.` };
+  }
+
+  const credited = roundCurrency(normalizedAmount);
+
+  const result = db.transaction(() => {
+    if (isSyntheticStock(stock)) {
+      db.prepare(`
+        UPDATE bb_stocks
+        SET synthetic_treasury = synthetic_treasury + ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(credited, stock.id);
+    } else {
+      const bbUserId = getBigBusinessUserId(stock.guild_id);
+      depositBigBusiness(credited, note, bbUserId);
+    }
+
+    db.prepare(`
+      INSERT INTO bb_transactions (stock_id, user_id, type, total_amount, note)
+      VALUES (?, '__SYSTEM__', 'promo_value', ?, ?)
+    `).run(stock.id, credited, note);
+
+    const newPrice = recalculatePrice(stock.id, 'promotional channel value');
+
+    return {
+      success: true,
+      stockId: stock.id,
+      ticker: stock.ticker,
+      guildId: stock.guild_id,
+      credited,
+      newPrice,
+    };
+  })();
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Backfill: retroactive 5% Doll Street fee on historical buys
 // ---------------------------------------------------------------------------
 
@@ -1265,5 +1315,6 @@ module.exports = {
   recalculatePrice,
   getShareholderValue,
   getStockSummary,
+  creditPromotionalValueForGuild,
   backfillDollStreetFees,
 };
