@@ -898,7 +898,7 @@ function renderStocksPage(session) {
         <tbody>
           ${stocks.map((entry) => `
             <tr>
-              <td><a href="${p(`/stocks/${entry.ticker}`)}" style="color:#ff69b4;text-decoration:none;"><strong>${escapeHtml(entry.ticker)}</strong></a></td>
+              <td><a href="${p(`/stocks/${entry.id}`)}" style="color:#ff69b4;text-decoration:none;"><strong>${escapeHtml(entry.ticker)}</strong></a></td>
               <td>${escapeHtml(entry.business_name)}</td>
               <td>${Number(entry.share_price).toFixed(2)} SGC</td>
               <td>${entry.priceChangePct >= 0 ? '+' : ''}${entry.priceChangePct.toFixed(1)}%</td>
@@ -912,10 +912,10 @@ function renderStocksPage(session) {
   `, { active: '/stocks' });
 }
 
-function renderStockDetailPage(session, ticker) {
-  const detail = buildStockDetailView(ticker, session.discordId);
+function renderStockDetailPage(session, stockRef) {
+  const detail = buildStockDetailView(stockRef, session.discordId);
   if (!detail) {
-    return renderPage('Stock Not Found', session, `<div class="card"><h2>Not found</h2><p>Unknown ticker.</p></div>`, { active: '/stocks' });
+    return renderPage('Stock Not Found', session, `<div class="card"><h2>Not found</h2><p>Unknown stock.</p></div>`, { active: '/stocks' });
   }
 
   const { stock, summary, transactions, viewerHolding } = detail;
@@ -947,7 +947,7 @@ async function submitStockAction(path, payload) {
 document.getElementById('stock-buy-form').addEventListener('submit', (event) => {
   event.preventDefault();
   submitStockAction(${JSON.stringify(p('/api/stocks/buy'))}, {
-    ticker: ${JSON.stringify(stock.ticker)},
+    stockId: ${JSON.stringify(stock.id)},
     amountSgc: Number(document.getElementById('buy-amount').value),
     idempotencyKey: document.getElementById('buy-idempotency-key').value,
   });
@@ -956,7 +956,7 @@ document.getElementById('stock-buy-form').addEventListener('submit', (event) => 
 document.getElementById('stock-sell-form').addEventListener('submit', (event) => {
   event.preventDefault();
   submitStockAction(${JSON.stringify(p('/api/stocks/sell'))}, {
-    ticker: ${JSON.stringify(stock.ticker)},
+    stockId: ${JSON.stringify(stock.id)},
     shares: Number(document.getElementById('sell-shares').value),
     idempotencyKey: document.getElementById('sell-idempotency-key').value,
   });
@@ -1016,7 +1016,7 @@ function renderPortfolioPage(session) {
           <tbody>
             ${holdings.map((holding) => `
               <tr>
-                <td><a href="${p(`/stocks/${holding.ticker}`)}" style="color:#ff69b4;text-decoration:none;">${escapeHtml(holding.ticker)}</a></td>
+                <td><a href="${p(`/stocks/${holding.stock_id}`)}" style="color:#ff69b4;text-decoration:none;">${escapeHtml(holding.ticker)}</a></td>
                 <td>${escapeHtml(holding.business_name)}</td>
                 <td>${Number(holding.shares).toFixed(4)}</td>
                 <td>${Number(holding.avg_cost_basis).toFixed(2)}</td>
@@ -1469,6 +1469,13 @@ function buildStockDetailView(stockRef, userId = null) {
     transactions,
     viewerHolding,
   };
+}
+
+function resolveStockReference(stockRef) {
+  if (stockRef === undefined || stockRef === null) return null;
+  const raw = String(stockRef).trim();
+  if (!raw) return null;
+  return /^\d+$/u.test(raw) ? getStockById(Number(raw)) : getStockByTicker(raw);
 }
 
 function renderStockTransactionsTable(transactions) {
@@ -1963,10 +1970,12 @@ async function handleRequest(req, res) {
     if (!session) return;
     let body;
     try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
-    const ticker = String(body.ticker || '').trim().toUpperCase();
+    const stockRef = body.stockId ?? body.stock ?? body.ticker;
     const amountSgc = Number(body.amountSgc);
     const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 160);
-    if (!ticker) return sendError(res, 400, 'bad_request', 'ticker is required');
+    if (stockRef === undefined || stockRef === null || String(stockRef).trim() === '') {
+      return sendError(res, 400, 'bad_request', 'stockId or ticker is required');
+    }
     if (!Number.isFinite(amountSgc) || amountSgc <= 0 || Math.floor(amountSgc) !== amountSgc) {
       return sendError(res, 400, 'bad_request', 'amountSgc must be a positive integer');
     }
@@ -1974,22 +1983,22 @@ async function handleRequest(req, res) {
     if (existingReceipt) {
       return sendJson(res, 200, { ok: true, replayed: true, message: existingReceipt.summary, receipt: existingReceipt });
     }
-    const stock = getStockByTicker(ticker);
+    const stock = resolveStockReference(stockRef);
     if (!stock) return sendError(res, 404, 'not_found', 'Stock not found');
     const result = buyShares(session.discordId, session.username, stock.id, amountSgc);
     if (!result.success) return sendError(res, 400, 'buy_failed', result.error);
-    const summary = `Bought ${result.shares.toFixed(4)} shares of ${ticker} for ${amountSgc.toLocaleString()} SGC.`;
+    const summary = `Bought ${result.shares.toFixed(4)} shares of ${stock.ticker} for ${amountSgc.toLocaleString()} SGC.`;
     const receipt = createActionReceipt(session.discordId, {
       actionType: 'stocks.buy',
       idempotencyKey,
       summary,
-      payload: { ticker, amountSgc, shares: result.shares, newPrice: result.newPrice },
+      payload: { stockId: stock.id, ticker: stock.ticker, amountSgc, shares: result.shares, newPrice: result.newPrice },
     });
     createNotification(session.discordId, {
       kind: 'stocks',
-      title: `Bought ${ticker}`,
+      title: `Bought ${stock.ticker}`,
       body: summary,
-      link: p(`/stocks/${ticker}`),
+      link: p(`/stocks/${stock.id}`),
     });
     sendJson(res, 200, {
       ok: true,
@@ -2008,10 +2017,12 @@ async function handleRequest(req, res) {
     if (!session) return;
     let body;
     try { body = await readJsonBody(req); } catch (error) { return sendError(res, 400, 'bad_request', error.message); }
-    const ticker = String(body.ticker || '').trim().toUpperCase();
+    const stockRef = body.stockId ?? body.stock ?? body.ticker;
     const shares = Number(body.shares);
     const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 160);
-    if (!ticker) return sendError(res, 400, 'bad_request', 'ticker is required');
+    if (stockRef === undefined || stockRef === null || String(stockRef).trim() === '') {
+      return sendError(res, 400, 'bad_request', 'stockId or ticker is required');
+    }
     if (!Number.isFinite(shares) || shares <= 0) {
       return sendError(res, 400, 'bad_request', 'shares must be a positive number');
     }
@@ -2019,22 +2030,22 @@ async function handleRequest(req, res) {
     if (existingReceipt) {
       return sendJson(res, 200, { ok: true, replayed: true, message: existingReceipt.summary, receipt: existingReceipt });
     }
-    const stock = getStockByTicker(ticker);
+    const stock = resolveStockReference(stockRef);
     if (!stock) return sendError(res, 404, 'not_found', 'Stock not found');
     const result = sellShares(session.discordId, session.username, stock.id, shares);
     if (!result.success) return sendError(res, 400, 'sell_failed', result.error);
-    const summary = `Sold ${Number(shares).toFixed(4)} shares of ${ticker} for ${Number(result.proceeds).toLocaleString()} SGC.`;
+    const summary = `Sold ${Number(shares).toFixed(4)} shares of ${stock.ticker} for ${Number(result.proceeds).toLocaleString()} SGC.`;
     const receipt = createActionReceipt(session.discordId, {
       actionType: 'stocks.sell',
       idempotencyKey,
       summary,
-      payload: { ticker, shares, proceeds: result.proceeds, newPrice: result.newPrice },
+      payload: { stockId: stock.id, ticker: stock.ticker, shares, proceeds: result.proceeds, newPrice: result.newPrice },
     });
     createNotification(session.discordId, {
       kind: 'stocks',
-      title: `Sold ${ticker}`,
+      title: `Sold ${stock.ticker}`,
       body: summary,
-      link: p(`/stocks/${ticker}`),
+      link: p(`/stocks/${stock.id}`),
     });
     sendJson(res, 200, {
       ok: true,
