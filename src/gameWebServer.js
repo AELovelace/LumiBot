@@ -231,7 +231,7 @@ async function readJsonBody(req) {
 }
 
 function renderLoginPage(nextPath = p('/')) {
-  const loginHref = `${p('/auth/discord/login')}?mode=member&popup=1&next=${encodeURIComponent(nextPath)}`;
+  const loginHref = `${p('/auth/discord/login')}?mode=member&popup=0&next=${encodeURIComponent(nextPath)}`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -268,38 +268,8 @@ function renderLoginPage(nextPath = p('/')) {
   <main class="box">
     <h1>LUMI GAMES</h1>
     <p>Sign in with Discord to play the casino games in a dedicated interface.</p>
-    <button class="btn" id="popup-login" type="button">Sign In With Discord</button>
+    <a class="btn" href="${escapeHtml(loginHref)}">Sign In With Discord</a>
   </main>
-<script>
-  const loginUrl = ${JSON.stringify(loginHref)};
-  const appRoot = ${JSON.stringify(p('/'))};
-  function beginPopupLogin() {
-    const popup = window.open(loginUrl, 'lumigames_discord_login', 'popup=yes,width=520,height=760,resizable=yes,scrollbars=yes');
-    if (!popup) {
-      window.open(loginUrl, '_blank', 'noopener');
-      return;
-    }
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
-        if (res.ok) {
-          clearInterval(timer);
-          window.location.href = appRoot;
-        }
-      } catch {}
-      if (popup.closed) clearInterval(timer);
-    }, 1000);
-  }
-  window.addEventListener('message', async (event) => {
-    if (${JSON.stringify(GAME_WEB_POSTMESSAGE_TARGET_ORIGIN)} !== '*' && event.origin !== ${JSON.stringify(GAME_WEB_POSTMESSAGE_TARGET_ORIGIN)}) return;
-    if (event.data?.type !== 'lumigames-auth-complete') return;
-    try {
-      const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
-      if (res.ok) window.location.href = appRoot;
-    } catch {}
-  });
-  document.getElementById('popup-login').addEventListener('click', beginPopupLogin);
-</script>
 </body>
 </html>`;
 }
