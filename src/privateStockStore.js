@@ -317,20 +317,61 @@ function getRealMarketSnapshot() {
       averageTreasury: 1_000,
       averageInvested: 250,
       treasuryStdDev: 0.15,
+      minSharePrice: 25,
+      maxSharePrice: 25,
     };
   }
 
   const treasuries = realStocks.map((stock) => Math.max(1, getCorporateTreasuryBalance(stock)));
   const invested = realStocks.map((stock) => Math.max(0, getCurrentInvestmentCapital(stock.id)));
+  const sharePrices = realStocks
+    .map((stock) => Number(stock.share_price) || 0)
+    .filter((price) => price >= MIN_SHARE_PRICE);
   const averageTreasury = treasuries.reduce((sum, value) => sum + value, 0) / treasuries.length;
   const averageInvested = invested.reduce((sum, value) => sum + value, 0) / invested.length;
   const variance = treasuries.reduce((sum, value) => sum + ((value - averageTreasury) ** 2), 0) / treasuries.length;
+  const minSharePrice = sharePrices.length > 0 ? Math.min(...sharePrices) : 25;
+  const maxSharePrice = sharePrices.length > 0 ? Math.max(...sharePrices) : minSharePrice;
 
   return {
     count: realStocks.length,
     averageTreasury,
     averageInvested,
     treasuryStdDev: Math.sqrt(variance) / Math.max(1, averageTreasury),
+    minSharePrice,
+    maxSharePrice,
+  };
+}
+
+function getPerformanceMultiplier(score) {
+  return clamp(0.85 + ((Number(score) || 1) - 1) * 0.7, 0.65, 1.55);
+}
+
+function getDemandMultiplier(pressure) {
+  return clamp(1 + (Number(pressure) || 0), 0.5, 1.8);
+}
+
+function getSyntheticPriceBand(stock, snapshot) {
+  if (!isSyntheticStock(stock) || !snapshot || snapshot.count <= 0) return null;
+
+  const minRealPrice = Math.max(MIN_SHARE_PRICE, Number(snapshot.minSharePrice) || MIN_SHARE_PRICE);
+  const maxRealPrice = Math.max(minRealPrice, Number(snapshot.maxSharePrice) || minRealPrice);
+  const priceSpread = maxRealPrice - minRealPrice;
+  const performanceRatio = clamp(
+    ((Number(stock.performance_score) || 1) - MIN_PERFORMANCE_SCORE) / (MAX_PERFORMANCE_SCORE - MIN_PERFORMANCE_SCORE),
+    0,
+    1,
+  );
+  const anchorPrice = minRealPrice + (priceSpread * performanceRatio);
+  const marketBuffer = Math.max(2, maxRealPrice * 0.05, priceSpread * 0.12);
+  const anchorFlex = Math.max(3, priceSpread * 0.18);
+  const floor = Math.max(MIN_SHARE_PRICE, Math.max(minRealPrice - marketBuffer, anchorPrice - anchorFlex));
+  const ceiling = Math.max(floor, Math.min(maxRealPrice + marketBuffer, anchorPrice + anchorFlex));
+
+  return {
+    floor,
+    ceiling,
+    anchorPrice,
   };
 }
 
@@ -378,7 +419,12 @@ function computeTargetPerformanceScore(stock, snapshot) {
 }
 
 function refreshSyntheticTreasury(stock, snapshot) {
-  const targetBalance = Math.max(200, snapshot.averageTreasury * (Number(stock.performance_score) || 1));
+  const performanceMultiplier = getPerformanceMultiplier(Number(stock.performance_score) || 1);
+  const syntheticBand = getSyntheticPriceBand(stock, snapshot);
+  const targetSharePrice = syntheticBand
+    ? syntheticBand.anchorPrice
+    : Math.max(MIN_SHARE_PRICE, 25 * (Number(stock.performance_score) || 1));
+  const targetBalance = Math.max(200, (targetSharePrice * BASE_REFERENCE_FLOAT) / Math.max(0.65, performanceMultiplier));
   const currentBalance = Number(stock.synthetic_treasury) || 0;
   const nextBalance = currentBalance > 0
     ? ((currentBalance * 0.7) + (targetBalance * 0.3))
@@ -425,10 +471,20 @@ function calculateDynamicPrice(stock) {
   const intrinsicPerShare = marketCap > 0
     ? marketCap / referenceFloat
     : Math.max(MIN_SHARE_PRICE, snapshotPriceFallback(stock));
-  const performanceMultiplier = clamp(0.85 + ((Number(stock.performance_score) || 1) - 1) * 0.7, 0.65, 1.55);
-  const demandMultiplier = clamp(1 + (Number(stock.demand_pressure) || 0), 0.5, 1.8);
+  const performanceMultiplier = getPerformanceMultiplier(Number(stock.performance_score) || 1);
+  const demandMultiplier = getDemandMultiplier(Number(stock.demand_pressure) || 0);
+  const rawPrice = clamp(intrinsicPerShare * performanceMultiplier * demandMultiplier, MIN_SHARE_PRICE, MAX_SHARE_PRICE);
 
-  return roundCurrency(clamp(intrinsicPerShare * performanceMultiplier * demandMultiplier, MIN_SHARE_PRICE, MAX_SHARE_PRICE));
+  if (!isSyntheticStock(stock)) {
+    return roundCurrency(rawPrice);
+  }
+
+  const syntheticBand = getSyntheticPriceBand(stock, getRealMarketSnapshot());
+  if (!syntheticBand) {
+    return roundCurrency(rawPrice);
+  }
+
+  return roundCurrency(clamp(rawPrice, syntheticBand.floor, syntheticBand.ceiling));
 }
 
 function recordPriceChangeIfNeeded(stockId, oldPrice, newPrice, note) {
