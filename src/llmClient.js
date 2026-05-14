@@ -10,6 +10,14 @@ const MAX_RECENT_ASSISTANT_MESSAGES = 4;
 const DUPLICATE_SENTENCE_THRESHOLD = 0.8;
 const DUPLICATE_MESSAGE_THRESHOLD = 0.88;
 const MAX_FINAL_SENTENCES = 10;
+const REASONING_LEAK_SIGNAL_PATTERN = /(\bi\s+(?:need|should|can|could|must|will|want|have\s+to)\b|\bthe\s+user\s+is\s+probably\b|\bmaybe\s+something\s+like\b|\bkeep\s+it\s+short\b|\bin\s+line\s+with\s+(?:my|the)\s+vibe\b)/giu;
+const REASONING_QUOTE_PATTERN = /"([^"\n]{8,700})"|â€œ([^â€\n]{8,700})â€/gu;
+const REASONING_CONTEXT_PATTERN = /\b(?:user|reply|response|message|tone|vibe|concise|short|assistant|lumi)\b/iu;
+const REASONING_LABEL_PATTERN = /^(?:thinking\s*process|analysis|internal\s*note|chain\s*of\s*thought|cot|reasoning|scratchpad|plan)\s*[:\-]\s*/iu;
+const FINAL_REPLY_MARKERS = [
+  /(?:^|\n)\s*(?:final answer|final reply|answer|response|reply)\s*[:\-]\s*/giu,
+  /(?:^|\n)\s*(?:assistant|lumi)\s*[:\-]\s*/giu,
+];
 
 function buildDelay(attempt) {
   return Math.min(config.llmRetryBaseDelayMs * attempt, 8_000);
@@ -124,6 +132,99 @@ function renderUserContextProfile(userContextProfile) {
   }
 
   return `User context profile:\n${sections.join('\n')}`;
+}
+
+function extractQuotedCandidates(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return [];
+  }
+
+  return [...value.matchAll(REASONING_QUOTE_PATTERN)]
+    .map((match) => {
+      const candidate = typeof match[1] === 'string' && match[1]
+        ? match[1]
+        : match[2];
+      return typeof candidate === 'string' ? candidate.trim() : '';
+    })
+    .filter((candidate) => candidate.length >= 8);
+}
+
+function countReasoningLeakSignals(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return 0;
+  }
+
+  return (value.match(REASONING_LEAK_SIGNAL_PATTERN) || []).length;
+}
+
+function isReasoningLeak(value) {
+  return countReasoningLeakSignals(value) >= 2;
+}
+
+function looksLikeReasoningParagraph(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return false;
+  }
+
+  if (REASONING_LABEL_PATTERN.test(value)) {
+    return true;
+  }
+
+  const signalCount = countReasoningLeakSignals(value);
+  return signalCount >= 2 || (signalCount >= 1 && REASONING_CONTEXT_PATTERN.test(value));
+}
+
+function selectPlausibleReplyParagraphs(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return [];
+  }
+
+  return text
+    .split(/\n\s*\n/u)
+    .map((segment) => stripReasoningArtifactPrefixes(segment.trim()))
+    .filter((segment) => (
+      segment.length >= 3
+      && segment.length <= 700
+      && !looksLikeReasoningParagraph(segment)
+      && !/^\d+[.)]\s+/u.test(segment)
+      && !/^(?:user message|recent chat context|long-term memory clues|web search results)\s*:/iu.test(segment)
+    ));
+}
+
+function extractReplyFromReasoningLeak(text) {
+  if (typeof text !== 'string' || !text.trim() || !isReasoningLeak(text)) {
+    return '';
+  }
+
+  const quoted = extractQuotedCandidates(text);
+  if (quoted.length > 0) {
+    return quoted[quoted.length - 1];
+  }
+
+  const withoutThinkingTags = stripThinkingTags(text);
+
+  for (const marker of FINAL_REPLY_MARKERS) {
+    const matches = [...withoutThinkingTags.matchAll(marker)];
+    if (matches.length === 0) {
+      continue;
+    }
+
+    const lastMatch = matches[matches.length - 1];
+    const candidate = withoutThinkingTags
+      .slice((lastMatch.index || 0) + lastMatch[0].length)
+      .trim();
+
+    if (candidate && !looksLikeReasoningParagraph(candidate)) {
+      return candidate;
+    }
+  }
+
+  const plausibleParagraphs = selectPlausibleReplyParagraphs(withoutThinkingTags);
+  if (plausibleParagraphs.length > 0) {
+    return plausibleParagraphs[plausibleParagraphs.length - 1];
+  }
+
+  return '';
 }
 
 function extractThoughtSegments(text) {
@@ -697,9 +798,13 @@ function buildPrompt({
   return sections.join('\n\n');
 }
 
+function extractReplyFromLeakedReasoning(text) {
+  return extractReplyFromReasoningLeak(text);
+}
+
 function normalizeResponse(text, maxChars, history) {
-  const quotedFallback = extractQuotedReplyFromReasoningLeak(text);
-  const responseSource = quotedFallback || text;
+  const extractedReply = extractReplyFromLeakedReasoning(text);
+  const responseSource = extractedReply || text;
   const stripped = stripPromptEchoAndTranscriptArtifacts(
     stripStageDirections(
       stripReasoningArtifactPrefixes(
@@ -734,6 +839,29 @@ function normalizeResponse(text, maxChars, history) {
 function recoverFallbackResponse(text, maxChars) {
   if (typeof text !== 'string' || !text.trim()) {
     return '';
+  }
+
+  const extractedReply = extractReplyFromLeakedReasoning(text);
+  if (extractedReply) {
+    const normalizedExtractedReply = clampToSentenceLimit(
+      collapseRepeatedPhraseLoops(
+        compactWhitespacePreserveNewlines(
+          applySpeakerDelineators(
+            stripPromptEchoAndTranscriptArtifacts(
+              stripReasoningArtifactPrefixes(extractedReply),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (normalizedExtractedReply && !isDegenerateRepetitiveOutput(normalizedExtractedReply)) {
+      if (normalizedExtractedReply.length <= maxChars) {
+        return normalizedExtractedReply;
+      }
+
+      return `${normalizedExtractedReply.slice(0, Math.max(1, maxChars - 3)).trim()}...`;
+    }
   }
 
   const withoutOpenThinkTag = text
@@ -894,6 +1022,10 @@ async function requestLlmCompletion({
           model: forcedModel,
           stream: false,
           prompt: promptSections,
+          think: config.llmDisableThinking ? false : undefined,
+          chat_template_kwargs: config.llmDisableThinking
+            ? { enable_thinking: false }
+            : undefined,
           // Hard cap on generation length. Stops runaway thinking even when
           // the backend ignores `/no_think`. Also forwarded as llama.cpp's
           // n_predict by Ollama-compatible proxies.
@@ -996,6 +1128,10 @@ async function requestGifSuggestion({ latestContent, assistantResponse, history 
           model: config.chatbotModel,
           stream: false,
           prompt,
+          think: config.llmDisableThinking ? false : undefined,
+          chat_template_kwargs: config.llmDisableThinking
+            ? { enable_thinking: false }
+            : undefined,
         }),
         signal: AbortSignal.timeout(config.llmTimeoutMs),
       });
