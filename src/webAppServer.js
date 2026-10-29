@@ -70,8 +70,6 @@ let WEB_APP_DISCORD_OAUTH_REDIRECT_URI =
   process.env.WEB_APP_DISCORD_OAUTH_REDIRECT_URI?.trim()
   || process.env.DISCORD_OAUTH_REDIRECT_URI?.trim()
   || '';
-const WEB_APP_POSTMESSAGE_TARGET_ORIGIN =
-  process.env.WEB_APP_POSTMESSAGE_TARGET_ORIGIN?.trim() || '*';
 const WEB_APP_SESSION_SAMESITE =
   process.env.WEB_APP_SESSION_SAMESITE?.trim() || 'None';
 const WEB_APP_SESSION_SECURE =
@@ -281,9 +279,8 @@ function renderLoginPage(nextPath = p('/')) {
   }
 
   window.addEventListener('message', async (event) => {
-    if (${JSON.stringify(WEB_APP_POSTMESSAGE_TARGET_ORIGIN)} !== '*' && event.origin !== ${JSON.stringify(WEB_APP_POSTMESSAGE_TARGET_ORIGIN)}) {
-      return;
-    }
+    // The login popup runs on this page's own origin (sadgirlsclub.wtf, or Mnemerynne's arcade): trust nothing else.
+    if (event.origin !== window.location.origin) return;
     if (event.data?.type !== 'lumibot-auth-complete') return;
     try {
       const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
@@ -1825,7 +1822,6 @@ async function handleRequest(req, res) {
       loginPath: `${p('/login')}`,
       authConfig: { redirectUri: WEB_APP_DISCORD_OAUTH_REDIRECT_URI },
       popupMessageType: 'lumibot-auth-complete',
-      popupTargetOrigin: WEB_APP_POSTMESSAGE_TARGET_ORIGIN,
       cookieOptions: {
         sameSite: WEB_APP_SESSION_SAMESITE,
         secure: WEB_APP_SESSION_SECURE,

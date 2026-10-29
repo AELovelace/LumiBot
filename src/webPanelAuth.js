@@ -20,7 +20,7 @@ const CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
 
 /** @type {Map<string, {discordId: string, username: string, avatar: string, roles: string[], isPanelAdmin: boolean, expiresAt: number}>} */
 const sessions = new Map();
-/** @type {Map<string, {expiresAt: number, accessLevel: 'panel'|'member', nextPath: string, popup: boolean}>} */
+/** @type {Map<string, {expiresAt: number, accessLevel: 'panel'|'member', nextPath: string, popup: boolean, redirectUri: string}>} */
 const oauthStates = new Map();
 
 setInterval(() => {
@@ -198,15 +198,49 @@ function normalizeNextPath(nextPath) {
   return raw;
 }
 
-function generateOAuthState({ accessLevel = 'panel', nextPath = '/', popup = false } = {}) {
+function generateOAuthState({ accessLevel = 'panel', nextPath = '/', popup = false, redirectUri = '' } = {}) {
   const state = crypto.randomBytes(24).toString('hex');
   oauthStates.set(state, {
     expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
     accessLevel: accessLevel === 'member' ? 'member' : 'panel',
     nextPath: normalizeNextPath(nextPath),
     popup: Boolean(popup),
+    redirectUri: String(redirectUri || ''),   // the callback Discord was given; the code exchange must send the same one
   });
   return state;
+}
+
+// Hosts other than the configured redirect URI's own that may receive the Discord callback, such as
+// Mnemerynne's arcade (arcade.beepsquad.wtf), which serves this site at its root. Comma-separated host names.
+function getOAuthPublicHosts() {
+  return String(process.env.DISCORD_OAUTH_PUBLIC_HOSTS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+    .map((entry) => {
+      try { return new URL(entry.includes('://') ? entry : `https://${entry}`).host; } catch { return entry; }
+    });
+}
+
+/**
+ * The redirect URI for this login: the configured one, moved onto the host the person is using when that
+ * host is in DISCORD_OAUTH_PUBLIC_HOSTS, so the callback (and the session cookie it sets) lands on the
+ * same origin the login began on. Any other host keeps the configured URI.
+ */
+function resolveRedirectUri(req, configured) {
+  let uri;
+  try { uri = new URL(configured); } catch { return configured; }
+  const host = getRealHost(req).toLowerCase();
+  if (!host || host === uri.host.toLowerCase()) return configured;   // already the configured host
+  if (!getOAuthPublicHosts().includes(host)) return configured;       // unknown host: never follow it
+  uri.protocol = 'https:';                                            // public hosts are always https
+  uri.host = host;                                                    // same path: /lumibot/auth/discord/callback
+  return uri.toString();
+}
+
+// A value placed inside a <script> block: JSON, with "<" escaped so a "</script>" can't end the block.
+function scriptJson(value) {
+  return JSON.stringify(value).replace(/</gu, '\\u003c');
 }
 
 function consumeOAuthState(state) {
@@ -312,8 +346,9 @@ function handleLoginRoute(req, res, opts = {}) {
   const nextPath = normalizeNextPath(parsedUrl.searchParams.get('next') || '/');
   const accessLevel = parsedUrl.searchParams.get('mode') === 'member' ? 'member' : 'panel';
   const popup = parsedUrl.searchParams.get('popup') === '1';
-  const state = generateOAuthState({ accessLevel, nextPath, popup });
-  res.writeHead(302, { Location: buildDiscordAuthorizeUrl(state, cfg) });
+  const callbackUri = resolveRedirectUri(req, redirectUri);   // this host's callback when it's an allowed one
+  const state = generateOAuthState({ accessLevel, nextPath, popup, redirectUri: callbackUri });
+  res.writeHead(302, { Location: buildDiscordAuthorizeUrl(state, { ...cfg, redirectUri: callbackUri }) });
   res.end();
 }
 
@@ -347,7 +382,7 @@ async function handleCallbackRoute(req, res, parsedUrl, opts = {}) {
 
   let tokens;
   try {
-    tokens = await exchangeCode(code, cfg);
+    tokens = await exchangeCode(code, { ...cfg, redirectUri: stateEntry.redirectUri || cfg.redirectUri });   // must match the authorize step
   } catch (err) {
     logger.error('[auth] Token exchange error:', err.message);
     return buildError(500, 'Failed to exchange authorization code with Discord.');
@@ -388,19 +423,24 @@ async function handleCallbackRoute(req, res, parsedUrl, opts = {}) {
 
   if (stateEntry.popup) {
     const popupMessageType = opts.popupMessageType || 'auth-complete';
-    const popupTargetOrigin = opts.popupTargetOrigin || '*';
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Set-Cookie': buildSessionCookieHeader(signedToken, opts.cookieOptions),
     });
+    // The page that opened this popup is on this same origin (its login link is relative), so the message goes
+    // to window.location.origin, whichever host that is (sadgirlsclub.wtf, or the arcade). Opened as a full page
+    // instead (popups blocked, a TV's kiosk browser), there is no opener: carry on to where the login began.
     res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Login Complete</title></head><body>
 <script>
+  let told = false;
   try {
     if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({ type: ${JSON.stringify(popupMessageType)} }, ${JSON.stringify(popupTargetOrigin)});
+      window.opener.postMessage({ type: ${scriptJson(popupMessageType)} }, window.location.origin);
+      told = true;
     }
   } catch {}
-  window.close();
+  if (told) window.close();
+  else window.location.replace(${scriptJson(stateEntry.nextPath || '/')});
 </script>
 Login complete. You can close this window.
 </body></html>`);

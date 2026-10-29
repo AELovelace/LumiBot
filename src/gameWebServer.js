@@ -84,10 +84,6 @@ let GAME_WEB_DISCORD_OAUTH_REDIRECT_URI =
   || process.env.WEB_APP_DISCORD_OAUTH_REDIRECT_URI?.trim()
   || process.env.DISCORD_OAUTH_REDIRECT_URI?.trim()
   || '';
-const GAME_WEB_POSTMESSAGE_TARGET_ORIGIN =
-  process.env.GAME_WEB_POSTMESSAGE_TARGET_ORIGIN?.trim()
-  || process.env.WEB_APP_POSTMESSAGE_TARGET_ORIGIN?.trim()
-  || '*';
 const GAME_WEB_SESSION_SAMESITE =
   process.env.GAME_WEB_SESSION_SAMESITE?.trim()
   || process.env.WEB_APP_SESSION_SAMESITE?.trim()
@@ -302,7 +298,7 @@ function renderLoginPage(nextPath = p('/')) {
     }, 1000);
   }
   window.addEventListener('message', async (event) => {
-    if (${JSON.stringify(GAME_WEB_POSTMESSAGE_TARGET_ORIGIN)} !== '*' && event.origin !== ${JSON.stringify(GAME_WEB_POSTMESSAGE_TARGET_ORIGIN)}) return;
+    if (event.origin !== window.location.origin) return;   // the login popup runs on this page's own origin only
     if (event.data?.type !== 'lumigames-auth-complete') return;
     try {
       const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
@@ -2283,7 +2279,6 @@ async function handleRequest(req, res) {
       loginPath: `${p('/login')}`,
       authConfig: { redirectUri: GAME_WEB_DISCORD_OAUTH_REDIRECT_URI },
       popupMessageType: 'lumigames-auth-complete',
-      popupTargetOrigin: GAME_WEB_POSTMESSAGE_TARGET_ORIGIN,
       cookieOptions: { sameSite: GAME_WEB_SESSION_SAMESITE, secure: GAME_WEB_SESSION_SECURE },
     });
     return;
