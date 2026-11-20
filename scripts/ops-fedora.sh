@@ -57,7 +57,8 @@ require_paths() {
   [[ -d "${INSTALL_DIR}" ]] || fail "Install directory not found: ${INSTALL_DIR}"
   [[ -f "${INSTALL_DIR}/package.json" ]] || fail "package.json not found under ${INSTALL_DIR}"
   [[ -f "${INSTALL_DIR}/requirements.txt" ]] || fail "requirements.txt not found under ${INSTALL_DIR}"
-  [[ -x "${PYTHON_VENV_DIR}/bin/pip" ]] || fail "Python venv pip missing under ${PYTHON_VENV_DIR}"
+  # Ask the venv's python for pip instead of trusting bin/pip's exec bit (a copy once stripped those bits and blocked updates).
+  "${PYTHON_VENV_DIR}/bin/python" -m pip --version >/dev/null 2>&1 || fail "Python venv pip missing under ${PYTHON_VENV_DIR}"
 }
 
 run_as_app_user() {
@@ -202,8 +203,8 @@ run_update() {
   run_as_app_user "cd '${INSTALL_DIR}' && '${NPM_BIN}' ci"
 
   log 'Installing pinned Python dependencies.'
-  run_as_app_user "'${PYTHON_VENV_DIR}/bin/pip' install --upgrade pip setuptools wheel"
-  run_as_app_user "'${PYTHON_VENV_DIR}/bin/pip' install -r '${INSTALL_DIR}/requirements.txt'"
+  run_as_app_user "'${PYTHON_VENV_DIR}/bin/python' -m pip install --upgrade pip setuptools wheel"
+  run_as_app_user "'${PYTHON_VENV_DIR}/bin/python' -m pip install -r '${INSTALL_DIR}/requirements.txt'"
 
   log 'Reloading and restarting services.'
   systemctl daemon-reload

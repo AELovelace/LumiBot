@@ -28,6 +28,15 @@ New helpers:
 - `gameWebServer` `mustAdjustBalance` / `runEconomyTransaction`.
 - `workers/engines/secureRandom.js`.
 
+**Deployed** to doll-chan on 2026-11-19 at 19:10 PST.
+- Commit `37e3b66` (branch `fix/audit-2026-11-19`), with a pre-update backup at `/var/backups/sadgirlplayer/20261119-191003`.
+- Checked live:
+  - CSP now has `frame-ancestors 'self'`.
+  - The XSS lobby URL returns 404.
+  - Admin commands are registered only in the 3 home guilds.
+- site-chan's arcade snippet was retired the same evening.
+- The update first failed because the venv's `bin/` scripts had lost their exec bit (`chmod +x .venv-fedora/bin/*` fixed it).
+
 ### Before deploying these fixes to doll-chan (`/opt/sadgirlplayer`, env `/etc/sadgirlplayer/runtime.env`)
 
 doll-chan runs `ec90e1f` (the commit before these fixes) with `GAME_WORKERS_*=true`, so the worker bet races #9, #10, #17 and #18 **are live in production today**, both in Discord and on the web.
