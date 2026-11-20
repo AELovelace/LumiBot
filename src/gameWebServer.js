@@ -2452,6 +2452,8 @@ fetchState();
 
 async function handleRequest(req, res) {
   const parsedUrl = parseUrl(req);
+  const lumi = require('./lumi');                                       // Lumi-Town (src/lumi); cached after the first request
+  if (lumi.isLumiPath(parsedUrl.pathname) && await lumi.handleLumiRequest(req, res, parsedUrl)) return; // /lumipet/*: answered by Lumi (false when Lumi is off)
   const pathname = routePath(parsedUrl.pathname);
   const method = (req.method || 'GET').toUpperCase();
   if (pathname === null) return sendError(res, 404, 'not_found', 'Unknown route');

@@ -120,6 +120,19 @@ const SCHEMA = {
 
   // ── Touhou ───────────────────────────────────────────────────────────────
   'touhou.battleIdleTimeoutMs':  { default: 90000, type: 'number', label: 'Battle Idle Timeout (ms)', desc: 'Inactivity timeout for Touhou PvE battles', category: 'Touhou' },
+
+  // ── Lumi Games (src/lumi/tuning.js reads these; per-game knobs live under setting.lumi.game.<game>.*) ──
+  'lumi.scale':                     { default: 0.2,    type: 'number', label: 'Economy Scale',            desc: 'Every Lumi price and prize is erinne\'s number x this (0.2 = one fifth)', category: 'Lumi Games' },
+  'lumi.treasury.bankTarget':       { default: 100000, type: 'number', label: 'Bank Target',              desc: 'Lumi-Town Bank balance that counts as 100% health',                    category: 'Lumi Games' },
+  'lumi.treasury.bankCeiling':      { default: 200000, type: 'number', label: 'Bank Ceiling',             desc: 'Bank balance above this overflows into Lumi Holdings',                 category: 'Lumi Games' },
+  'lumi.treasury.bands':            { default: '[[0.25,1],[0.5,0.75],[1,0.5],[1.5,0.25],[null,0.1]]', type: 'string', label: 'Sweep Bands (JSON)', desc: '[[health below, tax rate], ...]; null = and above', category: 'Lumi Games' },
+  'lumi.treasury.sweepIntervalMs':  { default: 900000, type: 'number', label: 'Sweep Interval (ms)',      desc: 'How often shop accounts are swept into the bank',                      category: 'Lumi Games' },
+  'lumi.treasury.refillBufferPct':  { default: 0.10,   type: 'number', label: 'Refill Buffer',            desc: 'Emergency draws top the bank up by this share of the target too',      category: 'Lumi Games' },
+  'lumi.treasury.reserveFloor':     { default: 50000,  type: 'number', label: 'Holdings Reserve Floor',   desc: 'Lumi Holdings never goes below this for draws, LUMI sells or dividends', category: 'Lumi Games' },
+  'lumi.treasury.lumiDividendRate': { default: 0.02,   type: 'number', label: 'LUMI Dividend Rate',       desc: 'Weekly share of the reserve ABOVE the floor paid to LUMI holders',     category: 'Lumi Games' },
+  'lumi.treasury.payoutsPaused':    { default: 'false', type: 'string', label: 'Pause All Payouts',       desc: 'true = games keep running but every prize is owed until unpaused',    category: 'Lumi Games' },
+  'lumi.seed.toBank':               { default: 100000, type: 'number', label: 'Seed: to Bank',            desc: 'One-time seed from Central Bank into Lumi-Town Bank',                 category: 'Lumi Games' },
+  'lumi.seed.toHoldings':           { default: 150000, type: 'number', label: 'Seed: to Holdings',        desc: 'One-time seed from Central Bank into Lumi Holdings',                  category: 'Lumi Games' },
 };
 
 // ---------------------------------------------------------------------------

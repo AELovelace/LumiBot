@@ -1,0 +1,846 @@
+{
+ "styles": [
+  {
+   "id": "starter-cottage",
+   "name": "Starter Cottage",
+   "icon": "🏠",
+   "price": 0,
+   "hint": "A snug little first home"
+  },
+  {
+   "id": "toadstool-hut",
+   "name": "Toadstool Hut",
+   "icon": "🍄",
+   "price": 800,
+   "hint": "A spotty mushroom to curl up in"
+  },
+  {
+   "id": "glow-igloo",
+   "name": "Glow Igloo",
+   "icon": "🧊",
+   "price": 900,
+   "hint": "Cool blocks, warm glow inside"
+  },
+  {
+   "id": "log-cabin",
+   "name": "Log Cabin",
+   "icon": "🪵",
+   "price": 1100,
+   "hint": "Stacked logs and a smoky chimney"
+  },
+  {
+   "id": "pastel-bungalow",
+   "name": "Pastel Bungalow",
+   "icon": "🏡",
+   "price": 1300,
+   "hint": "Low, wide and candy-coloured"
+  },
+  {
+   "id": "a-frame-nook",
+   "name": "A-Frame Nook",
+   "icon": "⛺",
+   "price": 1500,
+   "hint": "A steep roof right down to the grass"
+  },
+  {
+   "id": "gingerbread-house",
+   "name": "Gingerbread House",
+   "icon": "🍪",
+   "price": 1800,
+   "hint": "Iced trim and gumdrop buttons"
+  },
+  {
+   "id": "seashell-house",
+   "name": "Seashell House",
+   "icon": "🐚",
+   "price": 2000,
+   "hint": "A swirly shell by the sea of neon"
+  },
+  {
+   "id": "treehouse",
+   "name": "Treehouse",
+   "icon": "🌳",
+   "price": 2200,
+   "hint": "Up a big tree, with a ladder"
+  },
+  {
+   "id": "tea-house",
+   "name": "Tea House",
+   "icon": "🍵",
+   "price": 2500,
+   "hint": "Paper screens and curly eaves"
+  },
+  {
+   "id": "neon-townhouse",
+   "name": "Neon Townhouse",
+   "icon": "🏙️",
+   "price": 2700,
+   "hint": "Tall and thin, trimmed in pink tubes"
+  },
+  {
+   "id": "greenhouse-home",
+   "name": "Greenhouse Home",
+   "icon": "🌱",
+   "price": 2900,
+   "hint": "Glass panes full of leafy friends"
+  },
+  {
+   "id": "neon-diner",
+   "name": "Neon Diner Home",
+   "icon": "🍔",
+   "price": 3200,
+   "hint": "Chrome stripes and a big OPEN sign"
+  },
+  {
+   "id": "stilt-houseboat",
+   "name": "Stilt Houseboat",
+   "icon": "⛵",
+   "price": 3500,
+   "hint": "A boat cabin perched on stilts"
+  },
+  {
+   "id": "windmill",
+   "name": "Windmill",
+   "icon": "🌬️",
+   "price": 3800,
+   "hint": "Sails turning in the night breeze"
+  },
+  {
+   "id": "bubble-dome",
+   "name": "Bubble Dome",
+   "icon": "🫧",
+   "price": 4200,
+   "hint": "A see-through dome with a round door"
+  },
+  {
+   "id": "cloud-house",
+   "name": "Cloud House",
+   "icon": "☁️",
+   "price": 4600,
+   "hint": "A fluffy cloud with a door in it"
+  },
+  {
+   "id": "pagoda",
+   "name": "Pagoda",
+   "icon": "🏯",
+   "price": 5000,
+   "hint": "Three tiers of curling roofs"
+  },
+  {
+   "id": "lighthouse",
+   "name": "Lighthouse",
+   "icon": "🗼",
+   "price": 5400,
+   "hint": "A striped tower with a turning beam"
+  },
+  {
+   "id": "glass-cube",
+   "name": "Glass Cube",
+   "icon": "💎",
+   "price": 5800,
+   "hint": "A sleek box of glowing glass"
+  },
+  {
+   "id": "sunset-villa",
+   "name": "Sunset Villa",
+   "icon": "🌅",
+   "price": 6200,
+   "hint": "Arches, terracotta and a balcony"
+  },
+  {
+   "id": "arcade-loft",
+   "name": "Arcade Loft",
+   "icon": "🕹️",
+   "price": 6700,
+   "hint": "Live above your own game screens"
+  },
+  {
+   "id": "observatory",
+   "name": "Observatory",
+   "icon": "🔭",
+   "price": 7200,
+   "hint": "A domed roof with a telescope"
+  },
+  {
+   "id": "wizard-tower",
+   "name": "Wizard Tower",
+   "icon": "🧙",
+   "price": 7800,
+   "hint": "A crooked tower with a pointy hat"
+  },
+  {
+   "id": "castle-turret",
+   "name": "Castle Turret",
+   "icon": "🏰",
+   "price": 8400,
+   "hint": "Battlements and a little flag"
+  },
+  {
+   "id": "rocket-home",
+   "name": "Rocket Home",
+   "icon": "🚀",
+   "price": 9000,
+   "hint": "A rocket parked for good, fins and all"
+  },
+  {
+   "id": "crystal-spire",
+   "name": "Crystal Spire",
+   "icon": "🔮",
+   "price": 9600,
+   "hint": "Glowing crystal points to the sky"
+  },
+  {
+   "id": "fairy-palace",
+   "name": "Fairy Palace",
+   "icon": "🧚",
+   "price": 10400,
+   "hint": "Twin domes and fairy-wing windows"
+  },
+  {
+   "id": "starlight-manor",
+   "name": "Starlight Manor",
+   "icon": "⭐",
+   "price": 11200,
+   "hint": "A grand manor crowned with a star"
+  },
+  {
+   "id": "neon-penthouse",
+   "name": "Neon Sky Penthouse",
+   "icon": "🌃",
+   "price": 12000,
+   "hint": "A tower home in every colour of neon"
+  }
+ ],
+ "slots": [
+  {
+   "id": "fence",
+   "name": "Fence",
+   "icon": "🚧"
+  },
+  {
+   "id": "mailbox",
+   "name": "Mailbox",
+   "icon": "📫"
+  },
+  {
+   "id": "path",
+   "name": "Path",
+   "icon": "🛤️"
+  },
+  {
+   "id": "lamp",
+   "name": "Lamp",
+   "icon": "🏮"
+  },
+  {
+   "id": "ornament",
+   "name": "Ornament",
+   "icon": "🗿"
+  }
+ ],
+ "yard": {
+  "fence": [
+   {
+    "id": "fence-picket",
+    "name": "White Pickets",
+    "icon": "🪵",
+    "price": 60,
+    "hint": "Classic and cosy"
+   },
+   {
+    "id": "fence-rope",
+    "name": "Rope and Posts",
+    "icon": "🪢",
+    "price": 150,
+    "hint": "Easy-going and seaside-ish"
+   },
+   {
+    "id": "fence-bamboo",
+    "name": "Bamboo Fence",
+    "icon": "🎋",
+    "price": 320,
+    "hint": "Tall green canes, tied up neat"
+   },
+   {
+    "id": "fence-hedge",
+    "name": "Hedge Row",
+    "icon": "🌿",
+    "price": 650,
+    "hint": "A trimmed green wall"
+   },
+   {
+    "id": "fence-iron",
+    "name": "Iron Railings",
+    "icon": "⚜️",
+    "price": 1200,
+    "hint": "Curly black railings with gold tips"
+   },
+   {
+    "id": "fence-pastel",
+    "name": "Pastel Pickets",
+    "icon": "🖍️",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Every picket a different sweet"
+   },
+   {
+    "id": "fence-candy-cane",
+    "name": "Candy Cane Fence",
+    "icon": "🍬",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Red and white and minty"
+   },
+   {
+    "id": "fence-twig",
+    "name": "Twiggy Fence",
+    "icon": "🌾",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Woven twigs, very fairy"
+   },
+   {
+    "id": "fence-heart",
+    "name": "Heart Railings",
+    "icon": "💗",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Little hearts all along"
+   },
+   {
+    "id": "fence-cloud",
+    "name": "Cloud Puffs",
+    "icon": "☁️",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Soft cloud posts in a row"
+   },
+   {
+    "id": "fence-flower",
+    "name": "Flower Trellis",
+    "icon": "🌸",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Climbing blooms on a lattice"
+   },
+   {
+    "id": "fence-neon",
+    "name": "Neon Tube Fence",
+    "icon": "💡",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "Pink and cyan tubes buzzing"
+   },
+   {
+    "id": "fence-crystal",
+    "name": "Crystal Shards",
+    "icon": "💠",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "Glowing crystal points"
+   },
+   {
+    "id": "fence-starry",
+    "name": "Starry Night Fence",
+    "icon": "🌌",
+    "price": 0,
+    "rarity": "epic",
+    "hint": "Night-sky panels full of stars"
+   },
+   {
+    "id": "fence-aurora",
+    "name": "Aurora Ribbon",
+    "icon": "🌈",
+    "price": 0,
+    "rarity": "legendary",
+    "hint": "A ribbon of northern lights"
+   }
+  ],
+  "mailbox": [
+   {
+    "id": "mailbox-classic",
+    "name": "Post Box",
+    "icon": "📪",
+    "price": 60,
+    "hint": "A plain box on a post"
+   },
+   {
+    "id": "mailbox-pillar",
+    "name": "Red Pillar Box",
+    "icon": "📮",
+    "price": 200,
+    "hint": "Round, red and proper"
+   },
+   {
+    "id": "mailbox-birdhouse",
+    "name": "Birdhouse Box",
+    "icon": "🐦",
+    "price": 400,
+    "hint": "Letters in, birds on top"
+   },
+   {
+    "id": "mailbox-brass",
+    "name": "Brass Letterbox",
+    "icon": "📯",
+    "price": 750,
+    "hint": "Polished and shiny"
+   },
+   {
+    "id": "mailbox-robot",
+    "name": "Robo Mailbox",
+    "icon": "🤖",
+    "price": 1400,
+    "hint": "Beeps when post arrives"
+   },
+   {
+    "id": "mailbox-frog",
+    "name": "Froggy Mailbox",
+    "icon": "🐸",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Post goes in its mouth"
+   },
+   {
+    "id": "mailbox-cat",
+    "name": "Kitty Mailbox",
+    "icon": "🐱",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Ears up when there is mail"
+   },
+   {
+    "id": "mailbox-toadstool",
+    "name": "Toadstool Box",
+    "icon": "🍄",
+    "price": 0,
+    "rarity": "common",
+    "hint": "A spotty mushroom post box"
+   },
+   {
+    "id": "mailbox-cupcake",
+    "name": "Cupcake Box",
+    "icon": "🧁",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Frosting on top, letters inside"
+   },
+   {
+    "id": "mailbox-whale",
+    "name": "Little Whale",
+    "icon": "🐋",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Spouts when you get post"
+   },
+   {
+    "id": "mailbox-teapot",
+    "name": "Teapot Post",
+    "icon": "🫖",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Letters slip in the lid"
+   },
+   {
+    "id": "mailbox-neon",
+    "name": "Neon Drop Box",
+    "icon": "📬",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "Glowing slot, buzzing sign"
+   },
+   {
+    "id": "mailbox-owl",
+    "name": "Owl Courier",
+    "icon": "🦉",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "A wise owl guards your post"
+   },
+   {
+    "id": "mailbox-rocket",
+    "name": "Rocket Post",
+    "icon": "🚀",
+    "price": 0,
+    "rarity": "epic",
+    "hint": "Letters by rocket, of course"
+   },
+   {
+    "id": "mailbox-star-portal",
+    "name": "Star Portal Post",
+    "icon": "🌠",
+    "price": 0,
+    "rarity": "legendary",
+    "hint": "Post arrives through a ring of stars"
+   }
+  ],
+  "path": [
+   {
+    "id": "path-gravel",
+    "name": "Gravel Path",
+    "icon": "🪨",
+    "price": 60,
+    "hint": "Crunchy little stones"
+   },
+   {
+    "id": "path-stepping",
+    "name": "Stepping Stones",
+    "icon": "⚪",
+    "price": 150,
+    "hint": "Hop, hop, hop to the door"
+   },
+   {
+    "id": "path-brick",
+    "name": "Brick Path",
+    "icon": "🧱",
+    "price": 350,
+    "hint": "Warm red bricks"
+   },
+   {
+    "id": "path-boardwalk",
+    "name": "Boardwalk",
+    "icon": "🛶",
+    "price": 700,
+    "hint": "Wooden planks, nice and tidy"
+   },
+   {
+    "id": "path-cobble",
+    "name": "Cobblestones",
+    "icon": "🏛️",
+    "price": 1200,
+    "hint": "Old-town round stones"
+   },
+   {
+    "id": "path-pebble",
+    "name": "Pebble Swirl",
+    "icon": "🐚",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Pebbles set in a spiral"
+   },
+   {
+    "id": "path-moss",
+    "name": "Mossy Path",
+    "icon": "🍀",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Soft moss between the stones"
+   },
+   {
+    "id": "path-shell",
+    "name": "Shell Path",
+    "icon": "🦪",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Crushed shells, beachy"
+   },
+   {
+    "id": "path-petal",
+    "name": "Petal Path",
+    "icon": "🌸",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Strewn with pink petals"
+   },
+   {
+    "id": "path-hopscotch",
+    "name": "Hopscotch",
+    "icon": "🔢",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Numbered squares to hop"
+   },
+   {
+    "id": "path-candy",
+    "name": "Candy Tiles",
+    "icon": "🍭",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Sweet striped tiles"
+   },
+   {
+    "id": "path-neon",
+    "name": "Neon Tiles",
+    "icon": "🟪",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "Tiles that light up underfoot"
+   },
+   {
+    "id": "path-glowstone",
+    "name": "Glowstones",
+    "icon": "🔆",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "Stones that glow at night"
+   },
+   {
+    "id": "path-starwalk",
+    "name": "Star Walk",
+    "icon": "⭐",
+    "price": 0,
+    "rarity": "epic",
+    "hint": "Gold stars set in the path"
+   },
+   {
+    "id": "path-galaxy",
+    "name": "Galaxy Carpet",
+    "icon": "🌌",
+    "price": 0,
+    "rarity": "legendary",
+    "hint": "A strip of the night sky"
+   }
+  ],
+  "lamp": [
+   {
+    "id": "lamp-post",
+    "name": "Street Lamp",
+    "icon": "💡",
+    "price": 60,
+    "hint": "A tidy little lamp post"
+   },
+   {
+    "id": "lamp-paper-lantern",
+    "name": "Paper Lantern",
+    "icon": "🏮",
+    "price": 180,
+    "hint": "A red lantern on a hook"
+   },
+   {
+    "id": "lamp-gas",
+    "name": "Gas Lamp",
+    "icon": "🕯️",
+    "price": 400,
+    "hint": "Old-fashioned and flickery"
+   },
+   {
+    "id": "lamp-string",
+    "name": "String Lights",
+    "icon": "🎐",
+    "price": 800,
+    "hint": "Bulbs strung between two poles"
+   },
+   {
+    "id": "lamp-twin-globe",
+    "name": "Twin Globe Lamp",
+    "icon": "🔆",
+    "price": 1300,
+    "hint": "Two round globes, very grand"
+   },
+   {
+    "id": "lamp-candle-jar",
+    "name": "Candle Jar",
+    "icon": "🫙",
+    "price": 0,
+    "rarity": "common",
+    "hint": "A jar with a candle in it"
+   },
+   {
+    "id": "lamp-glowshroom",
+    "name": "Glowshroom",
+    "icon": "🍄",
+    "price": 0,
+    "rarity": "common",
+    "hint": "A mushroom that glows"
+   },
+   {
+    "id": "lamp-firefly-jar",
+    "name": "Firefly Jar",
+    "icon": "🪲",
+    "price": 0,
+    "rarity": "common",
+    "hint": "Buzzing little lights"
+   },
+   {
+    "id": "lamp-tulip-glow",
+    "name": "Tulip Lamp",
+    "icon": "🌷",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "A flower that lights up"
+   },
+   {
+    "id": "lamp-moonbeam",
+    "name": "Moon Lamp",
+    "icon": "🌙",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "A crescent moon on a pole"
+   },
+   {
+    "id": "lamp-jellyfish",
+    "name": "Jellyfish Lamp",
+    "icon": "🪼",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Floaty glowing tendrils"
+   },
+   {
+    "id": "lamp-neon-arch",
+    "name": "Neon Arch Lamp",
+    "icon": "🌀",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "A bent neon tube, buzzing"
+   },
+   {
+    "id": "lamp-crystal",
+    "name": "Crystal Lamp",
+    "icon": "🔮",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "A crystal that hums with light"
+   },
+   {
+    "id": "lamp-wishing-star",
+    "name": "Wishing Star Lamp",
+    "icon": "🌟",
+    "price": 0,
+    "rarity": "epic",
+    "hint": "A real star on a pole"
+   },
+   {
+    "id": "lamp-lumi-wisp",
+    "name": "Lumi Wisp Lantern",
+    "icon": "✨",
+    "price": 0,
+    "rarity": "legendary",
+    "hint": "A tiny Lumi light that floats"
+   }
+  ],
+  "ornament": [
+   {
+    "id": "ornament-gnome",
+    "name": "Garden Gnome",
+    "icon": "🍄",
+    "price": 60,
+    "hint": "A cheerful little gnome"
+   },
+   {
+    "id": "ornament-flamingo",
+    "name": "Pink Flamingo",
+    "icon": "🦩",
+    "price": 150,
+    "hint": "Stands on one leg all night"
+   },
+   {
+    "id": "ornament-birdbath",
+    "name": "Birdbath",
+    "icon": "🐦",
+    "price": 350,
+    "hint": "A splash spot for birds"
+   },
+   {
+    "id": "ornament-bench",
+    "name": "Little Bench",
+    "icon": "🪑",
+    "price": 650,
+    "hint": "Sit a while"
+   },
+   {
+    "id": "ornament-fountain",
+    "name": "Fountain",
+    "icon": "⛲",
+    "price": 1500,
+    "hint": "Trickling water, very fancy"
+   },
+   {
+    "id": "ornament-bunny",
+    "name": "Stone Bunny",
+    "icon": "🐇",
+    "price": 0,
+    "rarity": "common",
+    "hint": "A mossy stone bunny"
+   },
+   {
+    "id": "ornament-sunflower",
+    "name": "Sunflower Pot",
+    "icon": "🌻",
+    "price": 0,
+    "rarity": "common",
+    "hint": "A tall sunny flower"
+   },
+   {
+    "id": "ornament-frog",
+    "name": "Lily Frog",
+    "icon": "🐸",
+    "price": 0,
+    "rarity": "common",
+    "hint": "A frog on a lily pad"
+   },
+   {
+    "id": "ornament-sleepy-cat",
+    "name": "Sleepy Cat",
+    "icon": "🐈",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Curled up and snoozing"
+   },
+   {
+    "id": "ornament-pinwheel",
+    "name": "Pinwheel",
+    "icon": "🎡",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "Spins in the breeze"
+   },
+   {
+    "id": "ornament-shrine",
+    "name": "Tiny Shrine",
+    "icon": "⛩️",
+    "price": 0,
+    "rarity": "uncommon",
+    "hint": "A little red gate shrine"
+   },
+   {
+    "id": "ornament-neon-heart",
+    "name": "Neon Heart Sign",
+    "icon": "💖",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "A heart that buzzes pink"
+   },
+   {
+    "id": "ornament-crystal-cluster",
+    "name": "Crystal Cluster",
+    "icon": "💎",
+    "price": 0,
+    "rarity": "rare",
+    "hint": "Glowing gem points"
+   },
+   {
+    "id": "ornament-star-fountain",
+    "name": "Starfall Fountain",
+    "icon": "🌠",
+    "price": 0,
+    "rarity": "epic",
+    "hint": "Fountain of falling stars"
+   },
+   {
+    "id": "ornament-lumi-statue",
+    "name": "Lumi Statue",
+    "icon": "🧚",
+    "price": 0,
+    "rarity": "legendary",
+    "hint": "A golden glowing mini Lumi"
+   }
+  ]
+ },
+ "capsule": {
+  "name": "Keepsake Capsule",
+  "price": 200,
+  "odds": {
+   "common": 55,
+   "uncommon": 25,
+   "rare": 14,
+   "epic": 5,
+   "legendary": 1
+  }
+ },
+ "values": {
+  "common": 60,
+  "uncommon": 120,
+  "rare": 180,
+  "epic": 400,
+  "legendary": 1000
+ }
+}

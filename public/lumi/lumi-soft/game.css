@@ -1,0 +1,88 @@
+/* Lumi-Soft's page (templates/games/lumi-soft.html): the range fills the whole frame, and the HUD and menus float over
+   it in Lumi Pet's look: night-plum glass, pastel glows, soft pills. The range itself is drawn by game.js and art.js. */
+
+#gm[data-game="lumi-soft"] { display: block; padding: 0; --ls-pink: #ff8ecb; --ls-lilac: #c9a8ff; --ls-gold: #ffdc83; --ls-aqua: #70ebea; --ls-cream: #ffe9f5; --ls-ink: #462846; }
+#gm[data-game="lumi-soft"]::after { display: none; }                             /* no scanlines over the scope */
+.ls-stage { position: relative; width: 100%; height: 100vh; overflow: hidden; background: #140a24; color: var(--ls-cream); }
+#ls-view { display: block; width: 100%; height: 100%; cursor: none; touch-action: none; }   /* the reticle is drawn; no arrow over it */
+.ls-stage[data-menu="true"] #ls-view { cursor: default; }
+
+/* ---- HUD */
+.ls-hud { position: absolute; top: .7rem; display: grid; gap: .25rem; pointer-events: none; font-family: var(--serif); text-shadow: 0 0 6px #000, 0 0 2px #000; }
+.ls-hud[hidden] { display: none; }
+.ls-left { left: .9rem; }
+.ls-right { right: .9rem; text-align: right; }
+.ls-hearts { font-size: 1.7rem; letter-spacing: .12em; color: var(--ls-pink); }
+.ls-ammo { font-size: 1.2rem; letter-spacing: .14em; color: var(--ls-gold); min-height: 1.5rem; }
+.ls-ammo[data-reloading="true"] { color: #d9b8d0; animation: ls-blink .4s steps(2) infinite; }
+.ls-breath, .ls-glow { display: grid; grid-template-columns: auto 7rem; gap: .5rem; align-items: center; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #d9b8d0; }
+.ls-glow[hidden] { display: none; }
+.ls-breath i, .ls-glow i { display: block; height: .55rem; border-radius: 1rem; border: 1px solid #ffffff55; background: linear-gradient(90deg, var(--ls-aqua) var(--fill, 100%), #0006 var(--fill, 100%)); }
+.ls-breath i[data-puffing="true"] { background: linear-gradient(90deg, #ff6f8f var(--fill, 0%), #0006 var(--fill, 0%)); }
+.ls-glow i { background: linear-gradient(90deg, var(--ls-lilac) var(--fill, 100%), #0006 var(--fill, 100%)); }
+.ls-clock { font-size: 2.4rem; font-variant-numeric: tabular-nums; color: var(--ls-cream); }
+.ls-clock[data-low="true"] { color: #ff6f8f; animation: ls-blink .5s steps(2) infinite; }
+.ls-line { font-size: 1.1rem; }
+.ls-line[hidden] { display: none; }
+.ls-line b { font-variant-numeric: tabular-nums; }
+.ls-line span { color: #d9b8d0; font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; }
+@keyframes ls-blink { 50% { opacity: .45; } }
+
+/* Spotter Lumi, bottom left: Dealer Lumi's sister in a headset, calling things out. */
+.ls-spotter { position: absolute; left: .9rem; bottom: .9rem; display: flex; align-items: flex-end; gap: .5rem; max-width: min(26rem, 60%); pointer-events: none; }
+.ls-spotter[hidden] { display: none; }
+.ls-spotter-face { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: #efe4ff; box-shadow: 0 0 14px var(--ls-lilac); font-size: 1.3rem; }
+.ls-spotter p { position: relative; margin: 0; padding: .5rem .9rem; border-radius: 1rem 1rem 1rem .2rem; background: #fff5fb; color: var(--ls-ink); font-weight: 600; font-size: .95rem; line-height: 1.35; box-shadow: 0 0 16px #ff8ecb55; }
+.ls-spotter p:empty { display: none; }
+.ls-toast { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); margin: 0; padding: .5rem 1.2rem; border-radius: 2rem; background: #0e0b1acc; color: var(--ls-gold); font-family: var(--serif); font-size: 1.6rem; letter-spacing: .08em; pointer-events: none; text-shadow: 0 0 12px #ff8ecb; }
+.ls-toast[hidden] { display: none; }
+
+/* ---- Panels (title, pages, pause, continue, results) */
+.ls-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(36rem, calc(100% - 2rem)); max-height: calc(100% - 2rem); overflow-y: auto;
+            text-align: center; border-radius: 1.4rem; border: 2px solid #ff8ecb66; background: linear-gradient(180deg, #2a1440f2, #140a24f2); box-shadow: 0 0 40px #ff8ecb33; color: var(--ls-cream); }
+.ls-panel[hidden] { display: none; }
+#gm[data-game="lumi-soft"] .gm-eyebrow { color: var(--ls-pink); }
+#gm[data-game="lumi-soft"] button { border-radius: 2rem; text-transform: none; letter-spacing: .04em; }
+#gm[data-game="lumi-soft"] .gm-primary { color: #3d1530; background: linear-gradient(180deg, #ffc4e1, var(--ls-pink)); border-color: var(--ls-pink); box-shadow: 0 0 16px #ff8ecb88; }
+.ls-lead { line-height: 1.55; color: #f3d9ea; }
+.ls-coins { margin: .2rem 0 1rem; color: var(--ls-gold); letter-spacing: .08em; }
+.ls-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+.ls-menu button, .ls-list button { display: grid; gap: .15rem; padding: .7rem .9rem; text-align: left; border-radius: 1rem !important; }
+.ls-menu button small, .ls-list button small { color: #d9b8d0; font-size: .75rem; letter-spacing: .02em; }
+.ls-menu .gm-primary small { color: #5a2848; }
+.ls-error { padding: .6rem .8rem; border-radius: .8rem; border: 1px solid #ff6f8f; color: #ffd0dc; }
+.ls-error[hidden] { display: none; }
+.ls-keys { display: grid; grid-template-columns: auto auto; gap: .2rem .9rem; justify-content: center; text-align: left; font-size: .88rem; margin: 0; }
+.ls-keys dt { color: var(--ls-aqua); }
+.ls-keys dd { margin: 0; }
+.ls-page-title { margin: 0 0 .8rem; font-family: var(--serif); font-size: 1.6rem; letter-spacing: .06em; color: var(--ls-cream); }
+.ls-page-body { margin-bottom: 1rem; text-align: left; }
+.ls-list { display: grid; gap: .5rem; }
+.ls-list button:disabled { opacity: .45; }
+.ls-board { width: 100%; border-collapse: collapse; margin-top: .6rem; font-size: .92rem; }
+.ls-board td { padding: .3rem .4rem; border-bottom: 1px dashed #ffffff22; }
+.ls-board td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--ls-gold); }
+.ls-prizes { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .5rem; }
+.ls-prize { padding: .6rem .8rem; border-radius: .9rem; border: 1px solid #ffffff22; background: #0e0b1a88; }
+.ls-prize b { display: block; color: var(--ls-cream); }
+.ls-prize small { color: #d9b8d0; }
+.ls-prize[data-won="true"] { border-color: var(--ls-gold); box-shadow: inset 0 0 0 1px #ffdc8355; }
+.ls-prize[data-won="true"] b::before { content: "★ "; color: var(--ls-gold); }
+.ls-setting { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .4rem 0; border-bottom: 1px dashed #ffffff22; }
+.ls-setting select, .ls-setting input { font: inherit; border-radius: .6rem; padding: .3rem .5rem; background: #0e0b1a; color: var(--ls-cream); border: 1px solid #ff8ecb66; }
+.ls-small { font-size: .8rem; color: #d9b8d0; }
+.ls-countdown { font-family: var(--serif); font-size: 2.6rem; color: var(--ls-gold); margin: .2rem 0 .8rem; font-variant-numeric: tabular-nums; }
+.ls-big { font-family: var(--serif); font-size: 2.8rem; margin: 0 0 .4rem; color: var(--ls-gold); font-variant-numeric: tabular-nums; text-shadow: 0 0 16px #ff8ecb88; }
+.ls-ranks { list-style: none; margin: 0 0 .8rem; padding: 0; display: grid; gap: .3rem; }
+.ls-ranks li { display: flex; justify-content: space-between; gap: 1rem; padding: .3rem .7rem; border-radius: .7rem; background: #0e0b1a88; }
+.ls-ranks li b { color: var(--ls-gold); }
+.ls-earned { color: var(--ls-pink); font-weight: 600; }
+.ls-earned:empty { display: none; }
+.ls-won { margin: 0 0 1rem; padding: .7rem; border-radius: 1rem; border: 2px dashed var(--ls-gold); background: #ffdc8314; }
+.ls-won[hidden] { display: none; }
+.ls-won h3 { margin: 0 0 .4rem; color: var(--ls-gold); font-size: 1rem; letter-spacing: .08em; }
+.ls-won p { margin: .2rem 0; }
+#ls-pause button, #ls-over button, #ls-results button, #ls-back { min-width: 12rem; margin: .3rem; }
+
+@media (max-width: 700px) { .ls-menu { grid-template-columns: minmax(0, 1fr); } .ls-clock { font-size: 1.8rem; } }
+@media (prefers-reduced-motion: reduce) { .ls-ammo[data-reloading="true"], .ls-clock[data-low="true"] { animation: none; } }

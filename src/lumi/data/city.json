@@ -1,0 +1,114 @@
+{
+  "_about": "Lumi City (Doll's design, 2026-11-19; docs/plans/lumi-city.md). One long city seen from above at a tilt: LefTown on the left, Downtown in the middle, Right-City on the right, a gate at each far end. The map is tiles (tile: width, height in drawing units). Columns are signed: Downtown's first column is downtown.x0, and LefTown's block n always sits at the same columns to its left, Right-City's to its right, so a town growing at its gate never moves anything already built. Every block is the same template; a lot's door is the walkable tile just below its footprint's middle. Symbols: walk = Lumis may stand there; block = they may not. Read by mnemerynne/lumicity.py (prices, lots, checks) and city-map.js (the walkable map, doors, addresses).",
+  "tile": [64, 40],
+  "rows": 17,
+  "avenue": [7, 8],
+  "walk": ".=|_:",
+  "block": "T~#",
+  "symbols": {
+    ".": "pavement", "=": "road", "|": "lane", "_": "back lane", ":": "plaza",
+    "T": "trees", "~": "grass", "U": "fountain",
+    "a": "lot 1", "b": "lot 2", "c": "lot 3", "d": "lot 4", "e": "lot 5", "f": "lot 6", "g": "lot 7", "h": "lot 8",
+    "W": "Lumi Heights West", "E": "Lumi Heights East", "A": "Arcade", "V": "Tavern", "O": "Real-estate office", "C": "Casino",
+    "M": "Market", "K": "Retro café", "G": "Garden gate", "F": "Lumi-Soft field"
+  },
+  "downtown": {
+    "x0": -15,
+    "name": "Downtown",
+    "street": "Lumi Way",
+    "rows": [
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "~WWWW~AAAA~VVVV~OOOO~CCCC~EEEE~",
+      "~WWWW~AAAA~VVVV~OOOO~CCCC~EEEE~",
+      "~WWWW~AAAA~VVVV~OOOO~CCCC~EEEE~",
+      "~WWWW~AAAA~VVVV~OOOO~CCCC~EEEE~",
+      "~WWWW~AAAA~VVVV~OOOO~CCCC~EEEE~",
+      "...............................",
+      "===============================",
+      "===============================",
+      "...............................",
+      ".MMMM.KKKK.:::::::::.GGGG.FFFF.",
+      ".MMMM.KKKK.:::UUU:::.GGGG.FFFF.",
+      ".MMMM.KKKK.:::UUU:::.GGGG.FFFF.",
+      ".MMMM.KKKK.:::::::::.GGGG.FFFF.",
+      ".MMMM.KKKK.:::::::::.GGGG.FFFF.",
+      "...............................",
+      "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+    ],
+    "places": {
+      "W": {"id": "lobby-l", "town": "left", "build": "heights"},
+      "E": {"id": "lobby-r", "town": "right", "build": "heights"},
+      "A": {"id": "arcade", "build": "arcade"},
+      "V": {"id": "tavern", "build": "tavern"},
+      "O": {"id": "office", "build": "office"},
+      "C": {"id": "casino", "build": "casino"},
+      "M": {"id": "market", "build": "market"},
+      "K": {"id": "cafe", "build": "cafe"},
+      "G": {"id": "garden", "build": "garden"},
+      "F": {"id": "field", "build": "field"}
+    }
+  },
+  "template": {
+    "rows": [
+      "TTTTTTTTTTT",
+      "|cccc~dddd~",
+      "|cccc~dddd~",
+      "|__________",
+      "|aaaa~bbbb~",
+      "|aaaa~bbbb~",
+      "...........",
+      "===========",
+      "===========",
+      "...........",
+      "|eeee~ffff~",
+      "|eeee~ffff~",
+      "|__________",
+      "|gggg~hhhh~",
+      "|gggg~hhhh~",
+      "|..........",
+      "TTTTTTTTTTT"
+    ],
+    "lots": [
+      {"lot": 1, "key": "a", "frontage": "avenue"},
+      {"lot": 2, "key": "b", "frontage": "avenue"},
+      {"lot": 3, "key": "c", "frontage": "lane"},
+      {"lot": 4, "key": "d", "frontage": "lane"},
+      {"lot": 5, "key": "e", "frontage": "lane"},
+      {"lot": 6, "key": "f", "frontage": "lane"},
+      {"lot": 7, "key": "g", "frontage": "lane"},
+      {"lot": 8, "key": "h", "frontage": "lane"}
+    ]
+  },
+  "gate": {
+    "rows": [
+      "TTTT",
+      "TTTT",
+      "TTTT",
+      "TTTT",
+      "TTTT",
+      "~~~~",
+      "....",
+      "====",
+      "====",
+      "....",
+      "~~~~",
+      "TTTT",
+      "TTTT",
+      "TTTT",
+      "TTTT",
+      "TTTT",
+      "TTTT"
+    ],
+    "arrive": [2, 7]
+  },
+  "towns": {
+    "left": {"name": "LefTown", "avenue": "Petal Avenue", "district": "l",
+             "lanes": ["Daisy Lane", "Tulip Lane", "Poppy Lane", "Iris Lane", "Lilac Lane", "Clover Lane", "Violet Lane", "Marigold Lane", "Peony Lane", "Bluebell Lane",
+                       "Primrose Lane", "Snowdrop Lane", "Foxglove Lane", "Camellia Lane", "Dahlia Lane", "Lotus Lane", "Orchid Lane", "Jasmine Lane", "Hyacinth Lane", "Azalea Lane"]},
+    "right": {"name": "Right-City", "avenue": "Starlight Boulevard", "district": "r",
+              "lanes": ["Comet Street", "Nova Street", "Orion Street", "Vega Street", "Sirius Street", "Lyra Street", "Polaris Street", "Nebula Street", "Aurora Street", "Meteor Street",
+                        "Pulsar Street", "Quasar Street", "Andromeda Street", "Cassiopeia Street", "Altair Street", "Rigel Street", "Deneb Street", "Capella Street", "Spica Street", "Electra Street"]}
+  },
+  "start_blocks": 2,
+  "price": {"base": 5000, "decay": 0.88, "floor": 1500, "avenue": 1.2, "round": 50, "sell_office": 0.5, "list_min": 0.5, "list_max": 3.0}
+}

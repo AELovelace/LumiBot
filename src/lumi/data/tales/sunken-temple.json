@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Green light ripples over old pillars as Lumi wades into the temple.",
+  "Little fish part politely as Lumi paddles in through the temple door.",
+  "Lumi arrives at {place}, where old pillars stand in green water and a crowd of fish turns to watch her glow.",
+  "Lumi floats down into {place}, whiskers twitching as silver fish drift between the drowned pillars like a quiet congregation.",
+  "The green water hums softly as Lumi enters {place}, her light rippling across columns older than anyone remembers.",
+  "Lumi takes a brave little breath and slips into the Sunken Temple, where a school of fish bows politely as she passes.",
+  "Bubbles tickle Lumi's nose as she arrives at {place}. Mossy pillars rise into the green gloom like sleepy giants.",
+  "Lumi glows a little brighter at the temple steps. Somewhere in the green water, a bell-like hush seems to welcome her.",
+  "Lumi paddles into {place} with her tail held high, and the fish in the old pews scatter, then gather again to stare.",
+  "The green water parts around Lumi as she enters {place}, and the ancient pillars wear their weeds like velvet robes."
+ ],
+ "start": [
+  "Lumi is back in the first hall, where the way home shimmers beyond the pillars and familiar fish nod hello.",
+  "The entrance chamber again. Lumi recognises the crooked pillar and the fat old fish who seems to guard the way out.",
+  "Lumi drifts back into the room she came in by. The path home glimmers faintly through the green water.",
+  "Here is where it all began. Lumi pats the mossy doorway, knowing the way home waits just beyond.",
+  "Lumi returns to the temple's first room, where the water is a little lighter and home feels close.",
+  "The fish at the entrance swirl around Lumi like an old welcome. The way home is right here.",
+  "Lumi floats back into the entrance hall and gives a happy wiggle. The road home lies just past these old stones.",
+  "Back at the very first chamber, Lumi spots her own little trail of bubbles still drifting near the way out."
+ ],
+ "empty": [
+  "Columns rise out of still water. Lumi's reflection keeps her company.",
+  "A stone face smiles under the water. Lumi smiles back, in case it helps.",
+  "Lumi glides into a quiet chamber where only weeds sway and a few fish murmur among the fallen stones.",
+  "This room holds nothing but green light and the slow drift of bubbles from the cracked ceiling. Lumi listens anyway.",
+  "Lumi finds an empty hall of leaning pillars. A lone fish circles once, as if giving a very short sermon.",
+  "Nothing here but drifting sand and soft green shadows. Lumi swishes her tail and watches the patterns swirl.",
+  "An old altar stands bare in this room, crowned with nothing but moss. Lumi gives it a respectful little bow.",
+  "Lumi drifts through a silent chamber where the water feels extra still, as if the temple is holding its breath.",
+  "Carvings of waves line the walls of this empty room. Lumi traces one with her paw and smiles.",
+  "A ring of tiny fish turns slowly in the middle of the bare room. Lumi joins in for a spin before moving on."
+ ],
+ "again": [
+  "Lumi swims back through a chamber she knows. The same fish look up, mildly surprised to see her again.",
+  "This hall is familiar now. Lumi waves to the mossy pillar she bumped into last time.",
+  "Lumi passes through a room she has already explored, her glow lighting the same swaying weeds.",
+  "The green water here feels friendly the second time around. Lumi paddles through without slowing.",
+  "Lumi recognises this room by the snail still inching up its pillar. Not much has changed.",
+  "Back through a familiar chamber Lumi goes, past the swirls of sand her paws stirred up before.",
+  "The fish congregation shuffles aside as Lumi crosses their room once more. They seem used to her now.",
+  "Lumi drifts through a room she has seen before, humming a little tune that echoes off the old stones."
+ ],
+ "treasure": [
+  "Something glints between two fallen stones. Lumi scoops up {item} with a delighted chirp.",
+  "Lumi finds {item} resting on a mossy step, as if the fish had been keeping it safe for her.",
+  "A curious fish nudges Lumi toward a quiet corner, where {item} lies waiting in the sand.",
+  "Lumi spots {item} tucked among the weeds and pounces on it with a happy splash.",
+  "There, on the old altar, sits {item}. Lumi takes it carefully and gives the altar a thank-you pat.",
+  "Lumi's glow catches the edge of {item} half buried in silt. She digs it free with eager paws.",
+  "Lumi finds {item} lying where the green light pools brightest. What a lovely surprise.",
+  "A trail of bubbles leads Lumi straight to {item}. She tucks it away, purring."
+ ],
+ "key": [
+  "Lumi finds a key lying in the silt, and the watching fish seem to approve.",
+  "Tucked behind a weedy pillar, a key waits for Lumi. She grabs it with a triumphant little flip.",
+  "A key glimmers on the temple floor. Lumi holds it up to her glow and grins.",
+  "Lumi spots a key snagged in a tangle of weeds and gently wiggles it free.",
+  "A key rests in a shell-shaped hollow in the floor. Lumi plucks it out with a pleased little mew.",
+  "Lumi finds a key resting on a carved step, as if someone left it there just for her.",
+  "Something clinks under Lumi's paw. A key! She tucks it away with great importance.",
+  "A key lies at the foot of an old statue. Lumi bows to the statue, then takes it."
+ ],
+ "vault": [
+  "The vault swings open in a swirl of bubbles, and inside Lumi finds {item}.",
+  "Lumi peeks into the opened vault. Waiting in the green hush is {item}.",
+  "The old vault gives a deep, watery sigh as it opens. Lumi reaches in and finds {item}.",
+  "Fish crowd the doorway as Lumi steps into the vault and discovers {item}. Her tail puffs with joy.",
+  "Inside the unlocked vault, sand settles slowly around {item}. Lumi claims it with a happy wiggle.",
+  "The temple's hidden treasure is revealed at last: {item}. Lumi glows brighter than ever.",
+  "Lumi slips into the open vault and finds {item}, kept safe beneath the water for ages.",
+  "With the vault open, Lumi finds {item} inside and does a delighted loop in the water."
+ ],
+ "locked_key": [
+  "A heavy temple door blocks the way, firmly locked. Lumi will need a key for this one.",
+  "Lumi pushes at a carved door, but it will not budge. It needs a key.",
+  "A locked door stands between the pillars, and the fish wait as if they expect Lumi to find its key.",
+  "Lumi finds a door sealed with an old lock. Somewhere in the temple there must be a key.",
+  "The door ahead is locked tight, weeds curling around its keyhole. Lumi needs a key.",
+  "Lumi presses her nose to a locked door. Without a key, it stays shut.",
+  "A grand temple door blocks the hall, locked against visitors. A key is the only way through.",
+  "Lumi tugs at the locked door and only stirs up silt. She will need a key."
+ ],
+ "locked_puzzle": [
+  "A door sealed by an old puzzle blocks the way. Lumi sits and studies it, whiskers twitching.",
+  "This door will not open for paws alone. A puzzle guards it, patient as the deep water.",
+  "Lumi finds a door locked by some ancient temple riddle. The fish gather round to watch her think.",
+  "A puzzle seals the door ahead. Lumi flicks her tail, determined to work it out.",
+  "The temple keeps this door shut with a puzzle. Lumi wriggles with excitement, because she loves a good puzzle.",
+  "A door sealed by a puzzle waits in the green gloom, keeping its secret until someone clever comes along.",
+  "Lumi floats before a puzzle-locked door. The old keepers of this temple clearly liked a challenge.",
+  "A sealed door blocks the way, bound by a puzzle. Lumi tilts her head and gets thinking."
+ ],
+ "game_cups": [
+  "Three cups sit on an old altar, and something is hidden under one. The fish watch with great interest.",
+  "Lumi finds three cups set out on a mossy stone. One of them hides something.",
+  "Three cups wait in the green water, one hiding a secret. Lumi narrows her eyes and concentrates.",
+  "A playful fish seems to have set out three cups. Something is tucked under one of them.",
+  "Three cups rest on the temple floor. Lumi's tail twitches as she tries to guess which hides the prize.",
+  "On a carved table, three cups stand in a row. Something is hidden beneath one.",
+  "Lumi spots three cups in a pool of green light. One of them is keeping a secret.",
+  "Three cups and one hidden surprise. Lumi wiggles her ears, ready to play."
+ ],
+ "game_match": [
+  "Cards lie face down across an old altar, waiting to be matched in pairs.",
+  "Lumi finds a spread of face-down cards on the temple floor. Time to find the pairs.",
+  "Face-down cards rest on a mossy slab. Lumi flexes her paws, ready to match them.",
+  "The fish have gathered around rows of face-down cards. Lumi joins the game of pairs.",
+  "Cards wait face down in the green water, each one hoping to find its twin.",
+  "Lumi discovers a pairs game laid out on a carved table, every card turned face down.",
+  "A neat spread of face-down cards sits on the stone. Lumi studies it with a very serious face.",
+  "Face-down cards are scattered across the temple step, waiting for Lumi to match them up."
+ ],
+ "game_win": [
+  "Lumi wins the game, and the fish swirl in celebration! Her prize is {item}.",
+  "Hooray! Lumi gets it right and takes {item}, glowing with pride.",
+  "The temple seems to hum with approval as Lumi wins {item}.",
+  "Lumi does a victory spin through the water and claims {item}.",
+  "A perfect game! Lumi receives {item} and bows to her fishy audience.",
+  "Lumi wins and is rewarded with {item}. Even the old pillars seem impressed.",
+  "Clever Lumi! The game is won, and {item} is hers.",
+  "Lumi's whiskers quiver with delight as she wins {item}."
+ ],
+ "game_lose": [
+  "Not quite this time, but the temple is kind. Lumi gets {item} for trying.",
+  "Lumi misses the win, yet a friendly fish nudges {item} her way anyway.",
+  "So close! Lumi still receives {item} as a little consolation.",
+  "Lumi does not win, but she takes {item} and a good laugh with her.",
+  "The game slips away from Lumi, but {item} is hers for being such a good sport.",
+  "Lumi pouts for half a second, then cheers up when she gets {item} anyway.",
+  "No win today, but the temple rewards Lumi's effort with {item}.",
+  "Lumi shrugs off the loss and happily tucks away {item}."
+ ],
+ "enemy": [
+  "A wild {enemy} swirls out from behind a pillar and blocks the way! Lumi puffs up her glow.",
+  "The fish scatter as a wild {enemy} appears. Lumi plants her paws and gets ready.",
+  "A wild {enemy} rises from the green gloom, looking grumpy. Lumi squares her tiny shoulders.",
+  "Lumi's ears flatten as a wild {enemy} bars her path. Time to be brave!",
+  "Out of a cloud of silt bursts a wild {enemy}! Lumi wobbles, then stands her ground.",
+  "A wild {enemy} has claimed this chamber and will not let Lumi pass. The fish hide behind the pillars.",
+  "Lumi meets a wild {enemy} by the old altar. It glares at her through the bubbles, and the tussle begins!",
+  "A wild {enemy} blocks the hall. Lumi takes a deep breath and glows extra bright."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off into the green water. Lumi does a proud little loop.",
+  "Lumi wins! The {enemy} flees behind the pillars, and the fish cheer in bubbles.",
+  "With one last brave pounce, Lumi sends the {enemy} scurrying away.",
+  "The {enemy} decides it has had enough and scampers off. Lumi licks her paw, very pleased.",
+  "Lumi has done it! The {enemy} vanishes into the weeds, and the temple goes peaceful again.",
+  "The {enemy} scampers away in a flurry of silt. Lumi glows with wobbly pride.",
+  "Beaten, the {enemy} hurries off in a huff. Lumi's fishy fans swirl around her.",
+  "Off goes the {enemy}, scampering into the gloom. Lumi lets out a tiny victory mew."
+ ],
+ "fled": [
+  "Lumi decides that is quite enough and darts back to the room before, leaving the {enemy} behind.",
+  "Nope! Lumi zips away from the {enemy} and hides in the previous chamber.",
+  "Lumi flees from the {enemy} in a burst of bubbles, back to the room she just left.",
+  "Discretion wins. Lumi scurries away from the {enemy} to the safety of the last room.",
+  "The {enemy} is too grumpy for now. Lumi paddles quickly back to the room before.",
+  "Lumi turns tail and races from the {enemy}, ducking back into the previous hall.",
+  "With a squeak, Lumi escapes the {enemy} and catches her breath in the room she came from.",
+  "Lumi retreats from the {enemy} to the room before, where the friendly fish hide her."
+ ],
+ "defeat": [
+  "The {enemy} is too much for Lumi. Kind currents carry her home for a nap, and her finds stay in the temple.",
+  "Lumi gets tuckered out by the {enemy}. She is carried home to rest, leaving her treasures behind.",
+  "Oof. The {enemy} wins this time. Lumi is carried home for a cosy nap, her finds left beneath the water.",
+  "Worn out by the {enemy}, Lumi is gently carried home. What she found stays in {place}.",
+  "The {enemy} proves too tough. A sleepy Lumi is carried home, and her treasures sink back into the sand.",
+  "Lumi gives a defeated yawn as the {enemy} wins. She is carried home, leaving her finds behind.",
+  "Too tired to go on, Lumi is carried home from the {enemy}. Everything she found stays in the temple.",
+  "The {enemy} has the last word today. Lumi is carried home for a nap, empty-pawed but safe."
+ ],
+ "stairs": [
+  "Lumi finds stairs leading further down, into deeper and greener water.",
+  "Mossy steps lead down into the gloom. The fish here seem curious about them too.",
+  "Lumi discovers a staircase sinking deeper into the temple. Her glow flickers with excitement.",
+  "Worn stone stairs lead further down. Lumi peers over the edge, whiskers trembling.",
+  "A stairway slips down into the deep. Lumi feels a brave little shiver.",
+  "Lumi spots stairs leading lower, fringed with swaying weeds.",
+  "Stairs lead further down from here, and a curious fish hovers above them as if to say hello.",
+  "Lumi finds old temple stairs going deeper, the water below a darker shade of green."
+ ],
+ "descend": [
+  "Lumi pads down the stairs to a deeper floor, where the water glows a darker green.",
+  "Down, down Lumi goes, her light bobbing across older, mossier stones.",
+  "Lumi descends to a deeper level of {place}. The fish down here are bigger and very polite.",
+  "Step by step, Lumi sinks deeper into the temple, the hush growing even softer.",
+  "Lumi reaches a lower floor. The pillars here are wrapped in long, slow-waving weeds.",
+  "Lumi takes the stairs down, and the green water closes softly above her.",
+  "A deeper floor of the temple opens around Lumi, quiet and ancient.",
+  "Lumi bounces down the last step into a deeper chamber, eyes wide and shining."
+ ],
+ "home": [
+  "Lumi swims out of {place} with all her treasures, waving goodbye to the fish.",
+  "Home at last! Lumi carries every find out of the temple, glowing with happiness.",
+  "Lumi leaves the sunken pillars behind and heads home, paws full of treasure.",
+  "The fish see Lumi off as she paddles home with everything she found.",
+  "Lumi climbs out of the green water and trots home, her finds tucked safely away.",
+  "Lumi says farewell to {place} and carries her treasures home for show and tell.",
+  "With a happy splash, Lumi leaves the temple and heads home with all her goodies.",
+  "Lumi drifts up from the deep and home again, proud of every treasure she found."
+ ],
+ "abandon": [
+  "Lumi decides that is enough adventure for today and heads home, leaving her finds with the fish.",
+  "Lumi gives up the trip and paddles home, her treasures left behind in the temple.",
+  "With a sleepy yawn, Lumi leaves {place} empty-pawed. The fish will keep her finds company.",
+  "Lumi turns for home, setting her treasures down gently among the pillars.",
+  "Time to go home. Lumi leaves everything she found resting in the green water.",
+  "Lumi calls it a day and swims home, her finds left on an old altar for the temple to keep.",
+  "Lumi ends the trip and heads home light-pawed, her treasures settling back into the sand.",
+  "Lumi waves goodbye to the fish and goes home, leaving her finds behind."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels a warm glow spread to the tip of her tail.",
+  "Glug glug! Lumi drinks a potion and bounces back, bright as ever.",
+  "Lumi drinks a potion, and her light flickers back to full strength. The fish look impressed.",
+  "A potion later, Lumi feels refreshed and ready for more of the temple.",
+  "Lumi gulps down a potion and gives a happy shake. Much better.",
+  "The potion fizzes pleasantly, and Lumi feels her bravery bubbling back.",
+  "Lumi drinks a potion and stretches, her whiskers sparkling.",
+  "One potion, and Lumi is purring again, her glow lighting up the green water."
+ ],
+ "look": [
+  "A carved stone face looks out from the wall with a small fish asleep in its mouth. Neither seems to mind.",
+  "Green light ripples across the ceiling. Lumi watches it the way she would watch a ribbon, tail twitching.",
+  "A stream of bubbles rises from a crack in the floor, one at a time. Lumi pops one. It smells of old rain.",
+  "Three little fish follow her along the pillar, stopping when she stops. She has a congregation now.",
+  "The steps down to the altar are worn in the middle by feet from long ago, and now by one small set of paws.",
+  "A shell on the ledge is the perfect size for a hat. Lumi tries it. It is occupied. She apologises and puts it back.",
+  "Waterweed has grown over the old carvings and given every stone king a soft green beard."
+ ]
+}

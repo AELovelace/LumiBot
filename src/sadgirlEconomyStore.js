@@ -15,6 +15,29 @@ const MOMIJI_CASINO_USER_ID = '__MOMIJI_CASINO__';
 const BIG_BUSINESS_USER_ID = '__BIG_BUSINESS__'; // legacy — kept for migration
 const TAYS_TOBACCO_USER_ID = '__TAYS_TOBACCO__';
 const TOUHOU_MGMT_USER_ID = '__TOUHOU_MGMT__';
+// Lumi-Town (src/lumi/, docs/plans/lumi-games-port.md section 3): the system accounts behind the Lumi games.
+const LUMI_TOWN_BANK_USER_ID = '__LUMI_TOWN_BANK__';     // pays every Lumi prize, reward and refund
+const LUMI_HOLDINGS_USER_ID = '__LUMI_HOLDINGS__';       // reserve capital, and the LUMI stock's real treasury
+const LUMI_SNACKS_USER_ID = '__LUMI_SNACKS__';           // pet snacks and toys are sold here
+const LUMI_BOUTIQUE_USER_ID = '__LUMI_BOUTIQUE__';       // decor, wear and house things
+const LUMI_CAPSULES_USER_ID = '__LUMI_CAPSULES__';       // capsules and moon capsules
+const LUMI_OUTFITTERS_USER_ID = '__LUMI_OUTFITTERS__';   // dungeon/battle shop: respec, mods, potions, heals, kit
+const LUMI_NURSERY_USER_ID = '__LUMI_NURSERY__';         // garden plots and seeds
+const LUMI_ARCADE_USER_ID = '__LUMI_ARCADE__';           // minigame entries, continues, showdown entries and bets
+const LUMI_REALTY_USER_ID = '__LUMI_REALTY__';           // Lumi City real estate: plots, house styles, yard pieces, estate capsules
+/** Every Lumi system account, in display order: { id, name } (the name is only used when the account is first made). */
+const LUMI_ACCOUNTS = Object.freeze([
+  { id: LUMI_TOWN_BANK_USER_ID, name: 'Lumi-Town Bank' },          // the main pool
+  { id: LUMI_HOLDINGS_USER_ID, name: 'Lumi Holdings Inc.' },        // the reserve / LUMI treasury
+  { id: LUMI_SNACKS_USER_ID, name: "Lumi's Snack Stand" },          // category: snacks
+  { id: LUMI_BOUTIQUE_USER_ID, name: "Lumi's Boutique" },           // category: boutique
+  { id: LUMI_CAPSULES_USER_ID, name: 'Moon Capsule Co.' },          // category: capsules
+  { id: LUMI_OUTFITTERS_USER_ID, name: 'Dungeon Outfitters' },      // category: outfitters
+  { id: LUMI_NURSERY_USER_ID, name: 'Starpowder Nursery' },         // category: nursery
+  { id: LUMI_ARCADE_USER_ID, name: 'Lumi Arcade' },                 // category: arcade
+  { id: LUMI_REALTY_USER_ID, name: 'Lumi City Realty' },            // category: realty
+]);
+const LUMI_ACCOUNT_IDS = Object.freeze(LUMI_ACCOUNTS.map((acct) => acct.id)); // just the ids, for exclusion lists
 const BANK_OWNER_ID = '319254336402358272';
 let COINS_PER_CHARS = 50; // 1 coin per this many characters
 let ADMIN_AUTO_STARS = 3; // stars credited when admin auto-activates a market
@@ -71,7 +94,7 @@ function reloadSettings() {
 // ---------------------------------------------------------------------------
 
 function initEconomyStore(dbPath) {
-  const resolvedPath = path.resolve(dbPath);
+  const resolvedPath = dbPath === ':memory:' ? dbPath : path.resolve(dbPath); // ':memory:' = a throwaway in-memory DB (tests)
   logger.info(`SadGirlCoin economy DB: ${resolvedPath}`);
   db = new Database(resolvedPath);
   db.pragma('journal_mode = WAL');
@@ -758,11 +781,13 @@ function getUserTransactions(userId, limit = 50) {
 // ---------------------------------------------------------------------------
 
 function runWeeklyLottery() {
+  // Fix-list #31: only real people can win. Every system account (__CENTRAL_BANK__, __DOLL_STREET__, the
+  // __LUMI_*__ accounts, per-guild __BIG_BUSINESS_*__ ...) is named __LIKE_THIS__, so GLOB '__*__' skips them all.
   const winners = db.prepare(`
     SELECT user_id, username FROM accounts
-    WHERE user_id != ? AND balance > 0
+    WHERE user_id NOT GLOB '__*__' AND balance > 0
     ORDER BY RANDOM() LIMIT 1
-  `).all(CENTRAL_BANK_USER_ID);
+  `).all(); // one random real holder with a positive balance
 
   if (winners.length === 0) return null;
 
@@ -1351,7 +1376,8 @@ function payThenRun(moves, action) {
  */
 function collectMonthlyTaxes() {
   // Big Business accounts (legacy + per-guild) are deliberately NOT excluded — they get taxed like normal citizens
-  const systemAccounts = [CENTRAL_BANK_USER_ID, DOLL_STREET_USER_ID, MOMIJI_CASINO_USER_ID];
+  // Lumi-Town's accounts are excluded too: taxing them would drain the Lumi Holdings reserve below its floor.
+  const systemAccounts = [CENTRAL_BANK_USER_ID, DOLL_STREET_USER_ID, MOMIJI_CASINO_USER_ID, ...LUMI_ACCOUNT_IDS]; // never taxed
 
   // Load tax settings (configurable via web panel)
   const tier1Threshold = _loadSetting('tax.tier1Threshold', 100);
@@ -1497,6 +1523,63 @@ function getVcTimeForUser(userId) {
 }
 
 // ---------------------------------------------------------------------------
+// Strict coin moves (used by the Lumi games: src/lumi/sgc.js and treasury.js)
+// ---------------------------------------------------------------------------
+
+/** Thrown by moveCoins when a move is refused; nothing has been written when it is thrown. */
+class CoinMoveError extends Error {
+  constructor(message, code, extra = {}) {
+    super(message);                 // human-readable reason
+    this.name = 'CoinMoveError';    // shows up in logs
+    this.code = code;               // 'bad_amount' | 'bad_type' | 'same_account' | 'no_sender' | 'no_receiver' | 'insufficient_funds'
+    Object.assign(this, extra);     // e.g. { need, have } for insufficient_funds
+  }
+}
+
+/** True for a system account id (anything shaped like __NAME__), e.g. __CENTRAL_BANK__ or __LUMI_TOWN_BANK__. */
+function isSystemAccountId(userId) {
+  return /^__.+__$/u.test(String(userId || '')); // same rule as the leaderboard's GLOB '__*__'
+}
+
+/**
+ * Move `amount` whole SGC from one existing account to another, with no fee, as ONE all-or-nothing step.
+ * Unlike adjustBalance it never logs as admin, and unlike transferCoins it takes no 1% fee.
+ * The sender's balance is checked inside the transaction for EVERY account, system accounts included.
+ * Throws CoinMoveError when refused (so an enclosing db.transaction rolls back), otherwise writes one
+ * `transactions` row with the given `type` and returns { fromBalance, toBalance }.
+ * Safe to call inside an outer db.transaction (better-sqlite3 turns the inner one into a savepoint).
+ */
+function moveCoins(fromUserId, toUserId, amount, type, note = '') {
+  if (!isPositiveCoinAmount(amount)) { // whole, exact, above zero
+    throw new CoinMoveError(`Amount must be a positive whole number of SGC (got ${amount}).`, 'bad_amount'); // refuse junk amounts
+  }
+  if (!type || typeof type !== 'string') throw new CoinMoveError('A ledger type is required.', 'bad_type'); // every move is labelled
+  if (fromUserId === toUserId) throw new CoinMoveError('Cannot move coins to the same account.', 'same_account'); // a no-op would still log
+  return db.transaction(() => {
+    const sender = db.prepare('SELECT balance FROM accounts WHERE user_id = ?').get(fromUserId); // read INSIDE the transaction
+    if (!sender) throw new CoinMoveError(`Account ${fromUserId} does not exist.`, 'no_sender'); // nothing to take from
+    const receiver = db.prepare('SELECT balance FROM accounts WHERE user_id = ?').get(toUserId); // must exist so coins can't vanish
+    if (!receiver) throw new CoinMoveError(`Account ${toUserId} does not exist.`, 'no_receiver'); // refuse instead of losing coins
+    if (sender.balance < amount) { // not enough: refuse, nothing written
+      throw new CoinMoveError(`Not enough SGC: need ${amount}, have ${sender.balance}.`, 'insufficient_funds', { need: amount, have: sender.balance });
+    }
+    db.prepare(`UPDATE accounts SET balance = balance - ?, total_spent = total_spent + ?, updated_at = datetime('now') WHERE user_id = ?`)
+      .run(amount, amount, fromUserId); // take from the sender
+    db.prepare(`UPDATE accounts SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime('now') WHERE user_id = ?`)
+      .run(amount, amount, toUserId); // give to the receiver
+    db.prepare('INSERT INTO transactions (from_user_id, to_user_id, amount, fee, type, note) VALUES (?, ?, ?, 0, ?, ?)')
+      .run(fromUserId, toUserId, amount, type, String(note || '')); // one ledger row with the caller's type
+    return { fromBalance: sender.balance - amount, toBalance: receiver.balance + amount }; // new balances for the caller
+  })();
+}
+
+/** Create any missing Lumi-Town system account (balance 0). Existing accounts keep their name and balance. */
+function ensureLumiAccounts() {
+  const insert = db.prepare('INSERT OR IGNORE INTO accounts (user_id, username) VALUES (?, ?)'); // no-op when it exists
+  for (const acct of LUMI_ACCOUNTS) insert.run(acct.id, acct.name); // all nine accounts
+}
+
+// ---------------------------------------------------------------------------
 // System state helpers
 // ---------------------------------------------------------------------------
 
@@ -1527,6 +1610,21 @@ module.exports = {
   BIG_BUSINESS_USER_ID,
   TAYS_TOBACCO_USER_ID,
   TOUHOU_MGMT_USER_ID,
+  LUMI_TOWN_BANK_USER_ID,   // Lumi-Town Bank (pays every Lumi prize)
+  LUMI_HOLDINGS_USER_ID,    // Lumi Holdings Inc. (reserve, LUMI treasury)
+  LUMI_SNACKS_USER_ID,      // Lumi's Snack Stand
+  LUMI_BOUTIQUE_USER_ID,    // Lumi's Boutique
+  LUMI_CAPSULES_USER_ID,    // Moon Capsule Co.
+  LUMI_OUTFITTERS_USER_ID,  // Dungeon Outfitters
+  LUMI_NURSERY_USER_ID,     // Starpowder Nursery
+  LUMI_ARCADE_USER_ID,      // Lumi Arcade
+  LUMI_REALTY_USER_ID,      // Lumi City Realty
+  LUMI_ACCOUNTS,            // [{ id, name }] of all nine
+  LUMI_ACCOUNT_IDS,         // just their ids
+  ensureLumiAccounts,       // create any missing Lumi account
+  moveCoins,                // strict fee-free move that throws CoinMoveError
+  CoinMoveError,            // the error moveCoins throws
+  isSystemAccountId,        // true for __NAME__ ids
   BANK_OWNER_ID,
   COINS_PER_CHARS,
   initEconomyStore,

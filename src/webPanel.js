@@ -98,6 +98,7 @@ const {
   revokeOAuthClient,
   createAuthorizationCode,
 } = require('../SGCServer/src/oauthServer');
+const { isLumiAdminPath, handleLumiAdminRequest } = require('./lumiAdminPage'); // Lumi-Town admin page (/lumi), kept in its own file
 
 const WEB_PANEL_PORT = Number(process.env.WEB_PANEL_PORT) || 7777;
 const WEB_PANEL_HOST = process.env.WEB_PANEL_HOST || '0.0.0.0';
@@ -670,6 +671,7 @@ function buildPageHtml(bodyContent, title = 'SGC Control Panel') {
     <a href="${p('/economy')}">Economy</a>
     <a href="${p('/runtime')}">Runtime</a>
     <a href="${p('/casino')}">Casino</a>
+    <a href="${p('/lumi')}">Lumi-Town</a>
     <a href="${p('/users')}">Users</a>
     <a href="${p('/memory')}">Memory</a>
     <a href="${p('/vc')}">VC Tracker</a>
@@ -1455,7 +1457,7 @@ function renderSettingsGroup(categoryMap, formAction, pageTitle) {
 }
 
 function renderEconomy(flash = null) {
-  const categories = getSettingsByCategories(['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search']);
+  const categories = getSettingsByCategories(['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games']);
   const flashHtml = flash
     ? `<div class="flash ${flash.type === 'error' ? 'flash-error' : 'flash-success'}">${escapeHtml(flash.message)}</div>`
     : '';
@@ -3270,7 +3272,7 @@ async function handleRequest(req, res) {
 
     if (pathname === '/economy' && method === 'POST') {
       const body = await parseFormBody(req);
-      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search'];
+      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games'];
       const saved = saveSettingsFromForm(body, cats);
       liveReloadAllSettings();
       res.end(renderEconomy({ type: 'success', message: `Saved ${saved} economy settings. Changes are live.` }));
@@ -3278,12 +3280,18 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/economy/reset' && method === 'POST') {
-      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search'];
+      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
       res.writeHead(302, { Location: p('/economy') });
       res.end();
       return;
+    }
+
+    // ── Lumi-Town admin (src/lumiAdminPage.js) ────────────────────────
+    if (isLumiAdminPath(pathname)) {                                       // GET /lumi or POST /lumi/<action>
+      await handleLumiAdminRequest(req, res, { pathname, url: parsedUrl, renderShell: buildPageHtml, p }); // admin + same-origin checked again inside
+      return;                                                              // it always answers
     }
 
     // ── Casino Settings ───────────────────────────────────────────────

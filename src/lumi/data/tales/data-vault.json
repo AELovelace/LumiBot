@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Cold aisles of servers hum as Lumi pads into the vault, her breath a small cloud.",
+  "A firewall says welcome, please wipe your paws. Lumi wipes her paws.",
+  "Lumi flutters into {place}, where rows of servers hum a cold, sleepy song. Her whiskers glow a little brighter.",
+  "The door hisses shut behind Lumi as she arrives at {place}. A tiny firewall bows politely and wishes her a pleasant visit.",
+  "Lumi pads into {place}, her breath puffing in the chilly air. Blinking lights wink at her from every rack.",
+  "Cool air and soft blue light greet Lumi at {place}. She fluffs her tail and feels very brave indeed.",
+  "Lumi arrives at {place} with a happy chirp. The servers hum back, which she decides is a hello.",
+  "A neon sign flickers WELCOME as Lumi steps into {place}. She is fairly sure it means her.",
+  "Lumi tiptoes into the cold aisles of {place}, ears up and glow steady, ready for an adventure.",
+  "Somewhere a fan whirs to life as Lumi enters {place}. She gives it a polite nod, just in case it is a firewall."
+ ],
+ "start": [
+  "Lumi is back in the room she came in by, where the way home glows softly by the door.",
+  "The first room of {place} hums familiarly. The way home is right here whenever Lumi wants it.",
+  "Lumi pads back to where she came in. The welcome sign still flickers, keeping the way home lit.",
+  "Back at the entrance, Lumi warms her paws by a friendly status light. Home is only a step away.",
+  "Lumi returns to the room she started in, where a polite firewall reminds her the way home is always open.",
+  "The entry room is just as she left it, cool and quiet. Lumi knows the way home is waiting here.",
+  "Lumi circles the first room once, tail held high. From here, home is close by.",
+  "Lumi drifts back into the entrance, glad to see a room she knows. The way home hums patiently."
+ ],
+ "empty": [
+  "Rows of little lights blink green, green, green. Lumi blinks back.",
+  "A cooling fan ruffles Lumi's fur. She leans into it.",
+  "This room holds nothing but humming servers and a chill that tickles Lumi's whiskers.",
+  "Rows of blinking lights stretch into the dark. Lumi finds nothing here except a very pleasant hum.",
+  "Cables droop overhead like sleepy vines. The room is empty, so Lumi simply enjoys the glow.",
+  "A cooling fan ruffles Lumi's fur as she looks around. There is nothing here but cold air and quiet.",
+  "Lumi's glow reflects off rows of glossy server panels. The room is empty, and a little bit beautiful.",
+  "Green lights blink in slow patterns across the racks. Lumi watches them for a while, enchanted.",
+  "The air here smells faintly of warm circuits. Nothing else is around, just Lumi and the hum.",
+  "Lumi's paws tap softly on the metal floor tiles. This aisle is empty except for the servers whispering data."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows. The same servers hum the same cosy tune.",
+  "This aisle looks familiar. Lumi recognises the blinking light that winked at her before.",
+  "Lumi passes through the room again, nodding to a server rack she has already met.",
+  "Back through the familiar cold aisle Lumi goes, her glow bouncing off the same shiny panels.",
+  "Lumi hurries through a room she has already explored. The fans whir as if to say welcome back.",
+  "The tangle of cables overhead is just as she remembers. Lumi pads on through.",
+  "Lumi floats back through this chilly room, humming along with the servers this time.",
+  "A familiar flicker of neon greets Lumi as she crosses the room once more."
+ ],
+ "treasure": [
+  "Tucked between two humming servers, Lumi spots {item}. She scoops it up with a delighted purr.",
+  "Something glints under a status light. Lumi finds {item} and gives it a happy little pat.",
+  "Lumi discovers {item} resting on a cool metal shelf. Finders keepers, she decides.",
+  "A polite firewall seems to have left {item} out for visitors. Lumi takes it gratefully.",
+  "Lumi's glow lands on {item} lying among the cables. She tucks it away with a pleased chirp.",
+  "There on the floor tiles sits {item}, bathed in blue light. Lumi pounces on it happily.",
+  "Lumi finds {item} waiting beside a blinking rack, as if it was hoping someone would come.",
+  "With a gasp of joy, Lumi spots {item} in the glow of the server lights and claims it."
+ ],
+ "key": [
+  "Lumi spots a key blinking between two servers and snatches it up proudly.",
+  "A key lies on the cold floor, glowing faintly. Lumi tucks it away with a happy wiggle.",
+  "Hidden behind a bundle of cables, Lumi finds a key. Somewhere, a door is waiting for it.",
+  "Lumi finds a key resting on a rack, neatly tagged ACCESS. She feels very official.",
+  "A key twinkles in the server light. Lumi picks it up and gives it a careful sniff.",
+  "Lumi discovers a key humming softly to itself on a shelf. She hums along and takes it.",
+  "A polite firewall seems to have dropped a key. Lumi promises to keep it safe.",
+  "Lumi's glow catches a key among the floor tiles. She bats it once, then claims it."
+ ],
+ "vault": [
+  "The vault door slides open with a soft hiss. Inside, Lumi finds {item} and squeaks with delight.",
+  "Lights blink green as the vault opens. Lumi peeks inside and discovers {item}.",
+  "Cold mist rolls out of the open vault, and there sits {item}. Lumi's tail puffs with joy.",
+  "The vault unlocks with a polite chime. Lumi trots in and claims {item}.",
+  "Behind the heavy vault door, stored as carefully as precious data, waits {item}. Lumi takes it happily.",
+  "The vault's servers hum a triumphant chord as Lumi finds {item} inside.",
+  "Lumi slips into the open vault and finds {item} glowing on a rack. Best find yet, she thinks.",
+  "A neon ACCESS GRANTED flickers above as Lumi finds {item} inside the vault."
+ ],
+ "locked_key": [
+  "A sealed server door blocks the way, its lock blinking a patient red. It needs a key.",
+  "Lumi reaches a locked door. A polite little firewall explains that a key is required.",
+  "This door is locked tight and humming quietly. Lumi will need a key to get through.",
+  "A heavy door with a glowing keyhole stands before Lumi. Without a key, it stays shut.",
+  "Lumi paws at a locked door. A small sign blinks KEY REQUIRED, very nicely.",
+  "The way ahead is a locked door, cold and firm. Somewhere there must be a key for it.",
+  "A locked door glows faintly in the cold aisle. It politely refuses to open without a key.",
+  "Lumi meets a door whose lock blinks in slow pulses. It wants a key before it will budge."
+ ],
+ "locked_puzzle": [
+  "A door sealed by a puzzle blocks the way. A firewall bows and wishes Lumi good luck.",
+  "Lumi finds a door locked with a puzzle. She sits down, tail curled, ready to think.",
+  "This door will not open until its puzzle is solved. Lumi's whiskers twitch with curiosity.",
+  "A puzzle guards the door ahead, glowing softly in the dark. Lumi loves a good puzzle.",
+  "The door ahead is sealed by a puzzle and hums as if it is thinking too.",
+  "Lumi reaches a door that asks for a puzzle to be solved. She stretches her paws, very serious.",
+  "A polite firewall explains that this door opens only for those who solve its puzzle.",
+  "A sealed door hums before Lumi, waiting for its puzzle to be solved. She feels clever already."
+ ],
+ "game_cups": [
+  "Three cups sit in a row on a server rack. Something is hidden under one of them.",
+  "A polite firewall sets out three cups and hides something beneath one. Lumi's eyes go wide.",
+  "Three cups glow under the blinking lights. One of them is keeping a secret.",
+  "Lumi finds three cups set out on a metal shelf, with something tucked under one.",
+  "Three cups wait in the cold aisle. Lumi's whiskers twitch, sure something is hiding under one.",
+  "Under the hum of the servers, three cups sit very still. One hides a surprise.",
+  "A little game of three cups is set out here. Something waits beneath one of them.",
+  "Three cups gleam in the neon light. Lumi sniffs the air, certain one is hiding something."
+ ],
+ "game_match": [
+  "Cards lie face down on a cool metal table, waiting to be matched in pairs.",
+  "A polite firewall lays out cards face down. Every one of them is looking for its partner.",
+  "Rows of face-down cards glow faintly, like sleeping data. Each one is waiting for its pair.",
+  "Lumi finds cards spread face down across the floor tiles, waiting to be paired up.",
+  "Face-down cards blink softly under the server lights. Each one has a twin somewhere.",
+  "A matching game waits here, cards face down in neat rows. Lumi's tail swishes.",
+  "Cards rest face down on a humming rack, ready to be matched two by two.",
+  "Lumi spots a spread of face-down cards. Somewhere among them, pairs are waiting."
+ ],
+ "game_win": [
+  "Lumi wins! A polite firewall applauds and hands over {item}.",
+  "The servers flash green as Lumi wins the game. She proudly takes {item}.",
+  "Lumi wins the little game and does a twirl. Her prize is {item}.",
+  "Victory! Lumi collects {item} while the racks blink in celebration.",
+  "Lumi wins fair and square and earns {item}. Her glow brightens with pride.",
+  "A cheerful chime rings through the aisles. Lumi has won {item}.",
+  "Lumi pounces on her win and claims {item}, purring all the way.",
+  "The game is won! Lumi tucks {item} away and wiggles happily."
+ ],
+ "game_lose": [
+  "Not this time, but a polite firewall gives Lumi {item} for trying.",
+  "Lumi doesn't win, but she still gets {item}. She decides that counts as winning.",
+  "The lights blink a gentle amber. Lumi didn't win, but she receives {item} for her effort.",
+  "Lumi misses the win, shrugs her little wings, and happily accepts {item}.",
+  "No win today, but the game rewards Lumi with {item} anyway.",
+  "Lumi loses the game but gains {item}, and purrs as if it was the plan all along.",
+  "A kind chime sounds as Lumi falls short. She still walks away with {item}.",
+  "Lumi doesn't quite win. A sympathetic server beeps and offers her {item}."
+ ],
+ "enemy": [
+  "A wild {enemy} buzzes out from behind a server rack! Lumi puffs up and gets ready.",
+  "A wild {enemy} blocks the cold aisle. Lumi's glow flares bright as the fight begins.",
+  "Lights flicker red as a wild {enemy} appears. Lumi stands her ground, wobbly but brave.",
+  "A wild {enemy} leaps out of a tangle of cables. Lumi raises her paws to fight.",
+  "The servers hum nervously as a wild {enemy} bars the way. Lumi bravely squares up.",
+  "A wild {enemy} glitches into view right in Lumi's path. Time to be brave!",
+  "A wild {enemy} hisses in the neon glow. Lumi flicks her tail and leaps into the fight.",
+  "Out of the chilly mist comes a wild {enemy}. Lumi squeaks a battle cry."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off between the servers. Lumi does a proud little hop.",
+  "Lumi wins! The {enemy} scurries away into the cold aisles.",
+  "With a final brave pounce, Lumi sends the {enemy} scampering off. The racks blink green.",
+  "The {enemy} gives a sulky beep and scampers out of sight. Lumi purrs.",
+  "The {enemy} has had enough and dashes off. A polite firewall gives Lumi a nod.",
+  "Lumi stands victorious as the {enemy} scampers away under the cables.",
+  "Beaten, the {enemy} scampers off into the hum. Lumi smooths her ruffled fur.",
+  "The {enemy} flees in a flicker of static. Lumi's glow shines brighter than ever."
+ ],
+ "fled": [
+  "Lumi zips away from the {enemy} and back to the room before, heart thumping.",
+  "Not today! Lumi scurries away from the {enemy} and back to the previous room.",
+  "Lumi turns tail and darts away from the {enemy}, ducking back into the last room.",
+  "With a squeak, Lumi flees the {enemy} and tumbles back into the room she just left.",
+  "Lumi decides bravery can wait and dashes away from the {enemy} to the room before.",
+  "Lumi flutters out of reach of the {enemy}, landing safely back in the previous room.",
+  "The {enemy} is too fierce today. Lumi scampers back to the last room to catch her breath.",
+  "Lumi beats a hasty retreat from the {enemy}, glowing a little dimmer in the room before."
+ ],
+ "defeat": [
+  "The {enemy} is too much for Lumi. A kind firewall carries her home for a nap, and her finds stay behind.",
+  "Lumi's glow fades to a sleepy flicker. The {enemy} wins, and she is carried home, leaving her treasures behind.",
+  "Worn out by the {enemy}, Lumi is gently carried home to nap. Everything she found stays in {place}.",
+  "The {enemy} wins this round. Lumi is carried home, yawning, and her finds are left on the cold floor.",
+  "Lumi tumbles over, too tired to face the {enemy}. She is carried home for a nap, leaving her finds behind.",
+  "The {enemy} is just too strong. Lumi is carried home, snoozing, and her treasures stay among the servers.",
+  "Polite firewalls carry a sleepy Lumi home after the {enemy} wins. Everything she found stays behind.",
+  "The {enemy} proves too much. Lumi is bundled home to nap, and her finds are left in the humming dark."
+ ],
+ "stairs": [
+  "Lumi finds stairs leading further down, lit by a soft blue glow.",
+  "A metal staircase leads into the deeper levels of {place}. Lumi peers over the edge.",
+  "Stairs lead further down into the hum. The air drifting up is even colder.",
+  "Lumi discovers stairs going deeper, with blinking lights marking each step.",
+  "A polite firewall points out stairs leading further down. Lumi thanks it kindly.",
+  "Between two racks, Lumi spots stairs heading deeper into {place}.",
+  "Stairs drop away into the chilly dark, humming with distant servers. Lumi's ears perk up.",
+  "Lumi finds a stairway to a deeper floor, its edges glowing faint neon."
+ ],
+ "descend": [
+  "Lumi hops down the stairs, one step at a time, onto a deeper floor of humming servers.",
+  "Down Lumi goes, her glow lighting the way to a colder, deeper level.",
+  "Lumi descends to the next floor. The hum grows deeper and the lights glow bluer.",
+  "Step by careful step, Lumi goes down to a deeper floor of {place}.",
+  "Lumi floats down the stairs and arrives on a new floor, whiskers twitching with excitement.",
+  "The stairs lead Lumi to a deeper floor, where the servers whisper even more secrets.",
+  "Lumi bounces down to the next level. A new firewall bows to greet her.",
+  "Lumi descends deeper into {place}, where the chill is crisp and the hum is soft."
+ ],
+ "home": [
+  "Lumi trots out of {place} with all her finds, purring the whole way home.",
+  "The door hisses open and Lumi heads home, her treasures safely tucked away.",
+  "Lumi waves goodbye to the polite firewalls and carries everything she found home.",
+  "Out of the cold aisles and into the warm, Lumi heads home with her haul.",
+  "Lumi leaves {place} glowing with pride, every treasure safe with her.",
+  "Home time! Lumi skips out of {place}, her treasures jingling happily.",
+  "Lumi bids the humming servers goodnight and heads home with everything she found.",
+  "With her finds held close, Lumi steps out of {place} and toward a warm, cosy home."
+ ],
+ "abandon": [
+  "Lumi decides she has had enough adventure for today and heads home, leaving her finds behind.",
+  "With a little sigh, Lumi leaves {place} and her treasures behind. Home sounds nice.",
+  "Lumi gives up the trip and pads home, leaving everything she found among the servers.",
+  "Too chilly for more exploring. Lumi heads home empty-pawed, her finds left behind.",
+  "Lumi waves goodbye to the firewalls and leaves her finds behind for another day.",
+  "Lumi calls it a day and floats home, her treasures left in the cold aisles.",
+  "Lumi lets go of her finds and trots home, ready for a warm nap.",
+  "The hum grows sleepy, and so does Lumi. She heads home, leaving her treasures behind."
+ ],
+ "potion": [
+  "Lumi sips a potion and her glow brightens. She feels much better.",
+  "Gulp! The potion fizzes like static, and Lumi feels her strength bubble back.",
+  "Lumi drinks a potion and purrs as warmth chases away the server chill.",
+  "A sip of potion, and Lumi's whiskers spring back up. She feels ready again.",
+  "Lumi drinks a potion. Her fur sparkles and her wobbly paws steady.",
+  "The potion tastes like a fresh reboot. Lumi stretches and feels much better.",
+  "Lumi gulps down a potion, and her glow flickers back to full brightness.",
+  "Lumi drinks a potion beside a humming rack and feels cosy and strong again."
+ ],
+ "look": [
+  "A row of tiny lights blinks along the rack like a town seen from far away. One window stays lit longer than the rest.",
+  "A firewall drifts up, flickers politely, and asks if Lumi has an appointment. She does not. It lets her off this once.",
+  "The floor hums through her paws, a long low note. Lumi purrs back, and for a moment they are in tune.",
+  "A cable has come loose and lies coiled in the aisle, exactly like a snake and exactly like a toy. Lumi keeps walking. Mostly.",
+  "Cold air pours from a vent and makes a tiny cloud of her breath, which the fans tidy away at once.",
+  "A screen shows a progress bar at ninety-nine percent. By the dust on it, it has been ninety-nine percent for a long time.",
+  "Somebody has stuck a paper note to a server: 'Do not turn off. Dreaming.' Lumi tiptoes past."
+ ]
+}

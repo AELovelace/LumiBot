@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Gumdrop walls and liquorice arches. Lumi reminds herself not to lick the dungeon.",
+  "The catacombs smell of caramel. Lumi's tummy rumbles as she trots in.",
+  "Lumi flutters into {place}, where gumdrop walls glow like stained glass and the air smells of warm caramel.",
+  "The liquorice arches of {place} loom overhead, and Lumi's tail fizzes with excitement.",
+  "Lumi arrives at the Candy Catacombs and solemnly promises herself not to lick anything. Probably.",
+  "A sugary breeze greets Lumi at the mouth of {place}, and her whiskers twitch with delight.",
+  "Lumi pads into the Candy Catacombs, her glow bouncing off a thousand shiny gumdrops.",
+  "Lumi takes a brave little breath of toffee-scented air and steps into {place}.",
+  "Sprinkles crunch under Lumi's paws as she enters {place}, eyes wide as saucers.",
+  "Lumi peeks beneath the first liquorice arch of {place} and gives a tiny, wobbly cheer."
+ ],
+ "start": [
+  "Lumi is back where she came in, the familiar gumdrop doorway glowing softly with the way home.",
+  "The first liquorice arch welcomes Lumi back; home is just a hop away from here.",
+  "Lumi returns to the entrance room, where fresh air drifts in past the candy walls.",
+  "Here is the room where it all began, and the way home waits patiently beside the gumdrops.",
+  "Lumi recognises the sprinkle-dusted floor of the entrance. Home is close by, should she want it.",
+  "Lumi circles the entrance room once, comforted to see the way home still glowing there.",
+  "Back at the doorway she came through, Lumi pauses to tidy her whiskers before deciding what's next.",
+  "The entrance of {place} feels cosy now, with the way home shining just beyond the arch."
+ ],
+ "empty": [
+  "Sugar crystals crunch underfoot. Lumi leaves a trail of sparkly pawprints.",
+  "A fountain of lemonade fizzes quietly to itself. Lumi sneezes.",
+  "This room holds nothing but gumdrop walls and a faint hum of fizzing sherbet.",
+  "Lumi finds only quiet here, and a sticky sign that says Do Not Lick in very wobbly letters.",
+  "Liquorice arches curl over an empty room, and Lumi's glow paints them in soft colours.",
+  "Nothing here but the drip of slow syrup somewhere, plip, plop, plip.",
+  "The room is bare, save for a lingering whiff of peppermint that makes Lumi sneeze.",
+  "Lumi pokes her nose into every corner of this sugary room and finds only crumbs of silence.",
+  "Candy-striped pillars stand in an empty hall, sparkling as Lumi drifts past them.",
+  "A marshmallow-soft hush fills this room. Lumi tiptoes through it, just in case."
+ ],
+ "again": [
+  "Lumi passes through a familiar room, waving a paw at the gumdrops she already met.",
+  "These liquorice arches look familiar. Lumi trots beneath them with a confident little bounce.",
+  "Lumi retraces her pawprints in the sprinkles, glad to know this room by heart.",
+  "Back through a room she has seen before, Lumi notes the same sticky sign, still unlicked.",
+  "The peppermint smell tells Lumi she has been here already, and she pads on happily.",
+  "Lumi hums a tune as she crosses this known room, her glow bouncing off the candy walls.",
+  "Familiar caramel drips greet Lumi as she wanders back through, steady as a ticking clock.",
+  "Lumi recognises a gumdrop shaped like a mouse and gives it a friendly nod in passing."
+ ],
+ "treasure": [
+  "Nestled among the gumdrops, Lumi spots {item} and scoops it up with a happy chirp.",
+  "Lumi finds {item} resting beneath a liquorice arch and tucks it carefully away.",
+  "Something gleams in a pile of sprinkles. It is {item}! Lumi's tail swishes with joy.",
+  "Lumi discovers {item} on a candy-striped ledge and claims it with a proud little purr.",
+  "There, by a puddle of caramel, lies {item}. Lumi rescues it before it gets sticky.",
+  "Lumi's glow lands on {item}, sitting among the sweets as if it were waiting for her.",
+  "Lumi pounces on {item} with a delighted squeak, brushing off a few stray sugar crystals.",
+  "Half-hidden behind a gumdrop, {item} catches Lumi's eye, and she adds it to her finds."
+ ],
+ "key": [
+  "A key glints among the gumdrops, and Lumi snatches it up with a triumphant mew.",
+  "Lumi finds a key lying under a liquorice arch and holds it high like a tiny trophy.",
+  "Something jingles in the sprinkles. A key! Lumi tucks it safely away.",
+  "Lumi spots a key resting on a candy ledge and gives it a careful sniff before taking it.",
+  "A key! Lumi spins in a happy circle, then remembers to pick it up.",
+  "Lumi's paw bumps against a key hidden in the sugar dust, and her whiskers quiver with glee.",
+  "Lumi finds a key and wonders which door in {place} has been waiting for it.",
+  "Glimmering beside a sticky puddle, a key catches Lumi's glow. She claims it at once."
+ ],
+ "vault": [
+  "The vault swings open, and Lumi finds {item} glittering inside like the sweetest prize.",
+  "Lumi peers into the opened vault and discovers {item}. Her ears perk right up.",
+  "Inside the vault, among sugary shadows, waits {item}. Lumi lifts it out with a purr.",
+  "The vault is open at last, and {item} is hers! Lumi does a little victory wiggle.",
+  "Lumi steps into the vault and gasps softly at {item}, waiting just for her.",
+  "Behind the vault door lies {item}, and Lumi hugs it close with both paws.",
+  "The vault reveals {item}, and Lumi's glow brightens to a happy golden shimmer.",
+  "Lumi tiptoes into the open vault, where {item} sparkles like freshly spun sugar."
+ ],
+ "locked_key": [
+  "A sturdy door blocks the way, and it will not budge without a key.",
+  "Lumi pushes at a locked door set into the gumdrop wall. It needs a key.",
+  "A locked door waits beneath a liquorice arch. Lumi will need a key to pass.",
+  "Lumi peers at the keyhole of a locked door and twitches her whiskers. Only a key will do.",
+  "This door is firmly locked, and no amount of polite pawing will change that. It wants a key.",
+  "A locked door stands in Lumi's path, sugar-crusted and stubborn, waiting for a key.",
+  "Lumi tries the door, but it is locked tight. Somewhere in {place}, a key must be hiding.",
+  "A candy-striped door blocks the way, locked fast. Lumi will need a key to get through."
+ ],
+ "locked_puzzle": [
+  "A door sealed by a puzzle stands before Lumi, and her tail swishes as she ponders it.",
+  "Lumi finds a door held shut by a puzzle. She sits down, paws together, ready to think.",
+  "This door will not open until its puzzle is solved. Lumi's ears tilt with curiosity.",
+  "A puzzle seals the way forward, nestled in a frame of glossy gumdrops.",
+  "Lumi meets a puzzle-locked door under a liquorice arch and gives a determined little nod.",
+  "The door ahead is bound by a puzzle, and Lumi's whiskers quiver with clever thoughts.",
+  "A sealed door waits with a puzzle to solve. Lumi stretches, ready to give it her best.",
+  "Lumi discovers a door that only a puzzle can open, and she can hardly wait to try."
+ ],
+ "game_cups": [
+  "Three cups sit in a row on a candy table, and something is hidden under one of them.",
+  "Lumi spots three cups lined up neatly. One of them is hiding a little surprise.",
+  "Three cups wait on a gumdrop pedestal, one keeping a secret underneath.",
+  "Lumi's eyes dart between three cups. Something is tucked beneath one of them.",
+  "Three cups have been set out, and Lumi leans in close, sure she can find what hides beneath.",
+  "A game of cups! Three sit before Lumi, and one hides something just for her.",
+  "Under a liquorice arch, three cups stand waiting. Lumi wiggles, ready to guess.",
+  "Three cups, one secret. Lumi's tail flicks with eager anticipation."
+ ],
+ "game_match": [
+  "A row of cards lies face down on a sugary floor, waiting to be matched in pairs.",
+  "Lumi finds cards spread face down and rubs her paws together. Time to find the pairs!",
+  "Face-down cards cover a candy table. Somewhere among them, pairs are waiting.",
+  "Lumi spots a spread of hidden cards and settles in to match them up.",
+  "Cards lie face down in neat rows, each one hoping to meet its twin.",
+  "A matching game! Lumi peers at the face-down cards, determined to remember every one.",
+  "Face-down cards sparkle with sugar dust, waiting for Lumi to pair them up.",
+  "Lumi sits before a spread of face-down cards, whiskers twitching with concentration."
+ ],
+ "game_win": [
+  "Lumi wins the game and receives {item}! She does a happy little twirl.",
+  "Victory! Lumi claims {item} as her prize and purrs with pride.",
+  "Lumi's clever paws pay off, and {item} is hers to keep.",
+  "The game is won, and Lumi tucks {item} away with a delighted chirp.",
+  "Lumi beats the game fair and square and earns {item} for her trouble.",
+  "Hooray! Lumi wins {item} and bounces so high she nearly bumps a liquorice arch.",
+  "A win for Lumi! She holds {item} up proudly for the gumdrops to admire.",
+  "Lumi triumphs at the little game and gets {item}, glowing brighter than ever."
+ ],
+ "game_lose": [
+  "Lumi does not quite win, but she still gets {item} for trying. Not bad at all!",
+  "The game slips away from Lumi, yet {item} is hers as a consolation prize.",
+  "No win this time, but Lumi happily accepts {item} for her efforts.",
+  "Lumi loses the game but gains {item}, and her tail still swishes cheerfully.",
+  "Not a victory, but Lumi receives {item} for giving it a go. She purrs anyway.",
+  "Lumi shrugs off the loss and tucks away {item}, a sweet reward for trying.",
+  "The game was not hers today, but {item} makes Lumi smile all the same.",
+  "Lumi misses the win but gets {item}, which she declares almost as good."
+ ],
+ "enemy": [
+  "A wild {enemy} hops out from behind a gumdrop, and Lumi puffs up her fur for a fight!",
+  "A wild {enemy} blocks the liquorice archway. Lumi squares her tiny shoulders.",
+  "Out of the sugary shadows springs a wild {enemy}! Lumi raises her paws, ready.",
+  "A wild {enemy} stands in Lumi's path, and she wobbles bravely into battle.",
+  "Lumi meets a wild {enemy} among the candy pillars, and the scuffle begins!",
+  "A wild {enemy} will not let Lumi pass. She fluffs her tail and prepares to tussle.",
+  "With a sticky squelch, a wild {enemy} appears! Lumi's glow flares bright.",
+  "A wild {enemy} bars the way, and Lumi gives her bravest little hiss."
+ ],
+ "victory": [
+  "The {enemy} scampers off into the gumdrops, and Lumi purrs with wobbly pride.",
+  "Lumi wins the tussle! The {enemy} dashes away, leaving a trail of sprinkles.",
+  "Beaten, the {enemy} skitters off beneath a liquorice arch. Lumi takes a bow.",
+  "The {enemy} has had enough and scurries away. Lumi's glow brightens triumphantly.",
+  "Off goes the {enemy}, scampering into the sugary shadows. Lumi did it!",
+  "Lumi stands victorious as the {enemy} hurries away, sticky and sulking.",
+  "The {enemy} retreats in a sticky scramble, and Lumi does a little victory spin.",
+  "With a final pounce, Lumi sends the {enemy} scampering off. Hooray!"
+ ],
+ "fled": [
+  "Lumi dashes away from the {enemy} and tumbles back into the room she just left.",
+  "Too much {enemy} for now! Lumi scurries back to the previous room to catch her breath.",
+  "Lumi turns tail and zips away from the {enemy}, back through the last arch.",
+  "With a squeak, Lumi flees the {enemy} and hides in the room before.",
+  "Lumi decides caution is best and scampers away from the {enemy} to the last room.",
+  "Paws pattering, Lumi escapes the {enemy} and returns to the room behind her.",
+  "Lumi zooms back to the previous room, leaving the {enemy} far behind.",
+  "The {enemy} was a bit much, so Lumi bolts back to the room she came from."
+ ],
+ "defeat": [
+  "The {enemy} wins this round. Lumi is carried home for a nap, her finds left behind.",
+  "Worn out by the {enemy}, Lumi is scooped up and carried home, leaving her treasures in the catacombs.",
+  "The {enemy} proves too tough, and a sleepy Lumi is carried home without her finds.",
+  "Lumi flops with a yawn after the tussle with the {enemy}. She is carried home, her treasures left behind.",
+  "Bested by the {enemy}, Lumi is gently carried home. What she found stays in the candy halls.",
+  "The {enemy} was too much today. Lumi naps on the way home, her finds left among the gumdrops.",
+  "Lumi is carried home after the {enemy} gets the better of her, leaving her treasures behind.",
+  "Too tired to go on after the {enemy}, Lumi is bundled home for a nap, empty-pawed."
+ ],
+ "stairs": [
+  "Lumi finds a staircase of stacked toffee leading deeper into {place}.",
+  "Stairs spiral further down, sticky and inviting. Lumi peers over the edge.",
+  "Lumi spots stairs leading deeper, each step glinting with sugar crystals.",
+  "A set of stairs descends into the sweeter depths. Lumi's whiskers twitch with curiosity.",
+  "Beneath a liquorice arch, stairs lead further down. Lumi's tail quivers.",
+  "Lumi discovers stairs going deeper into the catacombs and feels a thrill of adventure.",
+  "Candy-striped stairs lead down into the unknown. Lumi takes a brave little breath.",
+  "Stairs! They lead deeper, and Lumi can smell even richer sweets below."
+ ],
+ "descend": [
+  "Lumi pads down the stairs to a deeper floor, where the gumdrops glow even brighter.",
+  "Down, down Lumi goes, arriving on a deeper floor that smells of warm caramel.",
+  "Lumi hops down the steps one at a time and lands on a sweeter, deeper floor.",
+  "The stairs bring Lumi to a deeper level, where liquorice arches twist even higher.",
+  "Lumi descends to a new floor, her glow bouncing off fresh walls of shiny candy.",
+  "At the bottom of the stairs, Lumi finds a deeper floor full of sugary wonders.",
+  "Lumi tiptoes down to the next floor, tail high and heart fluttering.",
+  "Deeper into {place} goes Lumi, the air growing thick with toffee and mystery."
+ ],
+ "home": [
+  "Lumi trots out of {place} and home, her paws full of treasures and her heart full of pride.",
+  "Lumi leaves the Candy Catacombs with every find tucked safe, and heads home for a nap.",
+  "Home at last! Lumi shows off everything she found, smelling faintly of peppermint.",
+  "Lumi waves goodbye to the gumdrop walls and carries all her treasures home.",
+  "Out of {place} and back home, Lumi curls up with her finds and purrs contentedly.",
+  "Lumi skips home from the catacombs, every treasure accounted for and not a single wall licked.",
+  "With all her finds in tow, Lumi leaves {place} and heads happily home.",
+  "Lumi returns home with her sweet haul, a sugar-dusted little hero."
+ ],
+ "abandon": [
+  "Lumi decides that is enough for today and heads home, leaving her finds behind.",
+  "Lumi gives up the adventure and pads home, her treasures left among the gumdrops.",
+  "Feeling ready for a nap, Lumi leaves {place} empty-pawed.",
+  "Lumi waves goodbye to the candy halls and goes home, her finds staying behind.",
+  "The trip is over for now. Lumi heads home without her treasures, but with a happy heart.",
+  "Lumi turns back and goes home, leaving everything she found in the catacombs.",
+  "Lumi calls it a day and wanders home, her finds left behind in the sugary halls.",
+  "Home it is! Lumi leaves {place} and her treasures behind, tail swishing."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels all warm and fizzy inside, like sherbet.",
+  "Gulp! Lumi drinks a potion and her glow brightens right back up.",
+  "Lumi drinks a potion that tastes faintly of strawberries and feels much better.",
+  "A quick potion later, Lumi stretches and purrs, feeling good as new.",
+  "Lumi drinks a potion and her wobbly whiskers settle with a contented twitch.",
+  "The potion goes down smooth as syrup, and Lumi feels her energy return.",
+  "Lumi finishes a potion with a happy hiccup and feels much stronger.",
+  "Lumi gulps a potion and her tail fluffs up with fresh pep."
+ ],
+ "look": [
+  "The wall here is gumdrops set in icing. One is missing. Lumi looks at the gap, then at her paw, then away.",
+  "A liquorice arch has a sign hung on it in sugar letters: 'Please do not lick the dungeon'. There is a lick mark on the sign.",
+  "Boiled sweets are set in the ceiling like stained glass, and the light comes through in stripes of red and green.",
+  "The floor is a little sticky. Lumi lifts each paw higher than she needs to, like a cat in snow.",
+  "A river of slow caramel crosses the corner of the room. A wafer boat is moored there, waiting for someone small.",
+  "Sugar mice sit in a row on a shelf. Lumi counts six. When she looks back there are five, and a few crumbs.",
+  "The air smells of vanilla and warm sugar. Lumi's tummy makes a remark, and the catacombs echo it politely."
+ ]
+}

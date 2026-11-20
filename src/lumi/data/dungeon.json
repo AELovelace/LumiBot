@@ -1,0 +1,28 @@
+{
+  "environments": [
+    {"id": "moonlit-shrine", "name": "Moonlit Shrine", "family": "mystical", "opens": 1, "elements": ["holy", "spirit"],
+      "about": "Paper lanterns and quiet stone, under a moon that never sets.", "palette": {"wall": "#2b2a52", "floor": "#3b3766", "accent": "#f0deff", "glow": "#ffe9a8"}},
+    {"id": "crystal-cavern", "name": "Crystal Cavern", "family": "mystical", "opens": 1, "elements": ["ice", "none"],
+      "about": "Humming crystals light the way, and everything echoes twice.", "palette": {"wall": "#1d3350", "floor": "#27466b", "accent": "#9be8ff", "glow": "#c9a8ff"}},
+    {"id": "mushroom-hollow", "name": "Mushroom Hollow", "family": "mystical", "opens": 3, "elements": ["wind", "none"],
+      "about": "Soft moss, tall toadstools, and spores that drift like slow snow.", "palette": {"wall": "#243d33", "floor": "#2f5242", "accent": "#ff8e8e", "glow": "#8be9a8"}},
+    {"id": "cloud-library", "name": "Cloud Library", "family": "mystical", "opens": 6, "elements": ["wind", "spirit"],
+      "about": "Shelves that float, books that whisper, and stairs made of weather.", "palette": {"wall": "#3a4a7a", "floor": "#56679c", "accent": "#fff1cd", "glow": "#bfe8ff"}},
+    {"id": "sunken-temple", "name": "Sunken Temple", "family": "fantasy", "opens": 9, "elements": ["ice", "spirit"],
+      "about": "Old pillars under green water, with fish for a congregation.", "palette": {"wall": "#173d44", "floor": "#1f5560", "accent": "#7fd6c8", "glow": "#ffdc83"}},
+    {"id": "clockwork-tower", "name": "Clockwork Tower", "family": "fantasy", "opens": 12, "elements": ["fire", "none"],
+      "about": "Brass gears the size of rooms, all ticking slightly out of step.", "palette": {"wall": "#4a3524", "floor": "#6b4a2f", "accent": "#ffdc83", "glow": "#ff9d6b"}},
+    {"id": "candy-catacombs", "name": "Candy Catacombs", "family": "fantasy", "opens": 15, "elements": ["fire", "dark"],
+      "about": "Gumdrop walls and liquorice arches. Do not lick the dungeon.", "palette": {"wall": "#5a2a4a", "floor": "#7a3a62", "accent": "#ffb3d1", "glow": "#fff1cd"}},
+    {"id": "toy-attic", "name": "Haunted Toy Attic", "family": "fantasy", "opens": 18, "elements": ["dark", "spirit"],
+      "about": "Dusty boxes, a rocking horse that rocks alone, and friendly ghosts.", "palette": {"wall": "#33283d", "floor": "#4a3a52", "accent": "#c9b0ff", "glow": "#ffdc83"}},
+    {"id": "starship-wreck", "name": "Starship Wreck", "family": "cyberpunk", "opens": 22, "elements": ["none", "dark"],
+      "about": "Tilted corridors, blinking panels, and stars through every crack.", "palette": {"wall": "#1c2333", "floor": "#2a3550", "accent": "#a8b4c4", "glow": "#70ebea"}},
+    {"id": "neon-arcade", "name": "Neon Arcade Alley", "family": "cyberpunk", "opens": 26, "elements": ["wind", "fire"],
+      "about": "Rain on the pavement, cabinets still playing their demo loops.", "palette": {"wall": "#1a1030", "floor": "#2a1848", "accent": "#ff8ecb", "glow": "#70ebea"}},
+    {"id": "data-vault", "name": "Data Vault", "family": "cyberpunk", "opens": 30, "elements": ["ice", "dark"],
+      "about": "Cold aisles of humming servers, guarded by very polite firewalls.", "palette": {"wall": "#0f1c2a", "floor": "#16293d", "accent": "#70ebea", "glow": "#8f9bff"}},
+    {"id": "rooftop-garden", "name": "Rooftop Megacity Garden", "family": "cyberpunk", "opens": 35, "elements": ["wind", "holy"],
+      "about": "Vines over vents, bees between billboards, the city glowing below.", "palette": {"wall": "#1d2a3a", "floor": "#2a4a3a", "accent": "#8be9a8", "glow": "#ff8ecb"}}
+  ]
+}

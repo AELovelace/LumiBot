@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Brass gears the size of rooms turn overhead as Lumi slips into the tower.",
+  "Tick, tock, tick. Lumi steps in on the tock.",
+  "Lumi flutters into {place}, where brass gears as big as rooms tick and tock, never quite together.",
+  "The ticking of {place} wraps around Lumi like a lullaby with a hiccup. Her whiskers twitch with excitement.",
+  "Lumi arrives at {place} and gazes up at the enormous turning gears. Every single one of them is a little bit late.",
+  "A warm smell of oil and brass greets Lumi as she steps into {place}. Somewhere, something goes tick-tock-tick.",
+  "Lumi lands softly at {place}, her glow glinting off a hundred brass teeth. Adventure, she decides, starts now.",
+  "The great gears of {place} groan hello as Lumi arrives. She puffs up her tail and tries to look very brave.",
+  "Lumi peeks into {place}. Tick, tock, tickety-tock. Even the clocks here cannot agree on the time.",
+  "Lumi trots into {place}, ears swivelling at the jumble of ticks. It sounds like a hundred clocks chatting at once."
+ ],
+ "start": [
+  "Lumi is back where she came in. The way home hums quietly beneath the ticking gears.",
+  "This is the room Lumi started in, and the way home is right here, glowing faintly in the brass light.",
+  "Lumi recognises the first room by its wobbly old gear. Home is just a step away whenever she likes.",
+  "Back at the entrance, Lumi pauses to listen to the familiar tick-tock. The way home waits patiently.",
+  "Lumi returns to the room she arrived in. It feels cosier now, like an old friend who ticks.",
+  "The entrance hall again. Lumi gives the way home a fond look before glancing back at the gears.",
+  "Lumi finds herself where the trip began. The path home is right here, and the gears tick on regardless.",
+  "Lumi pads into the starting room and sniffs the air. Brass, oil, and the faint smell of home."
+ ],
+ "empty": [
+  "A big cog turns slowly in the floor. Lumi rides it once around, for science.",
+  "Springs and levers and nobody about. Lumi touches nothing, with great effort.",
+  "Nothing here but a giant gear turning slowly overhead. Lumi watches it for a while, quite hypnotised.",
+  "The room is empty, save for a soft ticking that seems to come from inside the walls.",
+  "Lumi steps into a quiet chamber where dust drifts through beams of light between the cogs.",
+  "Just brass and shadows in here. A gear clunks, pauses, then clunks again, as if it forgot what it was doing.",
+  "Lumi finds nothing but a draughty room full of slow, sleepy ticking. She yawns a tiny yawn.",
+  "An empty room. Somewhere above, two gears tick a beat apart, and Lumi bobs her head to the uneven rhythm.",
+  "Lumi's glow dances across bare brass panels. There is nothing here but the hum of the tower.",
+  "The chamber holds only the smell of warm oil and a pendulum swinging lazily. Lumi bats at it once, just because."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows. The same gear still ticks a little behind the others.",
+  "Familiar ticking greets Lumi as she passes through again. Nothing has changed, except perhaps the time.",
+  "Lumi has been here before. She waves a paw at the big lazy cog as she goes by.",
+  "Back through a room already explored. Lumi's own pawprints in the brass dust greet her.",
+  "Lumi recognises this room by its stubborn, hiccupping gear. She hurries on with a little hop.",
+  "This chamber again. The tick-tock sounds friendlier the second time around.",
+  "Lumi wanders back through, nodding to the gears like old neighbours.",
+  "Lumi passes through a room she has already seen, humming along with its off-beat ticking."
+ ],
+ "treasure": [
+  "Tucked between two gear teeth, Lumi finds {item}. She wiggles it free with a happy chirp.",
+  "Lumi spots {item} lying on the brass floor, gleaming in her glow. What luck!",
+  "Something glints under a slow-turning cog. Lumi pounces and comes up with {item}.",
+  "Lumi finds {item} resting on a dusty ledge, as if the tower saved it just for her.",
+  "There, beside a ticking pendulum, lies {item}. Lumi scoops it up with delight.",
+  "Lumi's tail fluffs with excitement at the sight of {item}, waiting right in the middle of the room.",
+  "Among the oily springs and bolts, Lumi discovers {item}. She tucks it away proudly.",
+  "Lumi hears a soft clink as something comes to rest by her paws. It is {item}!"
+ ],
+ "key": [
+  "Lumi finds a key hanging on a gear tooth, swinging gently as the cog turns.",
+  "A key lies on the floor, ticking softly as if it wants to join in. Lumi picks it up.",
+  "Lumi spots a key wedged between two springs and tugs it loose with her teeth.",
+  "Something small and important glints in the dust. It is a key! Lumi purrs.",
+  "Lumi discovers a key resting in a little dish, as if left out just for her.",
+  "A key rolls out from under a sleepy cog. Lumi catches it with a neat paw.",
+  "Lumi finds a key and holds it up to her glow. Somewhere in this tower, a door is waiting.",
+  "Tucked behind a pendulum, Lumi finds a key. She does a small, wobbly victory spin."
+ ],
+ "vault": [
+  "The vault swings open with a chorus of clicks, and inside Lumi finds {item}.",
+  "Gears whir and the vault opens wide. Lumi peeks in and discovers {item}.",
+  "With a final tick, the vault yawns open. Waiting inside is {item}.",
+  "Lumi tiptoes into the open vault and finds {item} resting in the brassy hush.",
+  "The vault door grinds aside, and Lumi's eyes go round. There is {item}!",
+  "Inside the open vault, nestled among still cogs, Lumi finds {item}.",
+  "The vault is open at last. Lumi reaches in, whiskers trembling, and pulls out {item}.",
+  "Clunk, whirr, click. The vault opens, and Lumi happily claims {item}."
+ ],
+ "locked_key": [
+  "A heavy door blocks the way, locked tight. Lumi will need a key to get through.",
+  "Lumi pushes at a door, but it will not budge. It is locked, and it wants a key.",
+  "A door stands shut, its lock ticking smugly. Lumi needs a key for this one.",
+  "Lumi finds a locked door set between two great gears. Without a key, it stays closed.",
+  "The door here is locked. Lumi sniffs the keyhole and decides a key is definitely required.",
+  "A sturdy brass door stands locked before Lumi. Somewhere, there must be a key.",
+  "Lumi taps the locked door with a paw. It ticks back at her but stays firmly shut until she has a key.",
+  "A locked door bars the way. Lumi sits and stares at it, wishing she had a key."
+ ],
+ "locked_puzzle": [
+  "A door ahead is sealed by a puzzle. Lumi tilts her head and gets thinking.",
+  "Lumi reaches a door that will only open once its puzzle is solved. Her whiskers twitch thoughtfully.",
+  "The way is shut by a curious puzzle. Lumi fluffs her ears, ready to think very hard.",
+  "A puzzle seals this door, ticking quietly as if waiting for a clever paw.",
+  "Lumi finds a door sealed tight by a puzzle. The gears around it seem to hold their breath.",
+  "This door is locked by a puzzle. Lumi sits down, tail curled, to puzzle it out.",
+  "A door with a puzzle upon it blocks Lumi's way. She gives it a long, determined stare.",
+  "Lumi meets a puzzle-sealed door. The tower ticks encouragingly all around her."
+ ],
+ "game_cups": [
+  "Three cups are set out, and something is hidden under one. Lumi's eyes narrow.",
+  "Lumi finds three cups waiting for her. One of them is hiding something.",
+  "A little game waits here: three cups, one secret. Lumi's tail swishes eagerly.",
+  "Three upturned cups stand among the ticking gears. Lumi leans close, wondering which one.",
+  "Something is tucked beneath one of three cups. Lumi's ears perk up with interest.",
+  "Lumi spots three cups set out neatly. She is sure she can find what hides beneath.",
+  "Three cups sit perfectly still while the gears turn around them. Lumi wonders which holds the surprise.",
+  "Here are three cups and one hidden something. Lumi wiggles, ready to play."
+ ],
+ "game_match": [
+  "Cards lie face down, waiting to be matched in pairs. Lumi rubs her paws together.",
+  "Lumi finds a spread of face-down cards. Somewhere among them are matching pairs.",
+  "A little game of pairs waits here, every card hidden. Lumi's eyes sparkle.",
+  "Face-down cards wait beneath the ticking gears. Lumi is ready to find the matches.",
+  "Hidden cards wait patiently in the brassy light, each one longing for its pair.",
+  "Lumi discovers cards lying face down. She hums as she gets ready to remember them all.",
+  "A game of matching cards! Lumi settles in, tail wrapped neatly around her paws.",
+  "The cards lie face down, keeping their secrets. Lumi is determined to pair them up."
+ ],
+ "game_win": [
+  "Lumi wins the little game and bounces with joy. Her prize is {item}!",
+  "Victory! Lumi claims {item} and gives a proud little purr.",
+  "The gears seem to tick a cheer as Lumi wins. She happily accepts {item}.",
+  "Lumi wins, fair and square, and receives {item} as her reward.",
+  "A triumphant chirp echoes through the tower. Lumi has won {item}.",
+  "Lumi does a twirl of delight. She won the game, and {item} is hers.",
+  "Clever Lumi wins the game and tucks {item} away with a satisfied smile.",
+  "The game is won! Lumi's glow brightens as she collects {item}."
+ ],
+ "game_lose": [
+  "Lumi does not quite win, but she still gets {item} for trying. Not bad at all!",
+  "Oh well. Lumi loses the game, but {item} makes a fine consolation prize.",
+  "The game is lost, yet Lumi leaves with {item} and her whiskers held high.",
+  "Lumi misses out on the win but receives {item} for her efforts. She purrs anyway.",
+  "Not this time! Still, Lumi happily accepts {item} for giving it her best.",
+  "Lumi sighs a tiny sigh at losing, then perks up when she gets {item}.",
+  "The gears tick on as though nothing happened. Lumi has not won, but she has {item} for trying.",
+  "Lumi loses gracefully and is rewarded with {item}. Trying counts for something here."
+ ],
+ "enemy": [
+  "A wild {enemy} appears from behind a gear! Lumi puffs up her fur and gets ready.",
+  "The ticking seems to pause as a wild {enemy} blocks the way. Lumi stands her ground.",
+  "A wild {enemy} appears among the cogs, looking mischievous. Lumi braces bravely.",
+  "Lumi skids to a stop. A wild {enemy} is in the way, and it wants a scuffle!",
+  "Out from the clatter of springs comes a wild {enemy}. Lumi squares her tiny shoulders.",
+  "A wild {enemy} blocks the path, and Lumi's tail fluffs to twice its size.",
+  "Lumi meets a wild {enemy} beneath a turning gear. Time for a brave, wobbly stand!",
+  "With a clank, a wild {enemy} blocks Lumi's path. She glows a little brighter and faces it."
+ ],
+ "victory": [
+  "Lumi wins! The {enemy} scampers off between the gears, grumbling softly.",
+  "The {enemy} gives up and scurries away. Lumi does a proud, wobbly victory dance.",
+  "With one last brave pounce, Lumi sends the {enemy} scampering into the shadows.",
+  "The {enemy} retreats in a hurry. Lumi licks a paw and pretends that was easy.",
+  "Lumi stands tall as the {enemy} scampers away, clanking off into the tower.",
+  "Off goes the {enemy}, scampering past the ticking cogs. Lumi lets out a happy chirp.",
+  "The {enemy} decides it has had enough and scampers off. Lumi's glow shines bright.",
+  "Lumi wins the scuffle! The {enemy} scampers away to sulk behind a pendulum."
+ ],
+ "fled": [
+  "Lumi decides that was too much and dashes back to the room before, away from the {enemy}.",
+  "With a squeak, Lumi turns tail and scurries back from the {enemy}. Maybe next time.",
+  "Lumi runs from the {enemy}, her paws clattering on the brass, back the way she came.",
+  "Discretion wins. Lumi zips away from the {enemy} to the previous room, panting.",
+  "The {enemy} is just too fierce today. Lumi scampers back to safety, heart ticking fast.",
+  "Lumi bolts from the {enemy} and hides in the room she just left, peeking out nervously.",
+  "Back she goes! Lumi escapes the {enemy} and catches her breath beside a friendly gear.",
+  "Lumi flees from the {enemy}, tail streaming behind her, to the room before."
+ ],
+ "defeat": [
+  "The {enemy} is too much for Lumi. She is carried home for a nap, leaving her finds behind.",
+  "Lumi is tired out by the {enemy} and gently carried home. Everything she found stays in the tower.",
+  "Poor Lumi! The {enemy} wins this time, and she is carried home to rest, empty-pawed.",
+  "The {enemy} proves too tricky. Lumi is carried home, snoozing, and her treasures stay behind among the gears.",
+  "Lumi tumbles into a sleepy heap after facing the {enemy}. She is carried home, but her finds are left behind.",
+  "Worn out by the {enemy}, Lumi is scooped up and carried home for a cosy nap. Her finds remain in {place}.",
+  "The {enemy} wins the day. Lumi is carried home yawning, her discoveries left ticking in the tower.",
+  "Lumi is no match for the {enemy} this time. She is carried home to nap, with nothing from the trip."
+ ],
+ "stairs": [
+  "Lumi finds stairs leading further down, tucked beside a giant gear.",
+  "A staircase leads deeper into the tower. Lumi peers down, whiskers twitching.",
+  "Lumi spots stairs going further down. The ticking below sounds even more out of step.",
+  "Here are stairs that lead further down. Lumi wonders what is waiting beneath.",
+  "Brass stairs lead further down into the humming dark. Lumi's tail quivers with curiosity.",
+  "Lumi discovers stairs heading down. A warm draught of oily air rises to meet her.",
+  "Stairs lead down from here. Lumi leans over the edge and hears gears grinding below.",
+  "Lumi finds stairs going further down and gives an excited little chirp."
+ ],
+ "descend": [
+  "Lumi trots down the stairs to a deeper floor. The gears here tick even louder.",
+  "Down, down, down goes Lumi, into a deeper part of {place}.",
+  "Lumi pads down the stairs. The ticking changes rhythm as she reaches the next floor.",
+  "Step by step, Lumi goes deeper. The air grows warmer and smells of oil.",
+  "Lumi hops down the stairs, her glow lighting the brass steps, onto a deeper floor.",
+  "Lumi arrives on a new floor, where the great gears turn slow and heavy.",
+  "The stairs carry Lumi deeper into the tower. She gives a brave little sniff.",
+  "Lumi bounds down to the floor below, ears up, ready for whatever ticks there."
+ ],
+ "home": [
+  "Lumi leaves {place} with all her finds and heads home, humming happily.",
+  "The ticking fades behind her as Lumi trots home, carrying everything she found.",
+  "Lumi waves goodbye to the gears and sets off home with her treasures.",
+  "Home time! Lumi steps out of {place}, proud of every little thing she found.",
+  "Lumi walks out of {place}, her treasures safe, dreaming of a warm cushion.",
+  "With a final glance at the out-of-step gears, Lumi heads home with all her finds.",
+  "Lumi leaves the tower behind, tail high, everything she found tucked safely away.",
+  "The tower ticks a farewell as Lumi trots home with her haul."
+ ],
+ "abandon": [
+  "Lumi decides she has had enough for today and heads home, leaving her finds behind.",
+  "Lumi gives up the trip and pads home. Everything she found stays in {place}.",
+  "With a little sigh, Lumi leaves the tower empty-pawed. Her treasures will have to wait.",
+  "Lumi turns for home, leaving her finds among the ticking gears.",
+  "Lumi calls it a day. She goes home, and everything she found stays behind.",
+  "Feeling sleepy, Lumi abandons the trip and wanders home, leaving her treasures behind.",
+  "Lumi slips out of {place} without her finds. The gears tick on without her.",
+  "The trip is over. Lumi heads home, leaving everything she found in the tower."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels warm all over. Her glow brightens.",
+  "Gulp! Lumi drinks a potion and her whiskers stand perky again.",
+  "Lumi drinks a potion and feels much better, ready to face the ticking tower.",
+  "A potion goes down with a fizz. Lumi purrs as her strength returns.",
+  "Lumi laps up a potion and gives a happy shiver. She feels good as new.",
+  "After drinking a potion, Lumi stretches, her tail swishing with fresh energy.",
+  "Lumi drinks a potion. Her glow flickers, then shines steady and strong.",
+  "The potion tastes faintly of honey. Lumi feels better at once and ticks along happily."
+ ],
+ "look": [
+  "One small gear in the wall is turning the wrong way, quite happily. Nobody has told it. Lumi will not either.",
+  "A brass plate reads 'Wound daily'. Beside it hangs a key bigger than Lumi, and a much smaller key, as a kindness.",
+  "Every tick here has a tock a moment late. Lumi finds she is walking in time with it and cannot stop.",
+  "There is a tiny door in the clock face. Lumi waits a whole minute for the cuckoo. The cuckoo is having a lie in.",
+  "A drop of oil hangs from a cog, golden as honey. Lumi does not lick it. She thinks about it, but she does not.",
+  "The pendulum swings past, slow as a sleeping breath. Lumi's head goes with it, left, right, left.",
+  "Somebody has scratched tally marks beside the mainspring, hundreds of them, and then one small smiling face."
+ ]
+}

@@ -23,6 +23,7 @@ const { initGuildConfig } = require('./guildConfig');
 const { startWebPanel, stopWebPanel } = require('./webPanel');
 const { startWebAppServer, stopWebAppServer } = require('./webAppServer');
 const { startGameWebServer, stopGameWebServer } = require('./gameWebServer');
+const { initLumiGames, stopLumiGames } = require('./lumi'); // Lumi-Town: Lumi Pet + Lumi minigames under /lumipet
 const { startLeaderboardServer, stopLeaderboardServer } = require('./leaderboardServer');
 const { startApiServer, stopApiServer } = require('./apiServer');
 const { initPrivateStockStore } = require('./privateStockStore');
@@ -132,6 +133,7 @@ async function shutdown(signal, exitCode = 0) { // exitCode lets a crash shutdow
   try {
     stopWebPanel();
     stopWebAppServer();
+    stopLumiGames(); // Lumi-Town: stop the sweep timer and close live streams before the server goes
     stopGameWebServer();
     stopLeaderboardServer();
     stopApiServer();
@@ -292,6 +294,16 @@ client.once(Events.ClientReady, async (readyClient) => {
       initStockEvents(readyClient);
     } catch (error) {
       logger.error('Failed to initialize private stock exchange.', error.message);
+    }
+
+    // Lumi-Town (src/lumi): Lumi Pet + the Lumi minigames at /lumipet on the Lumi Games server.
+    // Needs the economy DB and the stock exchange (for LUMI), so it starts after both. LUMI_WEB_ENABLED=false turns it off.
+    if (config.gameWebEnabled && !['0', 'false', 'no', 'off'].includes(String(process.env.LUMI_WEB_ENABLED || 'true').trim().toLowerCase())) {
+      try {
+        initLumiGames(); // tables, accounts, LUMI stock, tuning, routes, sweep scheduler
+      } catch (error) {
+        logger.error('Failed to initialize Lumi-Town.', error.message);
+      }
     }
 
     // Start web control panel (127.0.0.1 only)

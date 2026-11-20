@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "The corridor tilts and the panels blink as Lumi hops aboard the wreck.",
+  "Stars shine through a crack in the hull. Lumi steps over it carefully.",
+  "Lumi floats into {place}, whiskers twitching as tilted corridors hum and stars wink through every crack.",
+  "The airlock sighs open and Lumi tiptoes into {place}, her glow mixing with the blinking panels.",
+  "Lumi arrives at the starship wreck with a brave little wobble, ready to explore every crooked corridor.",
+  "Stars peek through the cracked hull as Lumi lands in {place}, tail high and ears full of beeps.",
+  "Lumi steps aboard the old starship wreck, and a row of panels blinks hello in pink and teal.",
+  "With a happy trill, Lumi slips into {place}, where the floor leans just enough to make her giggle.",
+  "Lumi touches down in the wreck, nose twitching at the smell of warm circuits and starlight.",
+  "The tilted hatch creaks and Lumi bounces in, her fairy glow lighting up the dusty neon signs of {place}."
+ ],
+ "start": [
+  "Lumi is back at the airlock where she came in; the way home glows softly beside her.",
+  "The familiar hatch blinks its welcome lights, and Lumi knows the way home is right here.",
+  "Lumi pads into the entry bay again, where the stars outside the cracks look like old friends.",
+  "Back at the docking room, Lumi gives the humming hatch a pat. Home is just through there.",
+  "The first room of the wreck greets Lumi with the same sleepy beeps, and the way home waits.",
+  "Lumi returns to the entry corridor, where her own little pawprints still glitter in the dust.",
+  "The airlock panel flickers green as Lumi wanders back; the road home starts right here.",
+  "Lumi curls her tail around her paws in the entry bay, glad to see the way home still open."
+ ],
+ "empty": [
+  "A cabin with one floating boot. Lumi bats it and it drifts away, slowly.",
+  "Screens flicker with old weather reports for planets Lumi has never met.",
+  "Lumi tiptoes through a slanted cabin where nothing stirs but a single blinking light.",
+  "Stars drift past a long crack in the wall, and Lumi watches them for a quiet moment.",
+  "This room holds only humming panels and a faint smell of ozone. Lumi sniffs it all anyway.",
+  "Lumi steps into a tilted corridor and slides a little on the floor, purring at the fun of it.",
+  "A broken screen flickers static patterns across the walls, and Lumi chases the shapes with her eyes.",
+  "The cabin is empty except for a soft drone of old machines that sounds almost like purring.",
+  "Lumi peeks into a lopsided crew room. Only dust motes float here, glittering in her glow.",
+  "Neon cables dangle from the ceiling, swaying gently. Lumi bats one, then trots on."
+ ],
+ "again": [
+  "Lumi passes back through the slanted corridor, nodding to the panels she already knows.",
+  "The same blinking lights wink at Lumi as she trots through this room once more.",
+  "Lumi recognises the crack full of stars and gives it a little wave on her way through.",
+  "Back in a familiar cabin, Lumi follows her own glowing pawprints across the tilted floor.",
+  "This room hums the same sleepy tune as before, and Lumi hums along as she goes.",
+  "Lumi strolls through again, tail swishing past the flickering screen she saw earlier.",
+  "The lopsided room feels friendlier the second time, and Lumi trots through without a wobble.",
+  "Lumi slides across the leaning floor once more, just because it was fun the first time."
+ ],
+ "treasure": [
+  "Something gleams under a fallen panel. Lumi pounces and finds {item}!",
+  "Lumi spots {item} resting in a pool of neon light and scoops it up with a delighted chirp.",
+  "Tucked beside a humming console, Lumi discovers {item} and does a happy spin.",
+  "A blinking light seems to point it out: {item}, waiting for Lumi on the tilted floor.",
+  "Lumi nudges a tangle of cables aside and uncovers {item}. What a find!",
+  "Starlight from a crack falls right on {item}, and Lumi gathers it up with a purr.",
+  "Lumi finds {item} wedged in a crooked locker and tugs it free with a proud little hop.",
+  "Among the drifting dust, Lumi finds {item} and her glow brightens with joy."
+ ],
+ "key": [
+  "A key glints beneath a flickering panel, and Lumi snatches it up with a pleased trill.",
+  "Lumi finds a key humming softly in a cracked console tray. Surely it opens something!",
+  "Something small blinks in the dust. Lumi pounces and comes up holding a key.",
+  "Lumi spots a key snagged on a dangling cable and bats it free into her paws.",
+  "Tucked in an old crew bunk, a key waits for Lumi. She tucks it away with great care.",
+  "A key slides across the tilted floor right to Lumi's paws, as if the ship wanted her to have it.",
+  "Lumi uncovers a key beneath a pile of old wiring and gives it a triumphant little shake.",
+  "Starlight catches a key on a shelf, and Lumi reaches up on tiptoe to claim it."
+ ],
+ "vault": [
+  "The vault hatch hisses open in a burst of blinking lights, and inside Lumi finds {item}!",
+  "Lumi peeks into the open vault and gasps. {item} sits glowing in the middle.",
+  "The heavy door slides aside, and Lumi trots in to find {item} waiting just for her.",
+  "Neon light spills from the opened vault as Lumi discovers {item} tucked safely inside.",
+  "With a clunk and a whirr, the vault is open. Lumi claims {item} with a joyful purr.",
+  "Lumi slips into the vault, where {item} rests among dusty crates and twinkling panels.",
+  "The vault yawns open, and Lumi spins in delight at the sight of {item}.",
+  "Inside the opened vault, starlight through a crack lands on {item}. Lumi takes it happily."
+ ],
+ "locked_key": [
+  "A sealed hatch blinks red at Lumi. It needs a key before it will budge.",
+  "Lumi reaches a heavy door with a glowing lock. Without a key, it stays shut.",
+  "This door hums, firmly locked. Lumi sniffs the lock and knows a key is needed.",
+  "A crooked bulkhead blocks the way, its lock panel waiting patiently for a key.",
+  "Lumi pushes the locked hatch with both paws. It won't open without a key.",
+  "A door covered in flickering lights stands locked tight. Somewhere there must be a key.",
+  "Lumi finds a locked door that beeps sternly at her. It wants a key, and nothing else.",
+  "The way is barred by a sealed door. Lumi flicks her tail; this one needs a key."
+ ],
+ "locked_puzzle": [
+  "A door hums shut, sealed by a puzzle. Lumi sits down and studies it with serious whiskers.",
+  "Lumi finds a hatch locked by a puzzle, its lights blinking as if daring her to try.",
+  "This door won't open for any key. A puzzle seals it, and Lumi's ears perk with interest.",
+  "A sealed bulkhead waits, guarded by a puzzle. Lumi's tail swishes thoughtfully.",
+  "The way is closed by a curious puzzle. Lumi tilts her head, just like the crooked corridor.",
+  "Lumi pads up to a door sealed by a puzzle and gives it a determined little nod.",
+  "Old circuits buzz around a door locked by a puzzle. Lumi stretches her paws, ready to think.",
+  "A puzzle keeps this hatch sealed tight. Lumi's glow brightens as she settles in to ponder."
+ ],
+ "game_cups": [
+  "Three cups sit on a tilted console, and something is hidden under one of them.",
+  "Lumi finds three cups lined up in a pool of neon light. One hides a surprise.",
+  "A blinking table holds three cups. Lumi's whiskers twitch; something waits beneath one.",
+  "Three little cups rest on a crate, and under one of them is a hidden treat.",
+  "Lumi spots three cups set out by some long-gone crew. Something is tucked under one.",
+  "Three cups wait in a row beneath a flickering light. One of them is keeping a secret.",
+  "On a crooked shelf sit three cups, and Lumi knows one hides something special.",
+  "Starlight falls across three upturned cups. Lumi leans close; something is under one."
+ ],
+ "game_match": [
+  "Cards lie face down across a glowing console, waiting to be matched in pairs.",
+  "Lumi finds rows of face-down cards on a tilted table, each one hiding its partner somewhere.",
+  "A scatter of cards rests face down beneath the blinking panels, ready to be paired up.",
+  "Cards lie face down on the floor of a crew room. Lumi's paws itch to find the pairs.",
+  "Neon light flickers over a spread of face-down cards, each waiting for its match.",
+  "Someone left a game of face-down cards here. Lumi settles in to match them in pairs.",
+  "Lumi spots cards lying face down in neat rows, their pairs hidden among them.",
+  "A deck lies spread face down on a crate, waiting for Lumi to match every pair."
+ ],
+ "game_win": [
+  "Lumi wins the little game and does a happy spin! She receives {item}.",
+  "The panels flash a cheerful pattern as Lumi wins. {item} is her prize!",
+  "Victory! Lumi purrs with pride and tucks away {item}.",
+  "Lumi wins with a delighted trill, and {item} is hers to keep.",
+  "Lights blink in celebration as Lumi claims {item} for winning the game.",
+  "Lumi's glow flares bright with joy. She won, and she gets {item}!",
+  "A jolly beep rings through the wreck as Lumi wins {item}.",
+  "Lumi bounces on the tilted floor, thrilled with her win. {item} is all hers."
+ ],
+ "game_lose": [
+  "Not this time! Lumi still gets {item} for trying and purrs anyway.",
+  "The game doesn't go Lumi's way, but a kindly panel blinks and gives her {item}.",
+  "Lumi gives a little shrug. She didn't win, but she still gets {item} for trying.",
+  "A soft beep says better luck next time, and Lumi gets {item} for her effort.",
+  "Lumi misses the win, but {item} is hers for being such a good sport.",
+  "No win today, yet Lumi's tail stays high as she receives {item} for trying.",
+  "The lights flicker sympathetically and offer Lumi {item} for giving it a go.",
+  "Lumi didn't win, but she happily tucks away {item} anyway. Trying counts!"
+ ],
+ "enemy": [
+  "A wild {enemy} leaps out from behind a blinking panel! Lumi puffs up her tail, ready to face it.",
+  "The corridor flickers and a wild {enemy} blocks the way. Lumi plants her paws bravely.",
+  "A wild {enemy} drifts out of the dark between the stars. Lumi squeaks, then stands her ground.",
+  "Lumi's ears flatten as a wild {enemy} appears among the dangling cables. Time to be brave!",
+  "A wild {enemy} pops up from a cracked console and won't let Lumi pass.",
+  "Something stirs in the tilted hallway: a wild {enemy}! Lumi wobbles, then squares up.",
+  "A wild {enemy} blocks the hatch, buzzing with mischief. Lumi's glow flares bold.",
+  "Neon lights flash as a wild {enemy} bounds into view. Lumi takes a deep breath and faces it."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off into the shadows. Lumi does a proud little twirl.",
+  "With one last brave pounce, Lumi wins! The {enemy} scurries away into the dark.",
+  "The {enemy} squeaks and scampers off through a crack. Lumi's glow sparkles with triumph.",
+  "Lumi stands tall as the {enemy} skitters off between the blinking panels.",
+  "Beaten fair and square, the {enemy} scampers away. Lumi purrs and smooths her whiskers.",
+  "The {enemy} decides it has had enough and dashes off. Lumi lets out a victorious mew.",
+  "Off scampers the {enemy}, leaving Lumi a bit wobbly but very proud.",
+  "The panels flash as if cheering. Lumi has won, and the {enemy} scampers off."
+ ],
+ "fled": [
+  "Lumi decides that is quite enough and dashes back to the room before, away from the {enemy}.",
+  "Tail puffed, Lumi scrambles back the way she came, leaving the {enemy} behind.",
+  "Lumi zips back to the previous room in a streak of glow. The {enemy} can keep that hallway.",
+  "With a squeak, Lumi flees the {enemy} and tumbles back into the room she just left.",
+  "Lumi slides across the tilted floor in her hurry to get away from the {enemy}, back to safety.",
+  "Running is brave too! Lumi darts back to the room before, far from the {enemy}.",
+  "Lumi skitters away from the {enemy} and catches her breath in the last room.",
+  "The {enemy} is too fierce for now, so Lumi scampers back to the room she came from."
+ ],
+ "defeat": [
+  "The {enemy} is too much today. A friendly helper carries sleepy Lumi home, leaving her finds behind.",
+  "Lumi wobbles and sits down with a yawn after the {enemy}. She is carried home for a nap, her treasures left in the wreck.",
+  "The {enemy} wins this round. Lumi is scooped up and carried home to rest, her finds left among the stars.",
+  "Worn out by the {enemy}, Lumi is carried home for a cosy nap. Everything she found stays behind.",
+  "Lumi's glow dims to a drowsy flicker after the {enemy}, and she is carried home. Her treasures remain in {place}.",
+  "The {enemy} was too strong. Lumi is bundled up and carried home, leaving her finds behind.",
+  "A soft blanket of sleep falls over Lumi after the {enemy} wins, and she is carried home without her treasures.",
+  "Lumi gives a tired little mew as the {enemy} wins and she is carried home. The things she found stay in the wreck."
+ ],
+ "stairs": [
+  "Lumi finds a stairway leading further down into the wreck, its steps blinking softly.",
+  "A tilted staircase spirals down to deeper decks. Lumi peers over the edge, whiskers twitching.",
+  "Steps lead down into the humming dark. Lumi's tail swishes with excitement.",
+  "Behind a flickering panel, Lumi discovers stairs leading further down.",
+  "Lumi spots a crooked stairwell sinking deeper into the ship, stars glinting through its cracks.",
+  "Neon strips light a set of stairs heading further down. Lumi's ears perk up.",
+  "A narrow stairway leads down to lower decks, and Lumi feels a brave little shiver.",
+  "Lumi finds stairs going deeper into the starship wreck, humming with distant machines."
+ ],
+ "descend": [
+  "Lumi pads down the stairs, one careful step at a time, to a deeper deck of the wreck.",
+  "Down she goes! Lumi arrives on a lower floor where the panels blink in new colours.",
+  "Lumi hops down the tilted steps and finds herself deeper in the ship, stars still peeking in.",
+  "The stairs creak beneath Lumi's paws as she descends to a quieter, deeper level.",
+  "Lumi trots down to the lower decks, her glow bobbing ahead like a little lantern.",
+  "Deeper into the wreck Lumi goes, the hum of old engines growing louder around her.",
+  "Lumi takes the stairs down and steps onto a new floor full of flickering mysteries.",
+  "With a brave wiggle, Lumi descends to a deeper deck where the corridors lean even more."
+ ],
+ "home": [
+  "Lumi strolls out of {place} with all her treasures and a very satisfied purr.",
+  "The airlock hisses goodbye as Lumi heads home, carrying everything she found.",
+  "Lumi leaves the starship wreck behind, her bag full and her glow extra bright.",
+  "Home time! Lumi trots out of {place} with every last treasure safely tucked away.",
+  "Lumi waves a paw at the blinking panels and heads home with all her finds.",
+  "Stars twinkle farewell as Lumi walks home from the wreck, treasures and all.",
+  "Lumi skips out of {place} and home, proud of every single thing she found.",
+  "With a happy yawn, Lumi leaves the tilted corridors and carries all her finds home."
+ ],
+ "abandon": [
+  "Lumi decides that is enough adventure for today and heads home, leaving her finds in the wreck.",
+  "With a little sigh, Lumi gives up the trip and goes home. Her treasures stay among the stars.",
+  "Lumi sets down everything she found and trots home from {place} for a rest.",
+  "The trip ends early. Lumi heads home empty-pawed, the wreck keeping all her finds.",
+  "Lumi gives the blinking panels a goodbye nod and goes home, leaving her treasures behind.",
+  "Feeling ready for a nap, Lumi leaves {place} and her finds behind and heads home.",
+  "Lumi calls it a day and wanders home, her discoveries left behind in the tilted corridors.",
+  "Home sounds nice right now. Lumi goes, leaving behind everything she found in the wreck."
+ ],
+ "potion": [
+  "Lumi sips a potion and her glow brightens like a fresh neon sign.",
+  "Glug, glug! Lumi drinks a potion and feels lovely and refreshed.",
+  "Lumi drinks a potion, and a warm fizz runs from her ears to the tip of her tail.",
+  "One sip of potion and Lumi's wobbly paws feel steady again.",
+  "Lumi gulps down a potion and purrs as her sparkle returns.",
+  "The potion tastes like starlight. Lumi feels much better already.",
+  "Lumi drinks a potion beside a humming console and stretches, feeling brand new.",
+  "A potion later, Lumi's whiskers are perky and her glow is bright once more."
+ ],
+ "look": [
+  "A panel blinks green, green, amber, green. Lumi presses the amber one. Somewhere far off, a door says thank you.",
+  "Through a crack in the hull she can see a whole spill of stars. One of them is moving. It might be waving.",
+  "A mug floats past at whisker height, still half full of something that gave up being hot a long time ago.",
+  "The corridor tilts so much that Lumi walks half on the floor and half on the wall, and feels very clever about it.",
+  "A little cleaning robot bumps the same corner over and over. Lumi turns it round. It beeps and trundles off, delighted.",
+  "A screen flickers awake and says 'WELCOME ABOARD, CAPTAIN'. Lumi sits up straighter for the rest of the room.",
+  "A seat harness has been buckled round a potted fern. The fern has done well and is now mostly in charge of the bridge."
+ ]
+}

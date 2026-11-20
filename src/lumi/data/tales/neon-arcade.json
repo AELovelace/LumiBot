@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Rain shines on the pavement as Lumi turns into the alley, lit pink and blue.",
+  "Arcade cabinets play their demo loops to no one. Lumi walks in on the chorus.",
+  "Lumi arrives at {place}, where rain glitters on the pavement and every cabinet hums its demo tune just for her.",
+  "Neon buzzes pink and blue overhead as Lumi pads into {place}, whiskers twitching at the smell of rain and warm circuits.",
+  "Lumi lands softly in a puddle full of reflected signs and shakes her paws. {place} blinks hello in a hundred colours.",
+  "Somewhere a cabinet plays its jingle to nobody. Lumi grins, fluffs up her glow, and steps into the rainy alley.",
+  "Lumi's glow joins the neon as she arrives in {place}, tail held high against the drizzle.",
+  "Rain patters on awnings and demo loops flicker on every screen. Lumi takes a brave breath and begins.",
+  "Lumi trots into {place}, her reflection skipping beside her across the wet, shining pavement.",
+  "The alley smells of rain and popcorn. Lumi's ears perk up at all the beeps and boops around her."
+ ],
+ "start": [
+  "Lumi is back by the flickering sign where she first came in. The way home is right here, glowing softly.",
+  "The familiar puddle by the entrance ripples as Lumi returns. Home is only a hop away from this spot.",
+  "Lumi recognises the humming cabinet where she came in, and the way home waits right beside it.",
+  "Back at the start, Lumi shakes rain from her ears. The entrance sign buzzes a cheerful welcome back.",
+  "Lumi pads back to the room she arrived in, where the neon glow feels almost like a nightlight.",
+  "The first demo loop she heard is still playing. Lumi is back at the entrance, with the way home close by.",
+  "Lumi returns to where her trip began. The rain drums kindly, and the path home is right here.",
+  "Here is the doorway Lumi came in by, its neon frame glowing steady in the drizzle."
+ ],
+ "empty": [
+  "A cabinet asks for a coin in six languages. Lumi apologises and moves on.",
+  "Steam rises from a noodle stand that closed hours ago. It still smells wonderful.",
+  "Rain drips from a tangle of cables overhead. Lumi finds nothing here but the soft blue hum of a sleeping sign.",
+  "A lone cabinet loops its demo to an empty room. Lumi watches the tiny pixel hero for a moment, then moves on.",
+  "Puddles reflect pink neon in wobbly stripes. Lumi splashes through one, just because.",
+  "This stretch of alley is quiet except for the rain and a far-off chiptune. Lumi's glow drifts across the wet walls.",
+  "Steam curls from a grate, lit violet by a buzzing sign. There is nothing to find here, but it is very pretty.",
+  "Lumi tiptoes past a row of dark screens, each one showing her own glowing reflection.",
+  "A flickering sign spells out half a word to nobody. Lumi tilts her head at it and carries on.",
+  "Rain patters on a striped awning. Lumi pauses beneath it, listening to the alley hum, then pads onward."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows. The same demo loop is still playing, right where she left it.",
+  "The puddle Lumi splashed earlier has settled again. She passes through, leaving fresh ripples.",
+  "Lumi recognises this buzzing sign. She gives it a friendly nod on her way through.",
+  "Back through familiar neon. Lumi's pawprints from before have already been washed away by the rain.",
+  "Lumi passes the same humming cabinets again, humming along with their tunes this time.",
+  "This corner looks just as it did, rain and glow and all. Lumi hurries through with a happy flick of her tail.",
+  "Lumi retraces her steps beneath the dripping cables, feeling quite at home here now.",
+  "The familiar flicker of a pink sign greets Lumi as she walks back through."
+ ],
+ "treasure": [
+  "Something gleams in a rainy puddle under the neon. Lumi fishes out {item} and holds it up proudly.",
+  "Tucked beside a humming cabinet, Lumi finds {item}. She gives it a happy little sniff and keeps it.",
+  "Lumi spots {item} glinting under a dripping awning and pounces on it with delight.",
+  "Among the old tickets and candy wrappers lies {item}. Lumi scoops it up with a pleased purr.",
+  "A sign flickers just in time to show {item} on the wet pavement. Lumi snatches it up.",
+  "Lumi finds {item} resting on top of a cabinet, as if the arcade saved it just for her.",
+  "Splash! Lumi lands right beside {item}. What luck. She tucks it away carefully.",
+  "Lumi's glow catches on {item} lying in the rain. She claims it with a tiny victory wiggle."
+ ],
+ "key": [
+  "A key glints in a puddle, lit pink by the sign above. Lumi plucks it out and shakes it dry.",
+  "Lumi finds a key hanging on a hook beside a dozing cabinet. She takes it with a delighted chirp.",
+  "Something jingles under Lumi's paw. A key! She holds it up to the neon to admire it.",
+  "Tucked beside a coin slot, Lumi finds a key. Her tail swishes with excitement.",
+  "A key lies on the wet pavement, shining in the neon light. Lumi pounces on it before the rain can hide it.",
+  "Lumi spies a key on top of a prize counter and hops up to claim it.",
+  "A key rests in the glow of a demo screen. Lumi scoops it up and feels very important.",
+  "Lumi's whiskers twitch at a tiny glimmer. It is a key, and now it is hers."
+ ],
+ "vault": [
+  "The vault swings open with a cheerful arcade jingle. Inside, Lumi finds {item} bathed in neon light.",
+  "Lights blink in a happy pattern as the vault opens. Lumi reaches in and pulls out {item}.",
+  "The vault door slides aside, and there sits {item}. Lumi's eyes go wide and sparkly.",
+  "With a soft electronic chime, the vault opens. Lumi discovers {item} waiting inside.",
+  "Lumi peeks into the open vault and finds {item}, glowing like a brand new high score.",
+  "The vault hums open in a wash of pink light. Lumi gasps and claims {item}.",
+  "Inside the vault, nestled among blinking lights, Lumi finds {item}. Jackpot!",
+  "Lumi nudges the open vault with her nose and discovers {item}. She purrs loud enough to drown out the rain."
+ ],
+ "locked_key": [
+  "A neon-framed door blocks the way, firmly locked. It needs a key, and Lumi pats it hopefully.",
+  "Lumi finds a door glowing with a little lock symbol. Without a key, it will not budge.",
+  "A locked door hums in the rain. Lumi sniffs the keyhole and decides she will need a key.",
+  "The door here is sealed tight, its lock blinking in the drizzle. Lumi will need a key to get through.",
+  "Lumi pushes on a locked door. It stays shut, buzzing softly as if waiting for a key.",
+  "A sturdy door bars the alley, locked and lit by flickering signs. A key would open it.",
+  "Lumi meets a locked door with a glowing keyhole. She makes a mental note to find a key.",
+  "Rain streams down a locked door. Lumi taps it with a paw; it clearly wants a key."
+ ],
+ "locked_puzzle": [
+  "A door here is sealed by some kind of puzzle. Lumi sits down and stares at it thoughtfully.",
+  "Lights flicker across a sealed door. It wants a puzzle solved before it opens, and Lumi's ears perk up.",
+  "Lumi finds a door locked by a puzzle. She narrows her eyes, ready for a challenge.",
+  "A puzzle seals this door shut, glowing softly in the rain. Lumi wiggles her whiskers bravely.",
+  "This door will only open for a solved puzzle. Lumi stretches her paws like a seasoned gamer.",
+  "The way is sealed by a puzzle, humming quietly beneath the neon. Lumi's tail twitches with curiosity.",
+  "Lumi meets a door that only opens for a clever mind. A puzzle guards it, and she is intrigued.",
+  "A sealed door blinks patiently in the drizzle, waiting for its puzzle to be solved. Lumi tilts her head."
+ ],
+ "game_cups": [
+  "Three cups sit on a glowing counter. Something is hidden under one, and Lumi leans in eagerly.",
+  "A cabinet screen flickers to life beside three cups. One of them is hiding something.",
+  "Lumi finds three cups lined up under a neon sign. Her eyes dart from one to the next.",
+  "Three cups wait on a rain-speckled table. Lumi's whiskers quiver; something is under one.",
+  "Under a buzzing sign, three cups sit in a tidy row. Lumi crouches, tail swishing.",
+  "An arcade booth offers a game of three cups. Something waits beneath one of them.",
+  "Three cups gleam in pink and blue light. Lumi wonders which one holds the prize.",
+  "Lumi hops onto a stool in front of three cups. Somewhere under one is a little surprise."
+ ],
+ "game_match": [
+  "Cards lie face down on a glowing table, waiting to be matched in pairs. Lumi rubs her paws together.",
+  "A neon booth holds rows of face-down cards. Lumi studies them, ready to find the pairs.",
+  "Lumi finds cards laid face down under a flickering sign. Somewhere among them are matching pairs.",
+  "Face-down cards shimmer in the arcade light. Lumi's memory is about to be tested.",
+  "Rows of cards wait face down on a counter, pairs hidden among them. Lumi's ears swivel with focus.",
+  "A cabinet chimes as Lumi finds face-down cards. Each one has a partner hiding somewhere.",
+  "Cards sit face down beneath the rain-streaked neon. Lumi purrs, keen to match them up.",
+  "Lumi spots a little matching game: cards face down, pairs waiting to be found."
+ ],
+ "game_win": [
+  "Lumi wins! Lights flash and a jingle plays as she collects {item}.",
+  "HIGH SCORE flashes overhead. Lumi does a happy spin and takes {item}.",
+  "A shower of pixel confetti fills the screen. Lumi has won, and {item} is hers.",
+  "The booth chimes a victory tune. Lumi proudly accepts {item} with a little bow.",
+  "Lumi wins the game and earns {item}. Even the rain seems to applaud.",
+  "Neon lights blink in celebration as Lumi wins {item}. She glows brighter than ever.",
+  "Victory! Lumi scoops up {item} and wiggles all the way to the tip of her tail.",
+  "The demo loops seem to cheer as Lumi wins. She tucks away {item} with a proud purr."
+ ],
+ "game_lose": [
+  "Not this time. Still, the booth hums kindly and gives Lumi {item} for trying.",
+  "Lumi doesn't win, but a little chime plays and out pops {item} as a consolation prize.",
+  "The screen blinks a gentle game over, but Lumi still gets {item} for her effort.",
+  "Lumi's ears droop for a moment, then perk right up when she receives {item} for playing.",
+  "No win today, but the arcade is generous. Lumi gets {item} anyway.",
+  "Lumi misses the prize, but a kindly cabinet hands out {item} just for trying.",
+  "Close, but not quite. Lumi accepts {item} with a brave little smile.",
+  "The jingle is a little sad, but Lumi still walks away with {item}. Not bad at all."
+ ],
+ "enemy": [
+  "A wild {enemy} leaps out from behind a cabinet! Lumi puffs up her fur and gets ready.",
+  "Neon flickers as a wild {enemy} blocks the alley. Lumi plants her paws bravely.",
+  "A wild {enemy} splashes through a puddle into Lumi's path. Time to face off!",
+  "The demo music turns dramatic as a wild {enemy} appears. Lumi's tail fluffs up.",
+  "A wild {enemy} stands in the rain, refusing to let Lumi pass. She squares her tiny shoulders.",
+  "Out of the glowing mist steps a wild {enemy}. Lumi wobbles, then stands her ground.",
+  "A wild {enemy} blocks the way under a buzzing sign. Lumi's glow flares bravely.",
+  "Lumi skids to a stop. A wild {enemy} is here, and it looks ready to tussle."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off into the rain. Lumi strikes a victory pose under the neon.",
+  "With a final brave pounce, Lumi wins! The {enemy} scurries away behind the cabinets.",
+  "The {enemy} scampers off into the glowing mist. Lumi's tail swishes with pride.",
+  "A cabinet plays a fanfare as the {enemy} dashes away. Lumi did it!",
+  "The {enemy} retreats in a splash of puddles. Lumi purrs, a little wobbly but very proud.",
+  "Lumi stands victorious as the {enemy} skitters off into the neon haze.",
+  "The {enemy} decides it has had enough and scampers away. Lumi lets out a triumphant mew.",
+  "Off goes the {enemy}, zipping away into the drizzle. Lumi's glow shines extra bright."
+ ],
+ "fled": [
+  "Lumi darts away from the {enemy}, splashing back to the room before. Phew!",
+  "Too much! Lumi scampers away from the {enemy} and catches her breath in the previous room.",
+  "Lumi turns tail and zips away from the {enemy}, back to where she was before.",
+  "With a squeak, Lumi flees the {enemy} and hides beside a familiar cabinet in the last room.",
+  "Lumi retreats from the {enemy}, ears flat, back to the room she just left.",
+  "Lumi decides the {enemy} can wait. She skedaddles back the way she came.",
+  "The {enemy} looks too fierce, so Lumi dashes back to the room before, heart pounding.",
+  "Lumi zooms away from the {enemy} in a blur of glow and raindrops, back where she came from."
+ ],
+ "defeat": [
+  "The {enemy} is too much this time. Lumi is carried home for a cosy nap, and her finds stay behind in the alley.",
+  "Lumi's glow dims sleepily after the tussle with the {enemy}. She is carried home to rest, leaving her treasures behind.",
+  "The {enemy} wins this round. Lumi is gently carried home, her finds left behind in the rain.",
+  "Worn out by the {enemy}, Lumi is scooped up and carried home for a nap. Everything she found stays in the arcade.",
+  "The {enemy} proves too tricky. Lumi drifts off and is carried home, leaving her finds among the cabinets.",
+  "Lumi tumbles into a sleepy heap after facing the {enemy}. She is carried home, leaving her finds behind.",
+  "The {enemy} is just too strong today. Lumi is carried home to snooze, and her treasures stay in {place}.",
+  "After a brave try against the {enemy}, Lumi is carried home for a long nap. Her finds remain behind."
+ ],
+ "stairs": [
+  "Lumi finds stairs leading further down, edged with flickering neon strips.",
+  "A stairway sinks into the rainy dark, lit by pink and blue signs. Lumi peers over the edge.",
+  "Lumi discovers stairs going deeper into the arcade. Faint chiptunes drift up from below.",
+  "Stairs lead further down from here, slick with rain. Lumi's whiskers tingle with adventure.",
+  "Tucked between two cabinets, Lumi spots stairs leading further down.",
+  "A neon sign buzzes beside a stairway heading deeper. Lumi's tail twitches with curiosity.",
+  "Lumi finds stairs descending into a warm, humming glow. There is more to explore.",
+  "Rainwater trickles over a set of stairs leading deeper. Lumi takes a curious sniff."
+ ],
+ "descend": [
+  "Lumi pads down the stairs to a deeper floor, where the neon glows even brighter.",
+  "Step by step, Lumi descends. The rain fades to a soft patter above her.",
+  "Lumi hops down the stairs onto a deeper level, greeted by new demo loops.",
+  "Down Lumi goes, her glow bouncing off the wet walls. A new floor awaits.",
+  "Lumi reaches a deeper floor, where the cabinets hum a different tune.",
+  "The stairs bring Lumi deeper into the arcade. She shakes off the rain and looks around.",
+  "Lumi trots down to a deeper floor, ears perked at the unfamiliar beeps.",
+  "Lumi descends to a lower level, colours swirling in the puddles around her paws."
+ ],
+ "home": [
+  "Lumi walks out of {place} with all her finds, humming a chiptune all the way home.",
+  "Rain-soaked and happy, Lumi heads home with everything she found.",
+  "Lumi waves goodbye to the glowing cabinets and carries her treasures home.",
+  "Lumi leaves {place} with a full bag and a happy heart. Home is waiting.",
+  "With every find safely tucked away, Lumi trots home through the neon drizzle.",
+  "Lumi steps out of the arcade, her treasures glinting. Time for a cosy rest at home.",
+  "Lumi heads home with all her loot, her glow shining like a high score.",
+  "The demo loops play her out as Lumi walks home, proud of everything she found."
+ ],
+ "abandon": [
+  "Lumi decides that is enough for today and heads home, leaving her finds behind in the rain.",
+  "Lumi gives the alley one last look and goes home, leaving everything she found.",
+  "Tired paws win out. Lumi leaves {place}, her finds left among the cabinets.",
+  "Lumi sets down her treasures and heads home. The arcade can keep them for now.",
+  "Lumi calls it a day, leaving her finds by a humming cabinet as she walks home.",
+  "With a sleepy yawn, Lumi gives up the trip and goes home empty-pawed.",
+  "Lumi leaves {place} behind, and everything she found stays with the neon.",
+  "Lumi decides home sounds nicer than more rain. She leaves her finds and wanders off."
+ ],
+ "potion": [
+  "Lumi sips a potion, and a warm glow spreads from her ears to her tail. She feels much better.",
+  "Glug, glug! Lumi drinks a potion and sparkles brighter than the neon signs.",
+  "Lumi drinks a potion and feels refreshed, ready for more adventure.",
+  "A fizzy potion sends happy bubbles through Lumi. She bounces back on her paws.",
+  "Lumi gulps a potion and her glow flickers back to full strength.",
+  "The potion tastes like soda and starlight. Lumi feels wonderful again.",
+  "Lumi drinks a potion and purrs as the tiredness melts away.",
+  "One sip and Lumi feels bright again, her fur shimmering in the rainy light."
+ ],
+ "look": [
+  "A cabinet plays its demo to nobody: a little ship, a lot of stars. The high score table says AAA, AAA, AAA, CAT.",
+  "Rain runs down the window and every drop carries a tiny pink sign in it, all the way to the sill.",
+  "A claw machine full of plush stars hums to itself. One star is right by the chute. It has been right by the chute for years.",
+  "A sign overhead buzzes and loses a letter, so that OPEN LATE becomes OPEN LAT. Lumi waits. The E comes back.",
+  "A token lies on the wet pavement, heads up. Lumi bats it into a puddle, fishes it out, and bats it in again.",
+  "A vending machine glows at the end of the alley, selling only one thing: a can with a moon on it.",
+  "Her reflection in the puddle is lit in six colours at once. Lumi decides it is her best side."
+ ]
+}

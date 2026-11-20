@@ -1,0 +1,121 @@
+{
+ "enter": [
+  "Lumi pads into {place}, tail up, whiskers forward. Adventure smells a bit like dust.",
+  "{place} opens up ahead. Lumi takes a deep breath and one very brave step.",
+  "Lumi peeks into {place}, then tiptoes in as if it were someone's bedroom."
+ ],
+ "start": [
+  "This is where Lumi came in. Home is just behind her, whenever she's ready.",
+  "The way home waits here, warm and patient.",
+  "Lumi is back at the entrance. She could go home now, or be brave a little longer."
+ ],
+ "empty": [
+  "Nothing here but quiet. Lumi leaves a pawprint in the dust to prove she came.",
+  "An empty room. Lumi checks behind herself anyway, twice.",
+  "Lumi finds nothing at all, and decides it is a very nice nothing.",
+  "The room is bare. Lumi's glow makes soft shapes on the walls, so she watches those for a moment."
+ ],
+ "again": [
+  "Lumi has been here before. Her pawprints say so.",
+  "This room again. It hasn't changed, and neither has Lumi.",
+  "Lumi passes back through, humming the tune she made up last time."
+ ],
+ "treasure": [
+  "Lumi spots something shiny and pounces: {item}!",
+  "Tucked in a corner, just for her: {item}. Lumi purrs.",
+  "Lumi noses under a loose stone and finds {item}. Into the satchel it goes."
+ ],
+ "key": [
+  "A little key, glinting on the floor. Lumi holds it very carefully in her teeth.",
+  "Lumi finds a key. Somewhere on this floor, a door is about to be surprised.",
+  "Something jingles under Lumi's paw. A key!"
+ ],
+ "vault": [
+  "The door swings open. Inside, glowing softly: {item}. Lumi's eyes go very round.",
+  "Lumi steps into the vault and finds {item}. She does a small, dignified dance.",
+  "Behind the lock, waiting all this time: {item}."
+ ],
+ "locked_key": [
+  "A sturdy door with a keyhole just Lumi's size. It will not budge without a key.",
+  "Locked. Lumi pats the keyhole politely, but it wants a key.",
+  "This door needs a key. Lumi is sure there's one somewhere on this floor."
+ ],
+ "locked_puzzle": [
+  "The door is sealed by a puzzle. Lumi sits down, tail curled, to think.",
+  "No keyhole here, only a puzzle. Lumi narrows her eyes at it.",
+  "A puzzle guards this door. Lumi cracks her tiny knuckles."
+ ],
+ "game_cups": [
+  "Three cups sit in a row. Something rattled under one of them, Lumi is certain.",
+  "Somebody has left three cups and a mystery. Lumi's tail twitches.",
+  "Three cups, one prize. Lumi stares at each in turn, very seriously."
+ ],
+ "game_match": [
+  "Cards lie face down in neat rows, each hiding a little picture. Lumi loves a matching game.",
+  "A set of cards waits to be paired up. Lumi wiggles, ready.",
+  "Face-down cards cover the floor. Two of each, somewhere."
+ ],
+ "game_win": [
+  "Lumi wins! She gets {item}, and looks around to see if anyone noticed.",
+  "A perfect game. {item} for Lumi, who is trying hard not to look smug.",
+  "Lumi got it! Her prize is {item}."
+ ],
+ "game_lose": [
+  "Not this time. Lumi gets {item} for being a good sport.",
+  "Lumi didn't win, but she had fun, and there's {item} for trying.",
+  "So close! Lumi takes {item} and a small bow."
+ ],
+ "enemy": [
+  "A wild {enemy} hops into the way! Lumi fluffs up to twice her size.",
+  "Something rustles. A {enemy}! Lumi plants her paws.",
+  "A {enemy} blocks the path and does not look like moving. Lumi's glow brightens."
+ ],
+ "victory": [
+  "The {enemy} scampers off, and Lumi gives her paw a satisfied lick.",
+  "Lumi wins! The {enemy} bounces away to think about what it's done.",
+  "Off goes the {enemy}. Lumi stands a little taller."
+ ],
+ "fled": [
+  "Lumi darts back the way she came. The {enemy} can have that room for now.",
+  "A tactical retreat. Lumi catches her breath one room back, well away from the {enemy}.",
+  "Lumi decides the {enemy} can wait, and trots smartly backwards."
+ ],
+ "defeat": [
+  "The {enemy} was too much today. Lumi is carried home for a nap, and her satchel stays behind.",
+  "Lumi wobbles, yawns, and is gently carried home. What she found is still down there, past the {enemy}.",
+  "Worn out by the {enemy}, Lumi heads home empty-pawed. She'll be back."
+ ],
+ "stairs": [
+  "Stairs, winding down into the dark. Lumi peers over the edge.",
+  "Lumi finds a staircase going deeper. It looks harder down there, and shinier.",
+  "Here are the stairs. Down means tougher creatures and better treasure."
+ ],
+ "descend": [
+  "Down she goes, one careful step at a time. The air is different here.",
+  "Lumi hops down the last stair onto a new floor. No going back up that way.",
+  "A deeper floor. Lumi's glow seems brighter against the dark."
+ ],
+ "home": [
+  "Lumi trots out of {place} and all the way home, satchel bumping happily at her side.",
+  "Home! Lumi tips out her satchel on the rug and admires every single thing.",
+  "Lumi leaves {place} behind, a little tired and very pleased."
+ ],
+ "abandon": [
+  "Lumi has had enough for today. She leaves her finds behind and heads for home.",
+  "Home sounds nicer than any treasure. Lumi sets down her satchel and goes.",
+  "Lumi turns for home with empty paws and no regrets."
+ ],
+ "potion": [
+  "Lumi drinks a potion. It tastes like warm berries, and she feels much better.",
+  "Glug. Lumi shakes out her fur, good as new.",
+  "One potion later, Lumi's glow is steady again."
+ ],
+ "look": [
+  "Lumi looks closer. Someone scratched a tiny pawprint into the wall, long ago, about her size.",
+  "There is a draught from somewhere. Lumi follows it with her whiskers and finds only a crack and a cobweb.",
+  "A pebble sits in the exact middle of the floor. Lumi suspects it of something and watches it for a while.",
+  "The dust here has footprints in it that are not hers. They go to the wall and stop. Lumi decides not to mind.",
+  "Lumi sniffs the corner. It smells of old stone, cold air, and very faintly of biscuits.",
+  "Her glow throws a second, bigger Lumi on the wall. They wave at each other."
+ ]
+}

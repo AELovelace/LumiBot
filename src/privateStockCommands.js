@@ -748,6 +748,7 @@ async function generateDividendAnnouncement(stock, dividendResult) {
 async function announceDividend(client, stock, dividendResult) {
   if (!client) return;
   if (stock.entity_type === 'synthetic') return;
+  if (stock.entity_type === 'lumi') return; // Lumi Holdings Inc. has no guild channel to announce in
 
   const { getGuildConfig } = require('./guildConfig');
   const guildCfg = getGuildConfig(stock.guild_id);

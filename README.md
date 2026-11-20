@@ -225,6 +225,20 @@ Settings:
 
 If `GIPHY_API_KEY` is missing, GIF lookups are skipped automatically.
 
+## Lumi-Town (Lumi Pet and the Lumi minigames)
+
+Lumi Pet and her games (ported from erinne) run inside the Lumi Games web server at `/lumipet/`
+(`https://sadgirlsclub.wtf/lumipet/` in production). Members of the Discord server log in with Discord, and every
+coin is real SadGirlCoin.
+
+- Code: `src/lumi/` (see `src/lumi/CONTRACT.md`), pages and art: `public/lumi/`, tests: `npm test`.
+- Money: shops pay into themed `__LUMI_*__` accounts, a 15-minute sweep moves a sliding share of them into
+  **Lumi-Town Bank**, which pays every prize. **Lumi Holdings Inc.** (ticker `LUMI` on Doll Street) is the reserve.
+- Settings: the web panel's Economy page has a "Lumi Games" section (economy scale, bank target, sweep bands,
+  reserve floor, LUMI dividend rate, pause all payouts).
+- `.env`: the `LUMI_*` keys in `.env.example` (`LUMI_DISCORD_OAUTH_REDIRECT_URI` must also be added to the Discord app).
+- Handler guide: `docs/LUMI_GAMES.md`. Plan and decisions: `docs/plans/lumi-games-port.md`.
+
 ## Notes
 
 - The bot supports simultaneous playback in multiple guilds. Each guild has its own independent voice session and queue.

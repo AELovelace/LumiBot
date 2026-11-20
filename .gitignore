@@ -12,8 +12,13 @@ __pycache__/
 *.db-shm
 *.db-wal
 
-# Data directory (contains all database files and memory stores)
-data/
+# Data directory (contains all database files and memory stores) - only the top-level one
+/data/
 
 # JSON backup/cache files
 *.json
+
+# Lumi-Town game data, test fixtures and front-end assets are real source files, not caches
+!src/lumi/data/**/*.json
+!tests/lumi/fixtures/*.json
+!public/lumi/**/*.json

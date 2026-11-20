@@ -1,0 +1,47 @@
+/* LumiBot: the Lumi-Town hub (/lumipet/) and the login page, in the neon theme (theme.css). */
+
+.hub {
+  max-width: 64rem; margin: 0 auto;                      /* centred column */
+  padding: clamp(1rem, 4vw, 3rem) clamp(.75rem, 3vw, 2rem); /* breathing room */
+  display: grid; gap: 1.25rem;                           /* stacked sections */
+}
+.hub-login { min-height: 100vh; align-content: center; max-width: 30rem; } /* the login card sits mid-screen */
+
+.hub-card {
+  display: block; background: var(--glass); border: 1px solid var(--line); /* glass panel */
+  box-shadow: var(--bloom); padding: clamp(1rem, 2.5vw, 1.6rem); color: var(--ink); /* neon glow */
+}
+.hub-eyebrow { margin: 0 0 .4rem; color: var(--cyan); font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; } /* small cyan line */
+.hub-title {
+  margin: 0 0 1rem; font-family: var(--serif); font-size: clamp(2rem, 5vw, 3.2rem); line-height: .95; letter-spacing: .06em; /* big two-tone title */
+  text-shadow: -2px 0 var(--fringe-l), 2px 0 var(--fringe-r), 0 0 18px rgba(var(--glow), .6); /* chromatic fringe */
+  overflow-wrap: anywhere;                               /* long names wrap */
+}
+.hub-title span { display: block; color: var(--rose); }  /* second line in pink */
+.hub-stats { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0 0 1rem; } /* SGC + Lumi side by side */
+.hub-stats dt { color: var(--muted); font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; } /* labels */
+.hub-stats dd { margin: 0; font-size: 1.5rem; font-family: var(--serif); display: flex; align-items: center; gap: .5rem; } /* values */
+.hub-note { color: var(--muted); font-size: .85rem; } /* small print */
+
+.hub-glow { display: inline-block; width: 1rem; height: 1rem; box-shadow: 0 0 10px currentColor; background: currentColor; } /* her glow swatch */
+.hub-glow-rose { color: #ff6fae; }                       /* glow colours (lumipet GLOWS) */
+.hub-glow-lagoon { color: #4fd8ff; }
+.hub-glow-starlight { color: #ffe27a; }
+.hub-glow-zephyr { color: #7dffb2; }
+.hub-glow-wisp { color: #c9a2ff; }
+.hub-glow-umbra { color: #8a7dff; }
+
+.hub-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 1rem; } /* the game cards */
+.hub-game { text-decoration: none; text-shadow: none; display: grid; gap: .35rem; transition: transform .1s, box-shadow .1s; } /* one card */
+.hub-game:hover, .hub-game:focus-visible { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--cyan), 0 0 22px rgba(0, 240, 255, .35); outline: none; } /* lift */
+.hub-game b { font-family: var(--serif); font-size: 1.25rem; letter-spacing: .05em; color: var(--ink); } /* game name */
+.hub-game small { color: var(--muted); line-height: 1.4; } /* one-line description */
+.hub-icon { font-size: 2rem; line-height: 1; }           /* emoji icon */
+
+.hub-button {
+  display: inline-block; padding: .8rem 1.4rem; text-decoration: none; text-shadow: none; /* a link that looks like a button */
+  background: #5865f2; color: #fff; font-weight: 600; letter-spacing: .04em; /* Discord blurple */
+}
+.hub-button:hover { background: #4752c4; color: #fff; }  /* darker on hover */
+.hub-link { background: none; color: var(--muted); box-shadow: none; padding: 0; font-weight: 400; text-decoration: underline; } /* quiet sign-out */
+.hub-link:hover:not(:disabled) { background: none; color: var(--rose); } /* pink on hover */

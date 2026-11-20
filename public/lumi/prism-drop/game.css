@@ -1,0 +1,38 @@
+/* Prism Drop's own look (templates/games/prism-drop.html): the score board, the points table, the peg legend and
+   the field's frame. Colours come from the theme (common.css); the field itself is drawn by game.js. */
+
+.pd-machine { display: flex; justify-content: center; min-width: 0; }
+.pd-score, .pd-controls { border-radius: 1rem; }                 /* Lumi Pet's rounded panels (lumi-pet/game.css) */
+.pd-lead { margin: 0 0 1rem; font-size: 1.1rem; color: var(--cyan); }
+.pd-note { margin: .8rem 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+#pd-field {
+  display: block; height: calc(100vh - 2 * clamp(.5rem, 2vh, 1.5rem)); width: auto; max-width: 100%; aspect-ratio: 640 / 920;
+  border: 1px solid rgba(255, 142, 203, .55); border-radius: 1rem; box-shadow: var(--bloom, 0 0 0 1px var(--line)), 0 0 40px rgba(255, 142, 203, .22);
+  background: var(--blush); cursor: pointer; touch-action: manipulation;
+}
+
+.pd-stats { display: grid; gap: .55rem; margin: 0 0 1rem; }
+.pd-stats div { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed var(--line); padding-bottom: .3rem; }
+.pd-stats dt { color: var(--muted); font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; }
+.pd-stats dd { margin: 0; font-family: var(--serif); font-size: clamp(1.4rem, 2.6vw, 2.4rem); color: var(--ink);
+               text-shadow: 0 0 14px rgba(var(--glow), .55); font-variant-numeric: tabular-nums; }
+#pd-score { color: var(--rose); }
+.pd-result { margin: 0; min-height: 3.2em; color: var(--ink); font-size: .95rem; line-height: 1.35; }
+.pd-result.win { color: var(--cyan); text-shadow: 0 0 10px rgba(0, 240, 255, .5); }
+
+.pd-points, .pd-legend { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .35rem; font-size: .9rem; }
+.pd-points b { display: inline-block; min-width: 3.2em; color: var(--rose); font-family: var(--serif); }
+.pd-points .pd-coin b { color: #ffe14d; }
+.pd-legend li { padding-left: 1.4em; position: relative; color: var(--muted); }
+.pd-legend li::before { content: ""; position: absolute; left: 0; top: .35em; width: .8em; height: .8em; }
+.pd-block::before { background: repeating-linear-gradient(135deg, #b14bff 0 3px, #3a1258 3px 6px); }
+.pd-bomb::before { background: #ff5a3c; box-shadow: 0 0 8px #ff5a3c; border-radius: 50% !important; }
+.pd-coinpeg::before { background: #ffe14d; box-shadow: 0 0 8px #ffe14d; border-radius: 50% !important; }
+.pd-platform::before { background: #0b3a46; border: 1px solid #00f0ff; box-shadow: 0 0 8px #00f0ff; height: .4em !important; top: .55em !important; }
+
+.pd-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.pd-buttons .gm-primary { grid-column: 1 / -1; font-size: 1.15rem; padding: .8rem; }
+
+@media (max-width: 900px) {
+  #pd-field { height: auto; width: 100%; }
+}

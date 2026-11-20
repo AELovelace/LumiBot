@@ -1,0 +1,545 @@
+/* Lumi's room fits a TV, keyboard and narrow touchscreen; the character is native vector art.
+   Shared by the three Lumi apps (data-kit="lumi-pet" on the page; data-game is the app itself). */
+.gm[data-kit="lumi-pet"] { grid-template-columns: minmax(12rem, .85fr) minmax(0, 1.65fr) minmax(14rem, 1fr); max-width: 112.5rem; margin: auto; } /* Keep the room proportional to the TV's text scale. */
+.lp-intro, .lp-controls { border-radius: 1rem; }
+.lp-intro p { line-height: 1.65; }
+.lp-intro .lp-lead { font-size: 1.2rem; color: var(--cyan); }
+.lp-stats { margin: 1.8rem 0; }
+.lp-stats div { padding: .8rem 0; border-bottom: 1px solid var(--line); }
+.lp-stats dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.lp-stats dd { margin: .5rem 0 0; }
+#lp-moments { font-size: 2.6rem; color: var(--rose); font-variant-numeric: tabular-nums; }
+.lp-note, .lp-save { color: var(--muted); font-size: .8rem; }
+.lp-room { --pet-glow: #ff8ecb; --pet-body: #fce1f2; --pet-shadow: #b8569f; position: relative; isolation: isolate; min-width: 0; height: min(78vh, 47.5rem); min-height: 26.875rem; overflow: hidden; border: 1px solid var(--line); border-radius: 45% 45% 1.2rem 1.2rem / 20% 20% 1.2rem 1.2rem; background: transparent; container-type: size; color: #ffe9f5; box-shadow: inset 0 0 80px #0005, 0 0 60px rgba(var(--glow), .12); }
+.lp-room[data-palette="lagoon"] { --pet-glow: #70ebea; --pet-body: #d2fcf6; --pet-shadow: #328b9d; }
+.lp-room[data-palette="starlight"] { --pet-glow: #ffdc83; --pet-body: #fff1cd; --pet-shadow: #b98b49; }
+.lp-room[data-palette="zephyr"] { --pet-glow: #8be9a8; --pet-body: #dcfbe6; --pet-shadow: #3f9a63; }
+.lp-room[data-palette="wisp"] { --pet-glow: #c9a8ff; --pet-body: #efe4ff; --pet-shadow: #7a55c0; }
+.lp-room[data-palette="umbra"] { --pet-glow: #8f9bff; --pet-body: #d9dcf7; --pet-shadow: #3d3f8f; }
+.lp-room-top { position: absolute; top: 8%; left: 0; right: 0; text-align: center; font-size: .65rem; letter-spacing: .18em; line-height: 2; }
+.lp-room-top span { display: block; }
+#lp-clock { color: #c9aecf; letter-spacing: .06em; }
+.lp-house { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; } /* The decorated room (house.js), behind Lumi. */
+.lp-sky-day, .lp-night-veil, .lp-sky-star { transition: opacity 2s; }
+.lp-night-veil, .lp-sky-star { opacity: 0; }
+.lp-room[data-night="true"] .lp-sky-day { opacity: 0; }
+.lp-room[data-night="true"] .lp-night-veil { opacity: .3; }
+.lp-room[data-night="true"] .lp-sky-star { opacity: .9; }
+.lp-room[data-night="true"] .lp-sun { fill: #f0deff; } /* The sun's place is the moon's at night. */
+.lp-px { animation: lp-scroll linear infinite; will-change: transform; } /* Parallax: the far strip is slowest. Transform only, to stay cheap on a TV box. */
+.lp-px-1 { animation-duration: 120s; }
+.lp-px-2 { animation-duration: 60s; }
+.lp-px-3 { animation-duration: 30s; }
+.lp-fall { animation: lp-fall linear infinite; will-change: transform; }
+.lp-fall-snow { animation-duration: 7s; }
+.lp-fall-rain { animation-duration: .9s; }
+.lp-neon { filter: drop-shadow(0 0 4px var(--pet-glow)); }
+.lp-twinkle { animation: lp-twinkle 2s ease-in-out infinite alternate; }
+@keyframes lp-scroll { to { transform: translateX(-240px); } } /* One tile of house.js's TILE; SVG units. */
+@keyframes lp-fall { to { transform: translateY(130px); } }
+@keyframes lp-twinkle { to { opacity: .35; } }
+/* One unit of the house drawing (1000 x 500, cropped to fill the room) in real pixels, so Lumi and the fight line up with the furniture at any size. */
+.lp-room > * { --u: max(.1cqw, .2cqh); }
+.lp-pet-wrap { position: absolute; width: calc(200 * var(--u)); left: calc(50% - 100 * var(--u)); bottom: calc(50% - 196 * var(--u)); } /* On the rug, in the middle of the room. */
+.lp-pet { display: block; width: 100%; overflow: visible; filter: drop-shadow(0 0 15px var(--pet-shadow)); animation: lp-breathe 4s ease-in-out infinite; transform-origin: 50% 90%; }
+.lp-body, .lp-paw { fill: var(--pet-body); stroke: var(--pet-shadow); stroke-width: 2; }
+.lp-belly { fill: #fff8; }
+.lp-wings { fill: var(--pet-glow); fill-opacity: .22; stroke: var(--pet-glow); stroke-width: 2; }
+.lp-tail { fill: none; stroke: var(--pet-shadow); stroke-width: 17; stroke-linecap: round; }
+.lp-ear, .lp-cheek { fill: var(--pet-glow); }
+.lp-star { fill: #fff9d7; stroke: var(--pet-shadow); }
+.lp-eyes-open { fill: #462846; }
+.lp-mouth, .lp-eyes-closed { fill: none; stroke: #462846; stroke-width: 2.8; stroke-linecap: round; }
+.lp-eyes-closed { display: none; }
+.lp-room[data-sleep="true"] .lp-eyes-open { display: none; }
+.lp-room[data-sleep="true"] .lp-eyes-closed { display: block; }
+.lp-room[data-sleep="true"] .lp-pet { animation-duration: 6s; }
+.lp-effect { position: absolute; z-index: 1; top: -8%; right: 14%; color: var(--pet-glow); font-size: 2.2rem; text-shadow: 0 0 14px var(--pet-shadow); }
+.lp-caption { position: absolute; bottom: 3%; left: 50%; transform: translateX(-50%); max-width: 92%; padding: .3rem .9rem; border-radius: 2rem; background: #0e0b1acc; white-space: nowrap; font-size: .82rem; letter-spacing: .06em; } /* A dark pill, so it reads over any rug. */
+.lp-dot { display: inline-block; width: 6px; height: 6px; margin-right: .7rem; border-radius: 50%; background: var(--pet-glow); box-shadow: 0 0 10px var(--pet-glow); }
+.lp-message { min-height: 5.3em; line-height: 1.65; }
+.lp-actions { display: grid; gap: .65rem; }
+.gm .lp-actions button { display: flex; gap: 1rem; align-items: center; text-align: left; border-radius: .65rem; text-transform: none; letter-spacing: .04em; padding: .85rem; }
+.lp-actions button > span:first-child { font-size: 1.6rem; color: var(--cyan); width: 1.6rem; text-align: center; }
+.lp-actions small { display: block; font: .7rem/1.7 system-ui, sans-serif; letter-spacing: .02em; color: var(--muted); }
+.gm .lp-actions button[aria-pressed="true"] { border-color: var(--rose); background: rgba(var(--glow), .1); box-shadow: inset 3px 0 var(--rose); }
+.lp-actions { max-height: 24rem; overflow-y: auto; } /* A long pantry scrolls inside the panel, in step with the TV's text scale. */
+.lp-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; margin-bottom: .8rem; } /* Lumi Pet's eight tabs: two tidy rows of four; Lumi Dungeons' four: one row. */
+.lp-tabs[data-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } /* Lumi's Garden: the garden and its settings. */
+.lp-room[data-away="true"] .lp-pet-wrap { opacity: 0; pointer-events: none; } /* She is out in another of her apps (a dungeon trip or a fight): her room waits, empty. */
+.gm .lp-tabs button { letter-spacing: .02em; overflow: hidden; text-overflow: clip; }
+.gm .lp-tabs button { flex: 1; border-radius: .5rem; font-size: .68rem; padding: .55rem .3rem; }
+.gm .lp-tabs button[aria-selected="true"] { border-color: var(--cyan); color: var(--cyan); background: rgba(var(--glow), .08); }
+.lp-meters { display: grid; gap: .6rem; margin: 1.2rem 0 .4rem; }
+.lp-meter { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr) 3.6rem; gap: .6rem; align-items: center; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.lp-meter b { text-align: right; white-space: nowrap; color: var(--cyan); font-variant-numeric: tabular-nums; }
+.lp-bar { height: .6rem; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; }
+.lp-bar i { display: block; height: 100%; width: 0; background: var(--cyan); border-radius: 1rem; transition: width .6s ease; }
+.lp-bar[data-low="true"] i { background: var(--rose); } /* The last quarter: she'd like some care. */
+.lp-room[data-mood="sad"] .lp-pet { filter: drop-shadow(0 0 6px var(--pet-shadow)) saturate(.55); animation-duration: 7s; } /* At zero she droops; nothing is lost. */
+.lp-room[data-mood="sad"] .lp-wings { fill-opacity: .1; }
+.lp-room[data-action="play"] .lp-pet { animation: lp-play .7s ease-in-out infinite alternate; }
+.lp-room[data-action="cuddle"] .lp-cheek { opacity: .85; }
+.lp-room[data-action="snack"] .lp-pet { animation: lp-snack .5s ease-in-out infinite alternate; }
+.lp-room.lp-hidden *, .lp-room.lp-hidden *::before { animation-play-state: paused; }
+@keyframes lp-breathe { 50% { transform: translateY(-4px) scale(1.015); } }
+@keyframes lp-play { to { transform: translateY(-13px) rotate(5deg); } }
+@keyframes lp-snack { to { transform: rotate(-2deg) scale(1.025); } }
+@media (max-width: 1000px) {
+  .gm[data-kit="lumi-pet"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .lp-room { grid-column: 1 / -1; order: -1; width: min(100%, 37.5rem); justify-self: center; height: 33.75rem; }
+}
+@media (max-width: 560px) {
+  .gm[data-kit="lumi-pet"] { grid-template-columns: minmax(0, 1fr); }
+  .lp-room { min-height: 22.5rem; height: 26.25rem; }
+  .lp-controls { order: 0; }
+  .lp-intro { order: 1; }
+  .lp-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gm .lp-actions button { gap: .4rem; padding: .6rem; }
+  .lp-message { min-height: 3.3em; }
+}
+/* A fight: a veil dims the house, Lumi steps left and the enemy faces her from the right. */
+.lp-fight { position: absolute; inset: 0; background: #0b0818d9; }
+.lp-fight[hidden] { display: none; }
+.lp-fight-bars { position: absolute; top: 15%; left: max(3%, calc(50% - 168 * var(--u))); right: max(3%, calc(50% - 168 * var(--u))); display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: .68rem; letter-spacing: .04em; }
+.lp-fight-bars > div:last-child { text-align: right; }
+.lp-fight-bars span { display: block; margin-bottom: .35rem; }
+.lp-fight-bars .lp-bar { margin-bottom: .25rem; background: #0006; }
+.lp-fight-bars .lp-bar i { background: #7fe08f; transition: width .4s ease; }
+.lp-fight-bars .lp-bar-mp { height: .35rem; }
+.lp-fight-bars .lp-bar-mp i { background: var(--pet-glow); }
+.lp-fight-bars .lp-bar-foe i { background: #ff7a8a; margin-left: auto; }
+.lp-foe { position: absolute; right: max(2%, calc(50% - 168 * var(--u))); bottom: calc(50% - 196 * var(--u)); width: calc(150 * var(--u)); overflow: visible; animation: lp-breathe 3s ease-in-out infinite; transform-origin: 50% 90%; transition: opacity .6s, filter .6s; }
+.lp-foe[data-down="true"] { opacity: .25; filter: grayscale(1); animation: none; }
+.lp-room[data-fight="true"] .lp-pet-wrap { left: max(2%, calc(50% - 168 * var(--u))); width: calc(165 * var(--u)); transition: left .4s, width .4s; } /* Both fighters stay between the side panels. */
+/* The dungeon: the room she is in, drawn over the house, with a line of her health and satchel across the top. */
+.lp-dungeon { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+.lp-dungeon text { font-family: var(--serif, sans-serif); }
+.lp-dhud { position: absolute; top: 8%; left: max(3%, calc(50% - 168 * var(--u))); width: min(52%, calc(215 * var(--u))); font-size: .68rem; letter-spacing: .04em; padding: .45rem .6rem; border-radius: .5rem; background: #0e0b1acc; }
+.lp-dhud[hidden] { display: none; }
+.lp-dhud span { display: block; margin-bottom: .3rem; color: var(--cyan); text-transform: uppercase; letter-spacing: .12em; }
+.lp-dhud small { display: block; margin-top: .3rem; color: #c9aecf; line-height: 1.5; }
+.lp-dhud .lp-bar { margin-bottom: .2rem; background: #0006; }
+.lp-dhud .lp-bar i { background: #7fe08f; transition: width .4s ease; }
+.lp-dhud .lp-bar-mp { height: .35rem; }
+.lp-dhud .lp-bar-mp i { background: var(--pet-glow); }
+.lp-room[data-dungeon="true"] .lp-room-top { display: none; } /* The dungeon names the place itself. */
+.lp-room[data-fight="true"] .lp-dhud { display: none; } /* A fight shows its own bars. */
+.lp-room[data-puzzle="true"] .lp-pet-wrap { opacity: 0; pointer-events: none; } /* She steps aside for a puzzle's panel. */
+.lp-room[data-fight="true"] .lp-pet-wrap { opacity: 1; }
+/* Exploring: the right panel becomes the dungeon's own. The tabs fold away (the list has "Look after Lumi" to reach
+   them) and the list gets the room, so every choice in a room is in view at once. */
+.gm[data-walking="true"] .lp-tabs { display: none; }
+/* On a trip the panel is a column: the story takes whatever room there is, and the choices and the key legend sit at the bottom. */
+.gm[data-walking="true"] .lp-controls { display: flex; flex-direction: column; }
+.gm[data-walking="true"] .lp-story { display: block; flex: 1 1 5rem; min-height: 3.5rem; overflow-y: auto; margin-bottom: .5rem; }
+.gm[data-walking="true"] .lp-message { min-height: 0; flex: none; padding-top: .5rem; border-top: 1px solid var(--line); }
+.gm[data-walking="true"] .lp-actions { flex: none; max-height: min(44vh, 26rem); }
+.gm[data-walking="true"] .gm-keys { flex: none; }
+.lp-story { display: none; font-size: .82rem; line-height: 1.6; color: var(--muted); }
+.lp-story p { margin: 0 0 .45rem; }
+.lp-story .lp-scene { color: var(--cyan); font-style: italic; }
+.lp-dungeon [data-click] { cursor: pointer; }
+.lp-room[data-dungeon="true"] .lp-pet-wrap { pointer-events: none; } /* Lumi never hides a door from the mouse. */
+.gm[data-walking="true"] .lp-controls { align-self: stretch; }
+/* On a TV or computer the room is the whole screen and the two panels float over its walls as glass. On a phone the
+   panels stack under it, so there it stays a card (the rules above). Either way the windows are holes in the wall. */
+@media (min-width: 1001px) {
+  /* The panels keep the width they always had (their share of the old, padded and capped layout, worked out here as
+     --lp-wide) but sit right out at the screen's edges, so the room between them is as wide as it can be. */
+  .gm[data-kit="lumi-pet"] { --lp-wide: calc(min(100vw, 112.5rem) - 2 * clamp(.75rem, 3vw, 2.5rem) - 2 * clamp(.75rem, 2vw, 2rem)); max-width: none;
+    padding-left: clamp(.3rem, .5vw, .6rem); padding-right: clamp(.3rem, .5vw, .6rem);
+    grid-template-columns: max(12rem, calc(var(--lp-wide) * .85 / 3.5)) minmax(0, 1fr) max(14rem, calc(var(--lp-wide) / 3.5)); }
+  .gm[data-kit="lumi-pet"] .lp-room { position: fixed; inset: 0; width: auto; height: auto; min-height: 0; border: 0; border-radius: 0; box-shadow: none; z-index: 0; }
+  .gm[data-kit="lumi-pet"] .lp-intro { grid-column: 1; position: relative; z-index: 1; }
+  .gm[data-kit="lumi-pet"] .lp-controls { grid-column: 3; position: relative; z-index: 1; }
+  .gm[data-kit="lumi-pet"] .lp-room-top { top: 4%; }
+}
+
+/* The Stardust Garden: drawn over the room like the dungeon (garden-art.js). Lumi stands small beside the beds. */
+/* In the garden Lumi is small and quick: game.js gives her a place in the drawing (--gx from its centre, --gy from its top) and she darts there. */
+.lp-room[data-garden="true"] .lp-pet-wrap { width: calc(30 * var(--u)); left: calc(50% + (var(--gx, -118) - 15) * var(--u)); bottom: calc(50% + (250 - var(--gy, 222)) * var(--u)); pointer-events: none;
+  transition: left .3s cubic-bezier(.3, 1.5, .5, 1), bottom .3s cubic-bezier(.3, 1.5, .5, 1), width .3s; }
+.lp-room[data-garden="true"] .lp-house { visibility: hidden; } /* The garden is outdoors: its sky is the theme's own scenery, or painted (garden-art.js). */
+.lp-room[data-garden="true"] .lp-effect { font-size: calc(11 * var(--u)); top: -30%; right: -10%; }
+.lp-room[data-garden-act^="dig"] .lp-pet { animation: lp-g-dig .6s ease-in-out; }
+.lp-room[data-garden-act^="snip"] .lp-pet { animation: lp-g-hop .5s ease-out; }
+.lp-room[data-garden-act^="bounce"] .lp-pet { animation: lp-g-bounce .22s ease-out; }
+.lp-room[data-garden-act^="sniff"] .lp-pet { animation: lp-g-sniff .7s ease-in-out; }
+.lp-room[data-garden-act^="cheer"] .lp-pet { animation: lp-g-cheer .7s ease-in-out; }
+.lp-room[data-garden-act$="-again"] .lp-pet { animation-name: var(--again); }
+.lp-room[data-garden-act="dig-again"] { --again: lp-g-dig2; } .lp-room[data-garden-act="snip-again"] { --again: lp-g-hop2; } .lp-room[data-garden-act="bounce-again"] { --again: lp-g-bounce2; }
+.lp-room[data-garden-act="sniff-again"] { --again: lp-g-sniff2; } .lp-room[data-garden-act="cheer-again"] { --again: lp-g-cheer2; }
+@keyframes lp-g-dig { 20%, 60% { transform: rotate(-13deg) translateY(4%); } 40%, 80% { transform: rotate(13deg) translateY(4%); } }
+@keyframes lp-g-dig2 { 20%, 60% { transform: rotate(13deg) translateY(4%); } 40%, 80% { transform: rotate(-13deg) translateY(4%); } }
+@keyframes lp-g-hop { 40% { transform: translateY(-38%) scale(1.06, .96); } 80% { transform: translateY(0) scale(.96, 1.05); } }
+@keyframes lp-g-hop2 { 45% { transform: translateY(-38%) scale(1.06, .96); } 85% { transform: translateY(0) scale(.96, 1.05); } }
+@keyframes lp-g-bounce { 50% { transform: translateY(-22%) scale(.94, 1.08); } }
+@keyframes lp-g-bounce2 { 55% { transform: translateY(-22%) scale(.94, 1.08); } }
+@keyframes lp-g-sniff { 30%, 70% { transform: translateY(7%) rotate(6deg); } 50% { transform: translateY(3%) rotate(-4deg); } }
+@keyframes lp-g-sniff2 { 30%, 70% { transform: translateY(7%) rotate(-6deg); } 50% { transform: translateY(3%) rotate(4deg); } }
+@keyframes lp-g-cheer { 50% { transform: translateY(-30%) rotate(180deg); } 100% { transform: rotate(360deg); } }
+@keyframes lp-g-cheer2 { 50% { transform: translateY(-30%) rotate(-180deg); } 100% { transform: rotate(-360deg); } }
+@media (prefers-reduced-motion: reduce) { .lp-room[data-garden="true"] .lp-pet-wrap { transition: none; } .lp-room[data-garden-act] .lp-pet { animation: none; } }
+.lp-room[data-garden="true"] .lp-room-top { display: none; } /* The garden's own bar names the place. */
+.lp-room[data-garden="true"] .lp-dhud .lp-bar i { background: #ffdc83; }
+.lp-room[data-garden="true"] .lp-dhud .lp-bar-mp { display: none; }
+
+/* The Skills tab draws its trees over the room, and the Collection tab a flower or decoration: Lumi steps aside for both. */
+.lp-room[data-skills="true"] .lp-pet-wrap, .lp-room[data-album="true"] .lp-pet-wrap { opacity: 0; pointer-events: none; }
+.lp-room[data-skills="true"] .lp-room-top, .lp-room[data-album="true"] .lp-room-top { display: none; }
+.lp-room[data-skills="true"] .lp-caption, .lp-room[data-album="true"] .lp-caption { display: none; }
+.lp-dungeon .lp-unowned { filter: grayscale(1) brightness(.5); opacity: .55; } /* A thing she hasn't found yet: its shape, without its colours. */
+
+/* ---- Touch controls: an arrow pad for the dungeon and a press button for the garden (game.js shows them on touch screens). */
+.lp-pad { position: absolute; z-index: 3; left: max(.6rem, calc(50% - 168 * var(--u))); bottom: 10%; display: grid; grid-template: repeat(3, 2.9rem) / repeat(3, 2.9rem); gap: .2rem; touch-action: manipulation; }
+.gm .lp-pad[hidden], .gm .lp-squeeze[hidden], .gm .lp-pad button[hidden] { display: none; } /* As specific as the rules that lay them out, so hidden means gone. */
+.gm .lp-pad button { padding: 0; border-radius: 50%; font-size: 1.05rem; background: #0e0b1acc; border: 1px solid #70ebea88; color: #70ebea; -webkit-tap-highlight-color: transparent; }
+.gm .lp-pad button:disabled { opacity: .25; }
+.gm .lp-pad button:active { background: #70ebea33; }
+.lp-pad [data-pad="up"] { grid-area: 1 / 2; } .lp-pad [data-pad="left"] { grid-area: 2 / 1; } .lp-pad [data-pad="enter"] { grid-area: 2 / 2; } .lp-pad [data-pad="right"] { grid-area: 2 / 3; } .lp-pad [data-pad="down"] { grid-area: 3 / 2; }
+.gm .lp-squeeze { position: absolute; z-index: 3; right: max(.7rem, calc(50% - 168 * var(--u))); bottom: 10%; width: 5rem; height: 5rem; padding: 0; border-radius: 50%; display: grid; place-content: center; gap: 0;
+  background: #2a1d3fdd; border: 2px solid #ffdc83; color: #ffdc83; font-size: 1.6rem; line-height: 1; touch-action: manipulation; -webkit-tap-highlight-color: transparent; box-shadow: 0 0 18px #ffdc8355; }
+.gm .lp-squeeze small { font-size: .6rem; letter-spacing: .12em; text-transform: uppercase; }
+.gm .lp-squeeze:active { transform: scale(.93); background: #ffdc8333; }
+
+/* ---- A phone. One screen, no page scrolling: her needs in a strip along the top, the room under it, then the words and a
+   list of big buttons that scrolls by itself, and the tabs as a bar along the bottom to swipe through. In the dungeon,
+   garden, skill trees and collection the room gets more of the screen, since that is where the fingers go. */
+@media (max-width: 700px) {
+  .gm[data-kit="lumi-pet"] { display: flex; flex-direction: column; gap: 0; padding: 0; height: 100vh; height: 100dvh; min-height: 0; max-width: none; overflow: hidden; }
+  .gm[data-kit="lumi-pet"] .lp-intro { order: 0; flex: none; align-self: stretch; display: flex; align-items: center; gap: .6rem; padding: max(.35rem, env(safe-area-inset-top, 0px)) .6rem .35rem; border-radius: 0; border-width: 0 0 1px; box-shadow: none; }
+  .gm[data-kit="lumi-pet"] .lp-intro :is(.gm-eyebrow, .gm-title, .lp-lead, .lp-note, .lp-save) { display: none; }
+  .gm[data-kit="lumi-pet"] .lp-meters { flex: 1; min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; margin: 0; }
+  .gm[data-kit="lumi-pet"] .lp-meter { grid-template-columns: minmax(0, 1fr) auto; gap: .12rem .25rem; font-size: .55rem; letter-spacing: .03em; }
+  .gm[data-kit="lumi-pet"] .lp-meter .lp-bar { grid-column: 1 / -1; grid-row: 2; }
+  .gm[data-kit="lumi-pet"] .lp-meter b { font-size: .6rem; }
+  .gm[data-kit="lumi-pet"] .lp-stats { margin: 0; flex: none; }
+  .gm[data-kit="lumi-pet"] .lp-stats div { display: none; padding: 0; border: 0; }
+  .gm[data-kit="lumi-pet"] .lp-stats div:last-child { display: block; text-align: right; } /* Only her coins: the rest is in the tabs. */
+  .gm[data-kit="lumi-pet"] .lp-stats dt { font-size: .5rem; }
+  .gm[data-kit="lumi-pet"] .lp-stats dd { margin: 0; font-size: .85rem; }
+  .gm[data-kit="lumi-pet"] .lp-room { order: 1; flex: none; width: 100%; height: 38vh; height: 38dvh; min-height: 0; border-radius: 0; border-width: 0; box-shadow: none; }
+  .gm[data-kit="lumi-pet"] .lp-room[data-dungeon="true"] { height: 46dvh; }
+  .gm[data-kit="lumi-pet"] .lp-room[data-garden="true"] { height: 54dvh; } /* Tall enough that a plot is a comfortable tap. */
+  .gm[data-kit="lumi-pet"] .lp-room:is([data-skills="true"], [data-album="true"]) { height: 56dvh; }
+  .gm[data-kit="lumi-pet"] .lp-room-top { display: none; }
+  .gm[data-kit="lumi-pet"] .lp-caption { bottom: auto; top: .4rem; font-size: .7rem; }
+  .gm[data-kit="lumi-pet"] .lp-room:is([data-dungeon="true"], [data-garden="true"]) .lp-caption { display: none; } /* Their own bar says it. */
+  .gm[data-kit="lumi-pet"] .lp-dhud { top: .4rem; left: .5rem; width: 62%; }
+  .gm[data-kit="lumi-pet"] .lp-controls { order: 2; flex: 1 1 0; min-height: 0; align-self: stretch; display: flex; flex-direction: column; padding: .5rem .6rem max(.4rem, env(safe-area-inset-bottom, 0px)); border-radius: 0; border-width: 1px 0 0; box-shadow: none; }
+  .gm[data-kit="lumi-pet"] .lp-controls :is(.gm-eyebrow, .gm-keys) { display: none; } /* No keys on a phone: everything is pressed. */
+  .gm[data-kit="lumi-pet"] .lp-message { flex: none; min-height: 0; max-height: 4.3em; overflow-y: auto; margin: 0 0 .4rem; padding: 0; border: 0; font-size: .88rem; line-height: 1.4; }
+  .gm[data-kit="lumi-pet"] .lp-story { flex: none; min-height: 0; max-height: 4.4em; margin-bottom: .3rem; font-size: .72rem; line-height: 1.45; }
+  .gm[data-kit="lumi-pet"] .lp-story p { margin: 0 0 .15rem; }
+  .gm[data-kit="lumi-pet"] .lp-actions { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; grid-template-columns: minmax(0, 1fr); gap: .4rem; align-content: start; overscroll-behavior: contain; }
+  .gm[data-kit="lumi-pet"] .lp-actions button { min-height: 3.1rem; padding: .5rem .7rem; gap: .7rem; }
+  .gm[data-kit="lumi-pet"] .lp-tabs { order: 9; flex: none; display: flex; overflow-x: auto; gap: .3rem; margin: .45rem 0 0; padding-bottom: .1rem; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .gm[data-kit="lumi-pet"] .lp-tabs::-webkit-scrollbar { display: none; }
+  /* On a phone a tab is always one tap away, in the garden, the trees and the collection too. Only a dungeon trip puts the bar
+     away: she can't be anywhere else until she is home. */
+  .gm[data-kit="lumi-pet"]:has(.lp-room[data-dungeon="true"]) .lp-tabs { display: none; }
+  .gm[data-kit="lumi-pet"] .lp-tabs button { flex: 0 0 auto; min-width: 4.7rem; min-height: 2.7rem; font-size: .68rem; scroll-snap-align: center; }
+  .gm[data-kit="lumi-pet"] .lp-pad { left: .5rem; bottom: .5rem; }
+  .gm[data-kit="lumi-pet"] .lp-squeeze { right: .6rem; bottom: .6rem; }
+}
+
+/* Who's playing? (mnemerynne/lumi_tv.py): on a shared TV whose owner has TV guests, a remote's OK picks whose Lumi shows.
+   The picker covers the whole page until someone presses; the badge in the room says whose Lumi it is. */
+.gm[data-kit="lumi-pet"] .lp-who { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; margin: 0; border-radius: 0; text-align: center; background: color-mix(in srgb, var(--blush, #07020d) 92%, transparent); }
+.gm[data-kit="lumi-pet"] .lp-who[hidden] { display: none; }
+.gm[data-kit="lumi-pet"] .lp-who h2 { margin: 0; font-size: 2.4rem; letter-spacing: .08em; color: var(--rose, #ff2e97); text-shadow: 0 0 18px rgba(var(--glow, 255, 46, 151), .6); }
+.gm[data-kit="lumi-pet"] .lp-who-big { margin: 0; font-size: 1.35rem; }
+.gm[data-kit="lumi-pet"] .lp-who-big b { padding: 0 .35em; border: 1px solid currentColor; border-radius: .3em; }
+.gm[data-kit="lumi-pet"] .lp-who-small { margin: 0; font-size: .85rem; color: var(--muted, #b98aa9); }
+.gm[data-kit="lumi-pet"] .lp-who-why { min-height: 1.3em; margin: .4rem 0 0; color: var(--cyan, #00f0ff); }
+.gm[data-kit="lumi-pet"] .lp-player { color: var(--cyan, #00f0ff); }
+.gm[data-kit="lumi-pet"] .lp-player[hidden] { display: none; }
+
+/* A couch party (Lumi Dungeons with friends): one column per person at the TV, each with their own menu and cursor. */
+.gm[data-kit="lumi-pet"] .lp-couch[hidden], .gm[data-kit="lumi-pet"] .lp-actions[hidden] { display: none; }
+.gm[data-kit="lumi-pet"] .lp-couch { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.gm[data-kit="lumi-pet"] .lp-couch-head { margin: 0 0 .5rem; font-size: .85rem; color: var(--cyan, #00f0ff); }
+.gm[data-kit="lumi-pet"] .lp-couch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .6rem; }
+.gm[data-kit="lumi-pet"] .lp-couch-col { padding: .5rem .6rem; border: 1px solid rgba(var(--glow, 255, 46, 151), .45); border-radius: .6rem; }
+.gm[data-kit="lumi-pet"] .lp-couch-col[data-ghost="true"] { opacity: .65; border-style: dashed; }
+.gm[data-kit="lumi-pet"] .lp-couch-col h3 { margin: 0 0 .3rem; font-size: 1rem; color: var(--rose, #ff2e97); }
+.gm[data-kit="lumi-pet"] .lp-couch-col small { display: block; margin-top: .25rem; font-size: .7rem; color: var(--muted, #b98aa9); }
+.gm[data-kit="lumi-pet"] .lp-couch-col .lp-couch-log { color: var(--ink, #ffe9f5); }
+.gm[data-kit="lumi-pet"] .lp-couch-col ol { margin: .45rem 0 0; padding: 0; list-style: none; font-size: .78rem; }
+.gm[data-kit="lumi-pet"] .lp-couch-col li { padding: .25rem .35rem; border-radius: .35rem; }
+.gm[data-kit="lumi-pet"] .lp-couch-col li[aria-current="true"] { background: rgba(var(--glow, 255, 46, 151), .28); outline: 1px solid var(--rose, #ff2e97); }
+
+/* ---- Lumi with friends (2026-11-11): each friend's Lumi beside yours, the co-op fight, the party browser, her own colour. */
+/* Friends' Lumis stand to the right of yours, a little smaller, each with her name under her (game.js drawCrew). On the couch
+   nobody's Lumi is "yours": they all stand together in the middle, and the TV's own Lumi steps aside. */
+.lp-crew { position: absolute; z-index: 1; bottom: calc(50% - 196 * var(--u)); left: calc(50% + 70 * var(--u)); display: flex; gap: calc(6 * var(--u)); pointer-events: none; }
+.lp-crew[hidden] { display: none; }
+.lp-crew-lumi { margin: 0; width: calc(120 * var(--u)); text-align: center; }
+.lp-crew-lumi svg { display: block; width: 100%; overflow: visible; filter: drop-shadow(0 0 10px var(--pet-shadow)); animation: lp-breathe 4.4s ease-in-out infinite; transform-origin: 50% 90%; }
+.lp-crew-lumi:nth-child(2) svg { animation-delay: -1.4s; } .lp-crew-lumi:nth-child(3) svg { animation-delay: -2.8s; }
+.lp-crew-lumi figcaption { margin-top: .15rem; padding: .1rem .45rem; display: inline-block; border-radius: 1rem; background: #0e0b1acc; font-size: .66rem; letter-spacing: .04em; white-space: nowrap; }
+.lp-crew-lumi[data-ghost="true"] { opacity: .45; filter: grayscale(.7); }
+.lp-crew-lumi[data-turn="true"] figcaption { background: #70ebea; color: #0e0b1a; }
+.lp-room[data-couch-crew="true"] .lp-pet-wrap { opacity: 0; }
+.lp-room[data-couch-crew="true"] .lp-crew { left: 50%; transform: translateX(-50%); }
+.lp-room[data-couch-crew="true"] .lp-crew-lumi { width: calc(150 * var(--u)); }
+.lp-room[data-dungeon="true"] .lp-crew { z-index: 2; }
+/* The co-op fight: everyone's bars down the left, the creatures on the right; the solo fight's two bars and one enemy step aside. */
+.lp-fight-team .lp-fight-bars, .lp-fight-team .lp-foe { display: none; }
+.lp-team { position: absolute; inset: 0; }
+.lp-team[hidden] { display: none; }
+.lp-team-lumis { position: absolute; top: 8%; left: max(3%, calc(50% - 168 * var(--u))); width: min(46%, calc(150 * var(--u)));   /* inside the always-visible middle, like the solo fight's bars */ margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; font-size: .66rem; letter-spacing: .03em; }
+.lp-team-lumis li { padding: .3rem .45rem; border-radius: .5rem; background: #0e0b1acc; border: 1px solid transparent; }
+.lp-team-lumis li[data-turn="true"] { border-color: #70ebea; box-shadow: 0 0 12px #70ebea66; }
+.lp-team-lumis li[data-you="true"] span { color: #ffdc83; }
+.lp-team-lumis li[data-down="true"] { opacity: .45; }
+.lp-team-lumis span { display: block; margin-bottom: .2rem; }
+.lp-team-lumis .lp-bar { margin-bottom: .15rem; background: #0006; }
+.lp-team-lumis .lp-bar i { background: #7fe08f; transition: width .4s ease; }
+.lp-team-lumis .lp-bar-mp { height: .3rem; }
+.lp-team-lumis .lp-bar-mp i { background: var(--pet-glow); }
+.lp-team-foes { position: absolute; right: max(2%, calc(50% - 168 * var(--u))); bottom: calc(50% - 196 * var(--u)); display: flex; align-items: flex-end; gap: calc(4 * var(--u)); }
+.lp-team-foes figure { margin: 0; width: calc(62 * var(--u)); text-align: center; cursor: pointer; border-radius: 1rem; padding: .2rem; border: 2px solid transparent; transition: opacity .6s, filter .6s; }
+.lp-team-foes figure[data-aim="true"] { border-color: #ffdc83; box-shadow: 0 0 14px #ffdc8355; }
+.lp-team-foes figure[data-down="true"] { opacity: .25; filter: grayscale(1); }
+.lp-team-foes svg { display: block; width: 100%; overflow: visible; animation: lp-breathe 3s ease-in-out infinite; transform-origin: 50% 90%; }
+.lp-team-foes figcaption { font-size: .6rem; padding: .1rem .3rem; border-radius: .6rem; background: #0e0b1acc; }
+.lp-team-foes .lp-bar { margin-top: .2rem; background: #0006; }
+.lp-team-foes .lp-bar i { display: block; height: 100%; background: #ff7a8a; transition: width .4s ease; }
+/* A co-op fight: every Lumi in the party stands in one even row on the left, yours first, and the one to three creatures
+   take the right, a little smaller, so all of them fit between the panels together. */
+.lp-room[data-team="true"] .lp-pet-wrap { left: max(2%, calc(50% - 168 * var(--u))); width: calc(72 * var(--u)); transition: none; }   /* into the row at once, beside her friends */
+.lp-room[data-team="true"] .lp-crew { left: calc(max(2%, calc(50% - 168 * var(--u))) + 66 * var(--u)); bottom: calc(50% - 196 * var(--u)); gap: calc(-6 * var(--u)); }
+.lp-room[data-team="true"] .lp-crew-lumi { width: calc(72 * var(--u)); }
+.lp-room[data-team="true"] .lp-crew-lumi figcaption { font-size: .55rem; }
+.lp-room[data-team="true"] .lp-team-foes figure { width: calc(42 * var(--u)); }
+/* The party browser: the room is the browser; Lumi steps aside like she does for the gallery. */
+.lp-room[data-browse="true"] .lp-pet-wrap { opacity: 0; pointer-events: none; }
+.lp-room[data-browse="true"] .lp-room-top, .lp-room[data-browse="true"] .lp-caption { display: none; }
+.lp-dungeon .lp-pb-card { cursor: pointer; }
+/* Her own colour: three sliders under the words while Settings → Colour is open. */
+.lp-tint { display: grid; gap: .4rem; margin: 0 0 .7rem; }
+.lp-tint[hidden] { display: none; }
+.lp-tint label { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr) 2.2rem; gap: .5rem; align-items: center; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.lp-tint input { width: 100%; accent-color: var(--pet-glow, #ff8ecb); min-height: 1.6rem; }
+.lp-tint b { text-align: right; color: var(--cyan); font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  .gm[data-kit="lumi-pet"] .lp-crew-lumi { width: calc(105 * var(--u)); }
+  .gm[data-kit="lumi-pet"] .lp-team-lumis { top: 2.4rem; width: 46%; font-size: .58rem; gap: .2rem; }
+  .gm[data-kit="lumi-pet"] .lp-team-lumis li { padding: .2rem .35rem; }
+  .gm[data-kit="lumi-pet"] .lp-team-foes figure { width: calc(62 * var(--u)); }
+  .gm[data-kit="lumi-pet"] .lp-tint { margin-bottom: .35rem; }
+  .gm[data-kit="lumi-pet"] .lp-tint input { min-height: 2.2rem; }   /* A thumb-sized slider. */
+}
+/* Lumi's Garden's pages (the Flower tree, Helpers, Moonrise: garden-tree-art.js) cover the plots; Lumi steps off while one is up. */
+.lp-room[data-garden="true"]:not([data-garden-page=""]) .lp-pet-wrap { visibility: hidden; }
+/* Her room's door (house.js data-click="door"): in Lumi Pet it goes to Lumi Dungeons (game.js doorPress, adventure). */
+.gm[data-game="lumi-pet"] .lp-house [data-click="door"] { cursor: pointer; transition: filter .2s; }
+.gm[data-game="lumi-pet"] .lp-house [data-click="door"]:hover { filter: drop-shadow(0 0 6px var(--pet-glow, #ff8ecb)) brightness(1.12); }   /* A soft glow: this one can be pressed. */
+.lp-room[data-leaving="true"] .lp-pet-wrap { transform: translateX(calc(-170 * var(--u))) scale(.8); opacity: 0; transition: transform .7s ease-in, opacity .7s ease-in; }   /* She trots off towards the door. */
+@media (prefers-reduced-motion: reduce) { .lp-room[data-leaving="true"] .lp-pet-wrap { transform: none; transition: opacity .3s; } }
+/* Lumi Dungeons' lobby, the Lantern & Paw tavern (tavern-art.js): the hearth's fire flickers and the lanterns and candles breathe. */
+.lp-house .lp-tv-fire { transform-box: fill-box; transform-origin: 50% 100%; animation: lp-tv-fire 1.6s ease-in-out infinite alternate; }
+.lp-house .lp-tv-glow { animation: lp-tv-glow 3.2s ease-in-out infinite alternate; }
+@keyframes lp-tv-fire { 0% { transform: scale(1, 1); } 35% { transform: scale(1.04, .92); } 70% { transform: scale(.97, 1.07); } 100% { transform: scale(1.02, .96); } }
+@keyframes lp-tv-glow { from { opacity: .7; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lp-house .lp-tv-fire, .lp-house .lp-tv-glow { animation: none; } }
+/* Lumi Town (town-art.js, game.js drawTown): the map, or a place's inside. Lumi is small and walks to whatever the cursor
+   is on (--gx from the drawing's middle, --gy her feet), like in the garden; the dashed ring and the label show where. */
+.lp-room[data-town] .lp-pet-wrap { width: calc(46 * var(--u)); left: calc(50% + (var(--gx, 0) - 23) * var(--u)); bottom: calc(50% + (250 - var(--gy, 268)) * var(--u)); pointer-events: none;
+  transition: left .45s ease-in-out, bottom .45s ease-in-out; }
+.lp-room[data-town]:not([data-town="map"]) .lp-pet-wrap { width: calc(58 * var(--u)); left: calc(50% + (var(--gx, 0) - 29) * var(--u)); } /* Inside, a step closer. */
+.lp-room[data-town] .lp-effect { font-size: calc(14 * var(--u)); top: -40%; right: -20%; }
+.lp-room[data-town] .lp-caption { display: none; } /* The places' own signs and the label say it. */
+.lp-room[data-town][data-leaving="true"] .lp-pet-wrap { transform: translateY(calc(-16 * var(--u))) scale(.5); opacity: 0; transition: transform .55s ease-in, opacity .55s ease-in; } /* In through the door. */
+.lp-house [data-click^="place:"], .lp-house [data-click^="game:"], .lp-house [data-click="leave"] { cursor: pointer; }
+.lp-house .lp-tw-on { filter: drop-shadow(0 0 7px var(--pet-glow, #ff8ecb)) brightness(1.08); }   /* What the cursor is on glows in Lumi's own colour. */
+.lp-house .lp-tw-mark { stroke: var(--pet-glow, #ff8ecb); animation: lp-tw-mark 1.4s ease-in-out infinite alternate; }   /* The dashed ring where she's going, in her colour too. */
+.lp-house .lp-tw-glow { animation: lp-tw-glow 2.6s ease-in-out infinite alternate; }
+@keyframes lp-tw-mark { from { opacity: .45; } to { opacity: 1; } }
+@keyframes lp-tw-glow { from { opacity: .65; } to { opacity: 1; } }
+/* The cyberpunk town (town-art.js, 2026-11-19): a few lights take Lumi's glow (lp-tw-pet fills, lp-tw-pet-line strokes), the rain
+   slides down a tile of drops drawn twice (so it loops with no seam), and the road grates' steam rises and settles. */
+.lp-house .lp-tw-pet { fill: var(--pet-glow, #ff8ecb); }
+.lp-house .lp-tw-pet-line { stroke: var(--pet-glow, #ff8ecb); }
+.lp-house .lp-tw-rain { animation: lp-tw-rain 1.2s linear infinite; }
+.lp-house .lp-tw-steam { transform-box: fill-box; transform-origin: 50% 100%; animation: lp-tw-steam 3.4s ease-in-out infinite alternate; }
+@keyframes lp-tw-rain { from { transform: translateY(0); } to { transform: translateY(560px); } }   /* 560: the height of the tile, so the second copy lands where the first began. */
+@keyframes lp-tw-steam { from { transform: translateY(4px) scale(.9); opacity: .5; } to { transform: translateY(-6px) scale(1.1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lp-room[data-town] .lp-pet-wrap { transition: none; } .lp-house .lp-tw-mark, .lp-house .lp-tw-glow, .lp-house .lp-tw-steam { animation: none; } .lp-house .lp-tw-rain { display: none; } }
+.lp-tabs[data-count="1"] { display: none; } /* Lumi Town has one list: no tabs to pick between. */
+.lp-room[data-town-still] .lp-pet-wrap { transition: none; } /* Opening the town: she's already at the door, not sliding in from the middle. */
+.lp-room[data-town] .lp-room-top { text-shadow: 0 0 4px #1a0f2e, 0 0 10px #1a0f2e; } /* Readable over a bright daytime sky. */
+/* Lumi City (Doll's design, 2026-11-19; docs/plans/lumi-city.md). Out in the city she's drawn inside the city's own picture
+   (game.js cityFigure, city-art.js's rows), so the page's own Lumi steps aside there; inside a place she's the page's Lumi
+   again, walking its floor like her flat (--gx from the middle, --gy her feet, --gs smaller further back, --face her way). */
+.lp-room[data-town="city"] .lp-pet-wrap { visibility: hidden; }
+.lp-room[data-town]:not([data-town="map"]):not([data-town="city"]) .lp-pet-wrap { width: calc(84 * var(--gs, 1) * var(--u)); left: calc(50% + (var(--gx, 0) - 42 * var(--gs, 1)) * var(--u));
+  bottom: calc(50% + (250 - var(--gy, 466) - 8 * var(--gs, 1)) * var(--u)); }   /* inside: a step closer, a little smaller at the back */
+.lp-room[data-town] .lp-pet { scale: var(--face, 1) 1; }                         /* facing the way she last walked */
+.lp-room[data-town][data-walking] .lp-pet-wrap, .lp-room[data-town][data-walking] .lp-guide { transition: none; } /* free walking moves her every frame */
+.lp-house .lp-cw-folk, .lp-house .lp-cw-lumi { pointer-events: none; }           /* nobody's Lumi takes a press: presses go to the doors and the ground */
+.lp-house .lp-cw-me { transition: none; }                                         /* hers follows the keys exactly */
+.lp-house .lp-cw-thing .lp-cw-ring { display: none; }                             /* a doorstep's ring shows only while it's in reach */
+.lp-house .lp-cw-thing.lp-cw-near .lp-cw-ring { display: inline; }
+.lp-house .lp-cw-thing.lp-cw-near > g:not(.lp-cw-lumi) { filter: brightness(1.12); } /* and what's in reach brightens a touch */
+.lp-house [data-click^="thing:"] { cursor: pointer; }
+.lp-house .lp-in-hit { transition: stroke-opacity .2s; stroke: var(--pet-glow, #ff8ecb); stroke-width: 2; stroke-opacity: 0; }
+.lp-house .lp-in-hit:hover { stroke-opacity: .55; }                               /* inside: a soft outline on what the mouse is over */
+.lp-house .lp-cw-lumi .lp-folk-name { font-size: 17px; stroke-width: 4px; }               /* (the city's camera is zoomed out: bigger letters to match)
+.lp-house .lp-cw-lumi .lp-folk-say { font-size: 18px; stroke-width: 7px; }
+.tv .lp-house .lp-cw-thing.lp-cw-near > g:not(.lp-cw-lumi) { filter: none; }      /* (a TV box: no filters) */
+
+/* Lumi Town's townsfolk and visitors (game.js drawFolk; town-folk.js): a layer over the town picture in its own coordinates,
+   never pressable. They stroll by transform only (cheap on a TV box), and they're awake whatever the hour. */
+.lp-folk { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; display: none; overflow: visible; }
+.lp-room[data-town] .lp-folk { display: block; }
+.lp-room[data-town][data-leaving="true"] .lp-folk { opacity: .6; }
+/* Visiting flats (game.js drawHouseFolk, lumihouse.py; 2026-11-19): the host and other guests in her room of a flat, on
+   the same layer, at full room size (feet where they stand, smaller further back), walking as their pages say they walk. */
+.lp-room[data-rooms] .lp-folk { display: block; }
+.lp-room[data-rooms][data-leaving="true"] .lp-folk { opacity: .6; }
+.lp-folk-house { transition: transform .3s linear; }
+.lp-folk-house .lp-folk-body { transition: transform .3s; }
+.lp-folk-house .lp-folk-name { font-size: 20px; stroke-width: 5px; }
+.lp-folk-house .lp-folk-say.lp-folk-big { font-size: 24px; stroke-width: 10px; }
+@media (prefers-reduced-motion: reduce) { .lp-folk-house, .lp-folk-house .lp-folk-body { transition: none; } }
+
+/* Emotes (phase 4, game.js doEmote/folkEmote, lumitown.EMOTES): her own (room[data-emote]) and other people's
+   (.lp-folk-one.lp-emote-*, on the lp-folk-anim wrapper, so they never fight the transforms that place and flip them). */
+@keyframes lp-emote-wave { 0%, 100% { transform: rotate(0); } 20%, 60% { transform: rotate(-9deg); } 40%, 80% { transform: rotate(9deg); } }
+@keyframes lp-emote-dance { 0%, 50%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-7%) rotate(-11deg); } 75% { transform: translateY(-7%) rotate(11deg); } }
+@keyframes lp-emote-jump { 0%, 100% { transform: translateY(0) scale(1); } 15% { transform: translateY(0) scale(1.08, .9); } 40% { transform: translateY(-20%) scale(.96, 1.06); } 65% { transform: translateY(0) scale(1.08, .9); } }
+@keyframes lp-emote-hug { 0%, 100% { transform: scale(1); } 30%, 70% { transform: scale(1.12, .9); } }
+@keyframes lp-emote-heart { 0%, 100% { transform: scale(1); } 25%, 65% { transform: scale(1.14); } 45% { transform: scale(.97); } }
+@keyframes lp-emote-yawn { 0%, 100% { transform: rotate(0) scaleY(1); } 40%, 70% { transform: rotate(-5deg) scaleY(.92); } }
+.lp-folk-anim { transform-box: fill-box; transform-origin: 50% 100%; }
+.lp-room[data-emote] .lp-pet { animation-duration: 1.8s; animation-timing-function: ease-in-out; animation-iteration-count: 1; }
+.lp-room[data-emote="wave"] .lp-pet, .lp-emote-wave .lp-folk-anim { animation-name: lp-emote-wave; }
+.lp-room[data-emote="dance"] .lp-pet, .lp-emote-dance .lp-folk-anim { animation-name: lp-emote-dance; }
+.lp-room[data-emote="jump"] .lp-pet, .lp-emote-jump .lp-folk-anim { animation-name: lp-emote-jump; }
+.lp-room[data-emote="hug"] .lp-pet, .lp-emote-hug .lp-folk-anim { animation-name: lp-emote-hug; }
+.lp-room[data-emote="heart"] .lp-pet, .lp-emote-heart .lp-folk-anim { animation-name: lp-emote-heart; }
+.lp-room[data-emote="yawn"] .lp-pet, .lp-emote-yawn .lp-folk-anim { animation-name: lp-emote-yawn; }
+.lp-folk-one[class*="lp-emote-"] .lp-folk-anim { animation-duration: 1.8s; animation-timing-function: ease-in-out; }
+@media (prefers-reduced-motion: reduce) { .lp-room[data-emote] .lp-pet, .lp-folk-one[class*="lp-emote-"] .lp-folk-anim { animation: none; } } /* the icon over their head still shows */
+.lp-folk-one { transition: transform 3s linear; }
+.lp-folk-guest { transition: transform .45s ease; }
+.lp-room[data-town] .lp-folk-guest { pointer-events: none; } /* (Lumi City, 2026-11-19: visits are by walking to a door now, so a Lumi takes no press) */
+.lp-room[data-town] .lp-folk-guest:hover .lp-folk-name { fill: var(--pet-glow, #ff8ecb); }
+.lp-folk-flip[data-flip="true"] { transform: scaleX(-1); }
+.lp-room .lp-folk .lp-eyes-open { display: inline; }
+.lp-room .lp-folk .lp-eyes-closed { display: none; }
+.lp-folk-name { font: 600 11px var(--serif, sans-serif); fill: #ffe9f5; text-anchor: middle; paint-order: stroke; stroke: #1a0f2e; stroke-width: 3px; }
+.lp-folk-say { font: 600 12px var(--serif, sans-serif); fill: #1a0f2e; text-anchor: middle; paint-order: stroke; stroke: #fff5fb; stroke-width: 6px; opacity: 0; transition: opacity .3s; }
+.lp-folk-one.saying .lp-folk-say { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .lp-folk-one { transition: none; } }
+
+/* ---- Lumi Town's local chat (game.js hear/drawLog/chatTyping, mnemerynne/lumitown.py; 2026-11-19): the last few lines
+   said where she is, in the right-hand panel under her message, and a box over the picture to type one. Older lines step back. */
+.lp-chat-log { margin: 0 0 .6rem; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .25rem; }
+.lp-chat-log[hidden] { display: none; }
+.lp-chat-log li { padding: .25rem .6rem; border-radius: .8rem; background: #0e0b1acc; color: #ffe9f5; font-size: .78rem; line-height: 1.3;
+  border: 1px solid #ffffff22; overflow-wrap: anywhere; }
+.lp-chat-log li:not(:nth-last-child(-n+3)) { opacity: .65; } /* the older lines step back */
+.lp-chat-log li b { color: var(--pet-glow, #ff8ecb); margin-right: .2rem; }
+.lp-chat-log li.mine { border-color: var(--pet-glow, #ff8ecb); }
+.lp-chat-type { position: absolute; z-index: 5; left: 50%; bottom: 14%; transform: translateX(-50%); width: min(44%, 26rem); display: flex; gap: .4rem;
+  padding: .4rem; border-radius: 1rem; background: #0e0b1aee; border: 1px solid var(--pet-glow, #ff8ecb); box-shadow: 0 0 16px var(--pet-glow, #ff8ecb); }
+.lp-chat-type[hidden] { display: none; }
+.lp-chat-type input { flex: 1; min-width: 0; padding: .45rem .7rem; border-radius: .7rem; border: 1px solid #ffffff33; background: #1a1430; color: #ffe9f5; font: inherit; }
+.lp-chat-type button { padding: .45rem .9rem; border-radius: .7rem; border: 0; background: var(--pet-glow, #ff8ecb); color: #1a0f2e; font-weight: 700; cursor: pointer; }
+@media (max-width: 700px) { .lp-chat-log li { font-size: .7rem; } .lp-chat-type { width: 92%; } } /* (on a computer, between the side panels; on a phone, the room's width) */
+
+/* ---- Room mode (Doll's design, 2026-11-19; game.js drawRoom/drawRoomBits, room-ui.js, room-art.js): Lumi walks her flat
+   and the things in it are the menus. The tabs fold away; the list on the right is the room's things, or an open card. */
+.gm[data-rooms="true"] .lp-tabs { display: none; }
+.lp-room[data-rooms] .lp-pet-wrap { width: calc(150 * var(--gs, 1) * var(--u)); left: calc(50% + (var(--gx, 0) - 75 * var(--gs, 1)) * var(--u)); bottom: calc(50% + (250 - var(--gy, 430) - 17 * var(--gs, 1)) * var(--u));
+  transition: left .7s ease-in-out, bottom .7s ease-in-out, width .7s ease-in-out; cursor: pointer; } /* She walks to the thing (--gx from the drawing's middle, --gy her feet, --gs smaller further back); press her for a cuddle.
+  Her drawing has a little empty space under her paws (they end at y 272 of its 300), so she's set 17 units (times her size) lower: paws on the floor, over her shadow. */
+.lp-house .lp-rm-shadow { transition: cx .7s ease-in-out, cy .7s ease-in-out, rx .7s ease-in-out, ry .7s ease-in-out; pointer-events: none; } /* Her shadow (room-ui.js) glides with her on a snap step. */
+.lp-room[data-rooms][data-walking] .lp-rm-shadow { transition: none; }
+.lp-room[data-away="true"] .lp-rm-shadow, .lp-room[data-leaving="true"] .lp-rm-shadow { opacity: 0; } /* No Lumi, no shadow (out exploring, or slipping out of the door). */
+.lp-room[data-rooms] .lp-pet { scale: var(--face, 1) 1; } /* Facing the way she last walked (the individual `scale` property, so it adds to her breathing animation's transform). */
+.lp-room[data-rooms][data-walking] .lp-pet-wrap, .lp-room[data-rooms][data-walking] .lp-guide { transition: none; } /* Free walking moves her every frame: easing would trail behind. */
+.lp-house .lp-rm-hit.lp-rm-near { fill: rgba(255, 255, 255, .06); stroke: var(--pet-glow, #ff8ecb); stroke-width: 2; stroke-dasharray: 5 5; } /* The thing in reach: Enter, E or A uses it. */
+.lp-room[data-rooms][data-leaving="true"] .lp-pet-wrap { transform: scale(.8) translateY(calc(-10 * var(--u))); } /* Already at the door: she just slips out of it. */
+.lp-house .lp-rm-hit { cursor: pointer; transition: fill .2s; }
+.lp-house .lp-rm-hit:hover { fill: rgba(255, 255, 255, .07); stroke: var(--pet-glow, #ff8ecb); stroke-width: 2; stroke-dasharray: 5 5; } /* A soft dashed glow: this can be pressed. */
+.lp-house [data-click^="thing:"] { pointer-events: all; } /* A press anywhere in the box counts, even over a gap in the drawing. */
+.lp-guide { position: absolute; z-index: 3; left: clamp(30%, calc(50% + var(--gx, 0) * var(--u)), 70%); bottom: calc(50% + (250 - var(--gy, 430) + 127 * var(--gs, 1)) * var(--u)); transform: translateX(-50%); max-width: min(46%, 22rem);
+  margin: 0; padding: .35rem .8rem; border-radius: 1rem; background: #fff5fbee; color: #2a1838; font-size: .8rem; line-height: 1.3; text-align: center;
+  box-shadow: 0 0 14px var(--pet-glow, #ff8ecb); transition: left .7s ease-in-out, bottom .7s ease-in-out; pointer-events: none; } /* Lumi's speech bubble, over her head (127 units above the floor line, less when she's smaller), following her. */
+.lp-guide::after { content: ""; position: absolute; left: 50%; bottom: -.45rem; margin-left: -.45rem; border: .45rem solid transparent; border-bottom: 0; border-top-color: #fff5fbee; } /* Its little tail. */
+.lp-way { position: absolute; z-index: 3; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: .3rem; padding: .5rem .7rem; border-radius: 1rem;
+  border: 1px solid var(--pet-glow, #ff8ecb); background: #0e0b1acc; color: #ffe9f5; font-size: .75rem; letter-spacing: .06em; cursor: pointer; } /* The way to the next room. */
+.lp-room[data-album="true"] .lp-guide, .lp-room[data-skills="true"] .lp-guide { display: none; } /* The gallery covers the room: no bubble floating over it. */
+.lp-way[hidden] { display: none; } /* Its display: flex would otherwise beat the hidden attribute (a card open, or room mode off). */
+.lp-way-left { left: 1%; }
+.lp-way-right { right: 1%; }
+.lp-way:hover, .lp-way:focus-visible { box-shadow: 0 0 12px var(--pet-glow, #ff8ecb); outline: none; }
+@media (max-width: 700px) { .lp-guide { font-size: .7rem; max-width: 60%; } .lp-way { padding: .4rem .5rem; font-size: .65rem; } }
+@media (prefers-reduced-motion: reduce) { .lp-room[data-rooms] .lp-pet-wrap, .lp-guide { transition: none; } .lp-house .lp-rm-hit { transition: none; } }
+
+/* ---- Lumi Pet's own layout (Doll's design, 2026-11-19). Her stats are one bar along the top: the LUMI PET header with
+   her four meters, name, level, happy moments, last memory and coins (the left panel folded into it). The key hints are
+   gone: the help page has them, and a remote, keyboard or mouse all just work. Since Lumi City (2026-11-19, Doll: "the rest of the game") it's every Lumi app's: Lumi City, Lumi Dungeons and Lumi's Garden have the same bar. */
+.gm[data-kit="lumi-pet"] #lp-keys { display: none; }
+@media (min-width: 1001px) {
+  .gm[data-kit="lumi-pet"] { grid-template-columns: minmax(0, 1fr) max(14rem, calc(var(--lp-wide) / 3.5)); grid-template-rows: auto minmax(0, 1fr); align-items: start; }
+  .gm[data-kit="lumi-pet"] .lp-intro { grid-column: 1 / -1; grid-row: 1; align-self: start; display: flex; align-items: center; gap: clamp(.8rem, 1.6vw, 1.8rem); padding: .55rem 1.2rem; }
+  .gm[data-kit="lumi-pet"] .lp-intro :is(.gm-eyebrow, .lp-lead, .lp-note, .lp-save) { display: none; } /* The header keeps only what's live. */
+  .gm[data-kit="lumi-pet"] .lp-intro .gm-title { flex: none; margin: 0; font-size: 1.5rem; white-space: nowrap; }
+  .gm[data-kit="lumi-pet"] .lp-intro .gm-title span { display: inline; margin-left: .3rem; } /* LUMI PET on one line. */
+  .gm[data-kit="lumi-pet"] .lp-meters { flex: 1 1 24rem; min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .9rem; margin: 0; }
+  .gm[data-kit="lumi-pet"] .lp-meter { grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .4rem; font-size: .6rem; } /* Label and number over the bar, as on a phone. */
+  .gm[data-kit="lumi-pet"] .lp-meter .lp-bar { grid-column: 1 / -1; grid-row: 2; }
+  .gm[data-kit="lumi-pet"] .lp-stats { flex: 0 1 auto; min-width: 0; display: flex; gap: 1.2rem; margin: 0; }
+  .gm[data-kit="lumi-pet"] .lp-stats div { min-width: 0; padding: 0; border: 0; }
+  .gm[data-kit="lumi-pet"] .lp-stats dt { font-size: .55rem; white-space: nowrap; }
+  .gm[data-kit="lumi-pet"] .lp-stats dd { max-width: 12rem; margin: .15rem 0 0; overflow: hidden; font-size: .85rem; white-space: nowrap; text-overflow: ellipsis; }
+  .gm[data-kit="lumi-pet"] #lp-moments { font-size: .85rem; }
+  .gm[data-kit="lumi-pet"] .lp-controls { grid-column: 2; grid-row: 2; align-self: start; }
+  .gm[data-kit="lumi-pet"] .lp-room-top { top: 5.4rem; } /* The room's name, clear of the stats bar over it. */
+}
+
+/* Room mode: the right-hand panel is only for a menu that needs one (her bowl, the paint pots, the wardrobe...). With none
+   open it is out of sight, but its live region still speaks to screen readers, and her words show in her own bubble. */
+.gm[data-rooms="true"]:not([data-card="true"]) .lp-controls { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); border: 0; }
+.gm[data-rooms="true"]:not([data-card="true"]) .lp-controls > :not(.lp-message) { display: none; }
+.gm[data-rooms="true"][data-card="true"] .lp-message { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; padding: 0; } /* Said in her bubble instead. */
+
+/* The lower bar: the room's things along the bottom of the room. Her bubble says what one is, over the one she's at
+   (or the one under the mouse or keyboard focus), in her own words. */
+.lp-things { position: absolute; z-index: 4; left: 50%; bottom: 2.5%; transform: translateX(-50%); display: flex; gap: .45rem; max-width: 94%; padding: .4rem .55rem;
+  border: 1px solid var(--line); border-radius: 1.1rem; background: #0e0b1acc; box-shadow: 0 0 18px rgba(var(--glow), .25); }
+.lp-things[hidden] { display: none; }
+.gm .lp-thing { position: relative; display: grid; place-items: center; width: 3.3rem; height: 3.3rem; padding: 0; border-radius: .8rem; font-size: 1.55rem; letter-spacing: 0; text-transform: none; }
+.gm .lp-thing[aria-pressed="true"] { border-color: var(--pet-glow, #ff8ecb); background: rgba(var(--glow), .14); box-shadow: inset 0 -3px var(--pet-glow, #ff8ecb); }
+.lp-thing-say { position: absolute; bottom: calc(100% + .75rem); left: 50%; transform: translateX(-50%); display: none; width: max-content; max-width: 15rem; padding: .4rem .85rem;
+  border-radius: 1rem; background: #fff5fbee; color: #2a1838; font: .78rem/1.3 system-ui, sans-serif; text-align: center; white-space: normal; box-shadow: 0 0 14px var(--pet-glow, #ff8ecb); pointer-events: none; }
+.lp-thing-say b { display: block; color: #8c3f7a; font-size: .66rem; letter-spacing: .08em; text-transform: uppercase; } /* What it is, then her words. */
+.lp-thing-say::after { content: ""; position: absolute; left: 50%; bottom: -.45rem; margin-left: -.45rem; border: .45rem solid transparent; border-bottom: 0; border-top-color: #fff5fbee; } /* Its tail, pointing down at the thing. */
+.lp-thing:first-child .lp-thing-say { left: 0; transform: none; } /* The ends of the bar: the bubble stays on screen. */
+.lp-thing:first-child .lp-thing-say::after { left: 1.65rem; }
+.lp-thing:last-child .lp-thing-say { left: auto; right: 0; transform: none; }
+.lp-thing:last-child .lp-thing-say::after { left: auto; right: 1.2rem; }
+.lp-thing[aria-pressed="true"] .lp-thing-say, .lp-thing:hover .lp-thing-say, .lp-thing:focus-visible .lp-thing-say { display: block; }
+.lp-things:is(:hover, :focus-within) .lp-thing[aria-pressed="true"]:not(:hover, :focus-visible) .lp-thing-say { display: none; } /* One bubble at a time: the one you're pointing at. */
+.gm[data-card="true"] .lp-thing[aria-pressed="true"]:not(:hover, :focus-visible) .lp-thing-say { display: none; } /* A menu is open: she's saying her line over her head. */
+@media (min-width: 701px) { .lp-room[data-rooms] .lp-caption { top: 12%; bottom: auto; } } /* Her state, up under the room's name: the bottom is the lower bar's. */
+@media (min-width: 1001px) { .gm[data-kit="lumi-pet"] .lp-room[data-rooms] .lp-caption { top: 8.6rem; } } /* Under the stats bar and the room's name. */
+@media (max-width: 700px) {
+  .gm[data-rooms="true"]:not([data-card="true"]) .lp-room { height: min(125vw, 70dvh); } /* No menu open: a taller room, but not so tall the drawing zooms past her things. */
+  .gm[data-rooms="true"]:not([data-card="true"]) .lp-things { position: fixed; bottom: max(.8rem, env(safe-area-inset-bottom, 0px)); } /* The lower bar at the screen's foot, under a thumb. */
+  .gm .lp-thing { width: 2.7rem; height: 2.7rem; font-size: 1.25rem; }
+  .lp-things { gap: .3rem; padding: .3rem .4rem; }
+  .lp-thing-say { max-width: 11rem; font-size: .7rem; }
+}
+
+/* Lumi City (2026-11-19, Doll: the top and bottom bars everywhere, not only at home). The town is shown like her flat:
+   the lower bar holds what's in reach and the town's own rows (Go to…, Where am I?, Say something...), the right-hand
+   panel opens only for a list (the lift, Lumi Realty's counters, Go to…), and her words are in a bubble over her head
+   (game.js drawTownBits). Her bubble sits just over her: she's smaller in town than in her flat. */
+.lp-room[data-town]:not([data-town="map"]) .lp-guide { bottom: calc(50% + (250 - var(--gy, 430) + 92 * var(--gs, 1)) * var(--u)); }

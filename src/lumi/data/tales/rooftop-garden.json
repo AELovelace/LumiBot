@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Vines climb over vents as Lumi steps out onto the roof, the city glowing far below.",
+  "Bees drift between billboards. Lumi follows one into the garden.",
+  "Lumi pops out onto {place}, whiskers twitching at the hum of the city glowing far below.",
+  "Neon light spills over the vines as Lumi arrives at {place}, tail high and ready for anything.",
+  "Lumi lands softly among humming vents and climbing vines, and a bee buzzes a sleepy hello.",
+  "The rooftop breeze smells of rain and flowers as Lumi steps into {place} for a brand new adventure.",
+  "Billboards flicker pink and blue overhead, and Lumi gives a little wiggle of excitement.",
+  "Lumi arrives at {place} with a happy chirp, her glow matching the city lights below.",
+  "Lumi tiptoes onto the garden rooftop, where tomato vines curl around a buzzing antenna.",
+  "A warm vent puffs at Lumi's fur as she arrives, and the whole megacity sparkles beneath her paws."
+ ],
+ "start": [
+  "Lumi is back where she came in, the familiar vent still humming its friendly tune.",
+  "The way home glows softly here among the vines, and Lumi feels a cosy little tug toward it.",
+  "Lumi returns to the first patch of garden, where her pawprints still dot the damp moss.",
+  "Back at the entrance, Lumi spots the same sleepy bee resting on a flickering sign.",
+  "The way home waits right here, and Lumi gives it a fond little blink before looking around again.",
+  "Lumi pads back to where her trip began, the city lights twinkling just as they did before.",
+  "Here is the spot she arrived by, with the planter box she bumped her nose on earlier.",
+  "Lumi circles the starting rooftop once, glad to know the way home is close by."
+ ],
+ "empty": [
+  "Tomatoes grow in an old sign's letter O. Lumi sniffs one and leaves it be.",
+  "The whole city twinkles under the railing. Lumi sits and watches the trains.",
+  "Nothing here but moss on the vents and a billboard humming a soft electric lullaby.",
+  "Lumi pads through a quiet patch of herbs, the city glowing below like a sea of stars.",
+  "Raindrops drip from a neon sign onto the leaves, and Lumi watches them sparkle.",
+  "A lone bee drifts past a flickering ad, and Lumi decides this corner is just for looking.",
+  "The room holds only rustling vines and the faraway honk of hover traffic.",
+  "Lumi sniffs a row of empty planters, then sits a moment to admire the skyline.",
+  "Warm air sighs from a grate, ruffling the ferns, and Lumi enjoys the gentle breeze.",
+  "Pink light washes over a tangle of ivy, and Lumi's glow blends right into it."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows, nodding to the same buzzing billboard.",
+  "The familiar vines wave as Lumi passes by again, her paws remembering the way.",
+  "Lumi crosses the now-friendly rooftop patch, sniffing her own trail through the moss.",
+  "That same humming vent greets Lumi as she wanders back through.",
+  "Lumi hops along the known path between planters, tail swishing happily.",
+  "Back through the garden she goes, past the bee that is still napping on a flower.",
+  "Lumi recognises the flickering sign here and gives it a little paw-wave as she passes.",
+  "The room looks just as she left it, and Lumi breezes through with a contented purr."
+ ],
+ "treasure": [
+  "Tucked between two humming vents, Lumi spots {item} and scoops it up with delight.",
+  "Lumi finds {item} nestled in a planter of glowing moss, just waiting for her.",
+  "A neon sign blinks down on {item}, and Lumi pounces on it with a happy squeak.",
+  "Lumi nudges aside a curtain of vines and discovers {item} hidden underneath.",
+  "There, beside a rain-slick solar panel, lies {item}. Lumi purrs and claims it.",
+  "A curious bee circles {item} on the rooftop, and Lumi gently collects it.",
+  "Lumi spies {item} glinting among the herbs and gives it a proud little sniff.",
+  "Half buried in warm soil by a vent, {item} turns up, and Lumi's tail fluffs with joy."
+ ],
+ "key": [
+  "Lumi finds a key tangled in the vines, glinting under the neon glow.",
+  "A key lies by a buzzing vent, and Lumi picks it up with careful paws.",
+  "Tucked in a flowerpot, a key winks at Lumi. She tucks it away with a proud chirp.",
+  "Lumi spots a key beneath a flickering billboard and snatches it up happily.",
+  "A bee hovers over something shiny, and Lumi discovers it is a key.",
+  "Lumi digs gently in a planter and uncovers a key, which she holds up to the city lights.",
+  "A key rests on a mossy ledge, and Lumi bats it into her paws with a gleeful wiggle.",
+  "Lumi finds a key lying among the ferns and keeps it safe with a happy purr."
+ ],
+ "vault": [
+  "The vault swings open with a soft chime, and inside Lumi finds {item}.",
+  "Neon light floods the open vault, revealing {item}. Lumi gasps happily.",
+  "Lumi peeks into the opened vault and finds {item} waiting among a few curling leaves.",
+  "With the vault unlocked at last, Lumi reaches in and draws out {item}.",
+  "The vault sighs open like a warm vent, and {item} sits inside for Lumi.",
+  "Lumi's glow fills the open vault, shining on {item}. She purrs with pride.",
+  "Inside the opened vault, Lumi finds {item} and does a happy little spin.",
+  "A bee drifts in behind Lumi as she opens the vault and discovers {item}."
+ ],
+ "locked_key": [
+  "A locked door stands among the vines, and Lumi knows it needs a key.",
+  "Lumi pushes at a door under a flickering sign, but it is locked tight and wants a key.",
+  "A sturdy door blocks the garden path. Lumi sniffs at it, but only a key will open it.",
+  "Lumi finds a locked door beside a humming vent. A key is needed here.",
+  "Ivy curls around a locked door, and Lumi paws at it. Only a key will do.",
+  "Neon light glints off a locked door. Lumi tilts her head; it needs a key.",
+  "A door between two planters will not budge without a key, and Lumi gives a small huff.",
+  "Lumi meets a locked door glowing in the city haze, waiting for the right key."
+ ],
+ "locked_puzzle": [
+  "A door here is sealed by a puzzle, and Lumi's whiskers twitch with interest.",
+  "Lumi finds a door locked by some puzzle among the vines, waiting to be solved.",
+  "A puzzle seals this rooftop door, and Lumi sits down to think it over.",
+  "Neon light flickers over a door held shut by a puzzle. Lumi's ears perk up.",
+  "Lumi meets a door sealed with a puzzle, standing quietly beside the humming vents.",
+  "A bee bumps against a puzzle-sealed door, and Lumi watches it curiously.",
+  "This door won't open until its puzzle is solved, and Lumi gives a determined little nod.",
+  "Lumi discovers a door bound by a puzzle, tucked behind a curtain of ivy."
+ ],
+ "game_cups": [
+  "Three cups sit on a mossy crate, and something is hidden under one of them.",
+  "Lumi finds three cups lined up beneath a neon sign, one hiding a little secret.",
+  "Three cups wait on an upturned planter. Lumi's eyes dart between them.",
+  "Beside a humming vent, three cups are set out, and something hides beneath one.",
+  "A bee lands on one of three cups, then buzzes off. Something is tucked under one.",
+  "Three cups glow pink under a billboard, and Lumi wiggles, eager to guess.",
+  "Lumi spots three cups on a rooftop ledge, one of them keeping something hidden.",
+  "Three cups sit among the herbs, and Lumi leans close, tail swishing."
+ ],
+ "game_match": [
+  "A row of cards lies face down on a mossy table, waiting to be matched in pairs.",
+  "Cards rest face down beneath the neon glow, ready for Lumi to pair them up.",
+  "Lumi finds cards spread face down beside a warm vent, each one hiding its twin.",
+  "Face-down cards dot the planter ledge, and Lumi's whiskers quiver with excitement.",
+  "Under a flickering billboard, cards lie face down in neat rows, waiting for pairs.",
+  "A breeze lifts the vines but not the face-down cards, which wait to be matched.",
+  "Lumi settles beside some face-down cards, eager to find which ones go together.",
+  "Cards lie face down among the herbs, and a curious bee hovers over them."
+ ],
+ "game_win": [
+  "Lumi wins the game with a happy squeak and receives {item}.",
+  "Victory! Lumi does a twirl under the neon lights and claims {item}.",
+  "Lumi wins, and {item} is hers. Even the bees seem to buzz in applause.",
+  "The billboards flash brighter as Lumi wins and tucks away {item}.",
+  "Lumi's glow flares with pride as she wins the little game and earns {item}.",
+  "With a triumphant tail flick, Lumi wins and collects {item}.",
+  "Lumi wins the game and hugs {item} close, purring loudly.",
+  "A cheerful chime rings over the rooftop as Lumi wins {item}."
+ ],
+ "game_lose": [
+  "Lumi doesn't win this time, but she gets {item} for trying and purrs anyway.",
+  "Not quite! Still, Lumi happily accepts {item} as a reward for her effort.",
+  "Lumi misses the win, but {item} is hers for giving it a go.",
+  "The game slips away from Lumi, yet she trots off with {item} and a cheerful flick of her tail.",
+  "Lumi gives a tiny sigh at losing, then perks up at receiving {item}.",
+  "No win today, but Lumi still gets {item} for trying, and her whiskers twitch with delight.",
+  "Lumi loses the little game, but the bees seem to cheer as she takes {item}.",
+  "Lumi shrugs off the loss under the neon glow and tucks away {item}."
+ ],
+ "enemy": [
+  "A wild {enemy} leaps out from behind a billboard! Lumi fluffs up, ready to tussle.",
+  "A wild {enemy} blocks the garden path, and Lumi plants her paws bravely.",
+  "Lumi skids to a stop as a wild {enemy} pops out of the vines. Time to be brave!",
+  "A wild {enemy} rises from a steaming vent, and Lumi squares her tiny shoulders.",
+  "Neon light flickers as a wild {enemy} bars the way. Lumi's tail puffs up.",
+  "A wild {enemy} rustles out from the herbs, and Lumi wobbles into a brave stance.",
+  "The bees scatter as a wild {enemy} appears, and Lumi gives a fierce little mew.",
+  "A wild {enemy} stands in Lumi's path on the rooftop, and the tussle begins."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off into the vines. Lumi purrs proudly.",
+  "Lumi wins the tussle, and the {enemy} dashes away past the billboards.",
+  "With a final brave pounce, Lumi sends the {enemy} scampering into the city glow.",
+  "The {enemy} scurries off behind a vent, and Lumi licks her paw with satisfaction.",
+  "Lumi stands tall as the {enemy} scampers away, her glow shining bright.",
+  "The {enemy} bolts off across the rooftop, and the bees buzz back in celebration.",
+  "Lumi triumphs! The {enemy} scampers into the herbs and out of sight.",
+  "Beaten, the {enemy} skitters off under the neon signs, and Lumi does a happy hop."
+ ],
+ "fled": [
+  "Lumi scurries away from the {enemy} and back to the room before, heart pattering.",
+  "Too much for now! Lumi dashes from the {enemy} back through the vines.",
+  "Lumi turns tail on the {enemy} and scampers back where she came from.",
+  "With a squeak, Lumi flees the {enemy} and ducks back into the previous room.",
+  "Lumi zips away from the {enemy}, past the humming vents, to the room behind.",
+  "The {enemy} is left behind as Lumi hurries back to safety in the room before.",
+  "Lumi bolts from the {enemy} and catches her breath back in the last room.",
+  "Fur fluffed, Lumi retreats from the {enemy} to the quieter room she just left."
+ ],
+ "defeat": [
+  "The {enemy} is too much today. Lumi is carried home for a nap, her finds left behind.",
+  "Lumi gets tuckered out by the {enemy} and is gently carried home, leaving her treasures on the rooftop.",
+  "The {enemy} wins this round. A sleepy Lumi is carried home, her finds left among the vines.",
+  "Worn out by the {enemy}, Lumi is scooped up and carried home for a cosy nap. Her finds stay behind.",
+  "The {enemy} proves too tricky, and Lumi is carried home snoozing, leaving everything she found.",
+  "Lumi yawns after tussling with the {enemy} and is carried home. Her finds stay in the garden.",
+  "The {enemy} has the better of her, so Lumi is carried home to rest, leaving her treasures behind.",
+  "Too tired to keep going against the {enemy}, Lumi is carried home for a nap, her finds left under the neon."
+ ],
+ "stairs": [
+  "Lumi finds stairs leading further down, past humming vents and dangling vines.",
+  "Stairs leading deeper appear beneath a flickering sign. Lumi peers at them curiously.",
+  "Lumi discovers stairs going further down, lit by the glow of the city.",
+  "Among the planters, stairs lead down, and Lumi's whiskers tremble with excitement.",
+  "A mossy staircase leads down from the garden, and Lumi gives it a curious sniff.",
+  "Lumi spots stairs heading further down, with a bee buzzing lazily at the top.",
+  "Stairs lead down out of the rooftop garden, glowing softly in neon pink.",
+  "Lumi finds stairs going deeper, warm air drifting up between the steps."
+ ],
+ "descend": [
+  "Lumi trots down the stairs to a deeper floor, where the neon glow hums even louder.",
+  "Step by step, Lumi descends to a deeper level of the garden, tail held high.",
+  "Lumi hops down the stairs and arrives on a deeper floor thick with vines.",
+  "Down she goes! Lumi reaches a deeper floor, the city lights shimmering through the leaves.",
+  "Lumi pads down to the next floor, where warm vents breathe among the ferns.",
+  "Lumi descends the stairs into a deeper garden, whiskers twitching at new smells.",
+  "A bee follows Lumi down the stairs to a deeper floor, both curious about what waits.",
+  "Lumi bounces down the steps and lands on a deeper floor, glowing bravely."
+ ],
+ "home": [
+  "Lumi strolls out of {place} with all her treasures, purring all the way home.",
+  "With her finds held close, Lumi waves goodbye to the bees and heads home.",
+  "Lumi leaves the rooftop garden happy, her bag full and her glow bright.",
+  "The city lights twinkle farewell as Lumi carries everything home.",
+  "Lumi trots home from {place}, proud of every little thing she found.",
+  "Tired but happy, Lumi leaves the vines behind and brings her treasures home.",
+  "Lumi heads home with her haul, humming along with the vents as she goes.",
+  "Lumi slips out of {place} with everything she gathered, dreaming of a cosy nap."
+ ],
+ "abandon": [
+  "Lumi decides that's enough for today and heads home, leaving her finds among the vines.",
+  "With a little yawn, Lumi gives up the trip and goes home empty-pawed.",
+  "Lumi leaves {place} behind, and her treasures too, ready for a warm nap.",
+  "Lumi waves goodbye to the bees and heads home, leaving everything she found behind.",
+  "The trip ends early, and Lumi trots home while her finds stay on the rooftop.",
+  "Lumi sets down her treasures by a humming vent and wanders home.",
+  "Feeling sleepy, Lumi leaves the garden and her finds behind for another day.",
+  "Lumi gives the city lights one last look, then heads home without her finds."
+ ],
+ "potion": [
+  "Lumi sips a potion and her glow brightens. She feels much better.",
+  "Glug glug! Lumi drinks a potion and perks up, whiskers tingling.",
+  "Lumi drinks a potion beside a humming vent and feels warm and cosy again.",
+  "A potion fizzes down, and Lumi's fur fluffs up with fresh energy.",
+  "Lumi gulps a potion under the neon glow and feels ready for anything.",
+  "After a potion, Lumi stretches happily, her tail swishing with new strength.",
+  "Lumi drinks a potion among the herbs and her sparkle returns.",
+  "The potion tastes like honey and rain, and Lumi feels wonderfully better."
+ ],
+ "look": [
+  "A tomato plant has climbed all the way up an old antenna and hung one red tomato at the very top, like a lantern.",
+  "Bees drift between the billboards, quite unbothered by the glow. One lands on Lumi's ear and rests there a moment.",
+  "Far below, the traffic is a slow river of lights. Up here there is only a wind chime made from spoons.",
+  "A vent breathes warm air across a bed of mint. Lumi stands in it with her eyes shut for longer than she means to.",
+  "A watering can sits under a dripping pipe, filling itself one drop at a time. It is nearly ready for morning.",
+  "A sparrow is having a dust bath in a flowerpot. It gives Lumi a look that says the pot is taken.",
+  "A billboard across the street changes colour, and every leaf in the garden turns pink, then blue, then green again."
+ ]
+}

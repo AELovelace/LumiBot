@@ -1,0 +1,83 @@
+/* LumiBot: the neon theme the Lumi games were drawn for, trimmed from erinne's erynne.css + theme-neon.css.
+   Only what the game pages use: the colour/font variables on :root, the page background, and plain element
+   defaults. Each game's own look stays in its game.css; common.css styles the shared panels and buttons. */
+
+:root,
+html[data-theme="neon"] {
+  color-scheme: dark;                                   /* dark form controls and scrollbars */
+  --blush: #07020d;                                     /* the night sky behind everything */
+  --petal: #ff2e97;                                     /* hot pink */
+  --petal-soft: rgba(var(--glow), 0.14);                /* faint pink fill */
+  --rose: #ff2e97;                                      /* accent: buttons, links */
+  --rose-deep: #ff7ac0;                                 /* accent on hover */
+  --bark: #b0127a;                                      /* deep pink */
+  --ink: #ffe9f5;                                       /* text */
+  --muted: #b98aa9;                                     /* quiet text */
+  --glass: rgba(12, 3, 20, 0.84);                       /* panel fill */
+  --glass-strong: rgba(18, 5, 28, 0.95);                /* stronger panel fill */
+  --line: rgba(var(--glow), 0.5);                       /* panel borders */
+  --cyan: #00f0ff;                                      /* traces and highlights */
+  --glow: 255, 46, 151;                                 /* the glow pink as r, g, b */
+  --fringe-l: rgba(0, 240, 255, 0.75);                  /* chromatic fringe, left */
+  --fringe-r: rgba(255, 20, 80, 0.8);                   /* chromatic fringe, right */
+  --bloom: 0 0 0 1px rgba(var(--glow), 0.35), -2px 0 0 rgba(0, 240, 255, 0.35), 2px 0 0 rgba(255, 20, 80, 0.45),
+           0 0 26px rgba(var(--glow), 0.28);            /* the neon glow around panels */
+  --shadow: var(--bloom);                               /* same */
+  --error: #ff4d6d;                                     /* errors */
+  --ok-bg: rgba(0, 255, 170, 0.12); --ok-fg: #5dffc4;   /* good news */
+  --bad-bg: rgba(255, 45, 85, 0.16); --bad-fg: #ff8aa0; /* bad news */
+  --busy-bg: rgba(var(--glow), 0.16); --busy-fg: #ff9ad0; /* working... */
+  --scene-tint: transparent;                            /* no tint over the sky */
+  --radius: 0;                                          /* hard edges */
+  --serif: "Bahnschrift", "DIN Alternate", "Eurostile", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; /* headings */
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; /* body text */
+  scrollbar-color: var(--rose) transparent;             /* pink scrollbars */
+}
+
+* { box-sizing: border-box; }                           /* sizes include padding */
+html { min-height: 100%; }                              /* the sky reaches the bottom */
+html[data-theme="neon"] *,
+html[data-theme="neon"] *::before,
+html[data-theme="neon"] *::after { border-radius: 0 !important; } /* neon: no rounded corners anywhere */
+html[data-theme="neon"] ::selection { background: var(--rose); color: #0a0010; } /* pink selection */
+
+body {
+  margin: 0;                                            /* edge to edge */
+  min-height: 100vh;                                    /* at least one screen */
+  color: var(--ink);                                    /* text colour */
+  font: 16px/1.55 var(--sans);                          /* body font */
+  background-color: var(--blush);                       /* the night */
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% 108%, rgba(var(--glow), 0.42), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 88% 6%, rgba(0, 240, 255, 0.13), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 8% 20%, rgba(180, 20, 255, 0.14), transparent 70%),
+    linear-gradient(180deg, #07020d 0%, #12031f 60%, #1d0428 100%); /* erinne's neon sky */
+  background-attachment: fixed;                         /* the sky stays put while scrolling */
+}
+
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: .01em; color: var(--ink); } /* headings */
+h3 { color: var(--rose); letter-spacing: 0.05em; text-shadow: 0 0 8px rgba(var(--glow), 0.6); } /* neon h3 */
+a { color: var(--rose); text-shadow: 0 0 6px rgba(var(--glow), 0.45); } /* links glow */
+a:hover { color: var(--rose-deep); }                    /* lighter on hover */
+[hidden] { display: none !important; }                  /* hidden means hidden, whatever a class says */
+
+button {
+  background: var(--rose); color: #0a0010; border: 0;   /* neon slab */
+  padding: .55rem 1.2rem; font: inherit; font-weight: 600; letter-spacing: 0.04em; cursor: pointer; /* readable */
+  box-shadow: -2px 0 0 var(--fringe-l), 2px 0 0 var(--fringe-r), 0 0 14px rgba(var(--glow), 0.7); /* fringe + glow */
+  transition: background .15s, transform .05s;          /* small feedback */
+}
+button:hover:not(:disabled) { background: var(--rose-deep); } /* lighter on hover */
+button:active { transform: translateY(1px); }           /* pressed */
+button:disabled { opacity: .55; cursor: default; }      /* unavailable */
+button:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; } /* keyboard focus */
+
+input, textarea, select {
+  width: 100%; padding: .6rem .8rem; font: inherit;     /* full-width fields */
+  color: var(--ink); background: rgba(var(--glow), 0.06); border: 1px solid var(--line); /* dark wells */
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--rose); outline: 1px solid var(--cyan); outline-offset: 1px; /* lit up */
+  box-shadow: 0 0 0 1px var(--rose), 0 0 14px rgba(var(--glow), 0.6); /* glow */
+}
+input[type="range"] { width: auto; padding: 0; background: none; border: 0; box-shadow: none; } /* sliders stay sliders */

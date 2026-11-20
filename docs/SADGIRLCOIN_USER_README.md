@@ -127,11 +127,11 @@ At the end of every month, taxes are automatically collected and deposited into 
 | Over `1,000,000 SGC` | `10%` |
 
 - The highest applicable tier is used, not stacked.
-- System accounts are exempt.
+- System accounts are exempt (Central Bank, Doll Street, Momiji Casino and the nine Lumi-Town accounts).
 
 ### Other Economy Notes
 
-- There is also a weekly lottery that gives one holder `50 SGC`.
+- There is also a weekly lottery that gives one holder `50 SGC`. Only real people can win it: system accounts (anything named like `__CENTRAL_BANK__` or `__LUMI_TOWN_BANK__`) are skipped.
 - On yearly raffle day, Lotto Day is active, so transfers use the `50%` fee.
 - Momiji Casino deposits part of its reserve back into the Central Bank automatically.
 
@@ -216,12 +216,17 @@ LumiStocks is a Big Business share exchange. Buy shares in guild businesses, wat
 - When you sell, you are paid from the treasury at the current share price.
 - The `/lumi-stocks offer` command posts a message with 💰 buttons for quick `5`, `10`, `20`, `50`, or `100 SGC` purchases.
 - Total shareholder value = `(shares × current price) + accumulated dividends`.
+- **LUMI (Lumi Holdings Inc.)** is a permanent listing: it is always on the board, right after the guild stocks, and never takes one of the 10 synthetic slots. Its treasury is the real Lumi Holdings account, the reserve behind Lumi-Town (the Lumi games at `/lumipet`).
+  - Buying LUMI: the usual 5% goes to Doll Street and the rest becomes Lumi-Town reserve.
+  - Selling LUMI is refused ("LUMI is illiquid right now") when it would take the reserve below its floor (`50,000 SGC` by default).
+  - LUMI's price follows its reserve, so it rises when Lumi-Town overflows and falls after emergency draws.
 
 ### Weekly Dividends
 
 - Dividends are distributed automatically every Sunday at `18:00 UTC`.
 - The dividend rate is set per stock by admins (e.g. `5%` of treasury).
 - Dividends are split pro-rata based on how many shares each holder owns.
+- LUMI pays only from the reserve **above** its floor (`2%` of that excess weekly by default), and pays nothing while Lumi-Town still owes players prizes.
 - Lumi posts an LLM-generated corporate announcement in the Big Business channel each week.
 
 ### Staff / Admin-Only Slash Commands

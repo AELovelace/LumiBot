@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Shelves float past as Lumi climbs into the library on stairs made of weather.",
+  "The books whisper as Lumi comes in. She whispers hello back.",
+  "Lumi flutters into {place}, where shelves drift like slow clouds and the books murmur hello.",
+  "Lumi arrives at {place} with her whiskers twitching, the air smelling of rain and old paper.",
+  "A soft breeze ruffles Lumi's fur as she lands in {place}. Somewhere above, a book sighs a happy little sigh.",
+  "Lumi's glow brightens as she steps into the Cloud Library, a hush of whispering pages all around her.",
+  "Floating shelves bob gently as Lumi arrives, as if bowing to their small glowing visitor.",
+  "Lumi tiptoes into {place}, tail held high, ready to hear every whisper the books will share.",
+  "A drizzle of tiny sparkles greets Lumi at the door of {place}. She shakes them off and grins.",
+  "Lumi takes a deep breath of cloudy air and pads into {place}, eyes wide at the drifting books."
+ ],
+ "start": [
+  "Lumi is back in the first room, where the way home waits beneath a lazy drifting shelf.",
+  "The familiar entrance hall hums softly around Lumi. Home is just a few pawsteps away.",
+  "Lumi pads into the room where she began, and the welcoming books whisper her name.",
+  "Back at the entrance, Lumi spots her own glowing pawprints still fading on the cloudy floor.",
+  "Lumi returns to the room she came in by. The path home shimmers quietly, ready when she is.",
+  "The first room of {place} feels cosy now, like a reading nook Lumi already knows.",
+  "Lumi floats back into the entry hall, where a gentle breeze smells faintly of home.",
+  "Here is where the trip began. Lumi gives a little stretch beside the way back home."
+ ],
+ "empty": [
+  "A reading nook made of cloud. Lumi kneads it and nearly stays.",
+  "One book flaps lazily overhead like a pigeon. Lumi watches it settle.",
+  "Lumi steps into a quiet room where empty shelves drift past like sleepy clouds.",
+  "Nothing here but soft mist and the faint rustle of pages somewhere far away. Lumi listens happily.",
+  "This room holds only a gentle hush. Lumi swishes her tail through a curl of passing fog.",
+  "A lone breeze turns invisible pages in the air. Lumi watches, charmed, but finds nothing more.",
+  "Lumi pads through a room of whispering silence, her glow painting the clouds a pale gold.",
+  "Tiny raindrops hang still in the air here, never falling. Lumi boops one with her nose.",
+  "The shelves in this room are bare, humming a low tune to themselves as Lumi wanders by.",
+  "A rainbow flickers across the empty floor and fades. Lumi decides the room was worth a visit anyway."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows, and the books whisper that they remember her.",
+  "This room again. Lumi gives a friendly nod to the same drifting shelf as before.",
+  "Lumi passes through familiar mist, following the faint glow of her earlier pawprints.",
+  "The whispering pages here sound like old friends now as Lumi wanders through once more.",
+  "Lumi recognises this cloudy room by the shelf that always wobbles when she walks past.",
+  "Back through a known room, Lumi hums along with the soft rustle of the books.",
+  "The same gentle breeze ruffles Lumi's fur as she crosses this room a second time.",
+  "Lumi hops through the familiar room without slowing, tail bobbing like a little lantern."
+ ],
+ "treasure": [
+  "Tucked between two floating books, Lumi finds {item} and squeaks with delight.",
+  "Lumi spots {item} resting on a puff of cloud and scoops it up carefully.",
+  "A whispering book seems to hint at something, and there lies {item}. Lumi takes it gladly.",
+  "Lumi's glow catches something on the floor: {item}! She tucks it away with a happy wiggle.",
+  "Drifting down like a falling leaf, {item} lands right at Lumi's paws.",
+  "Lumi finds {item} hidden in a nook of mist and purrs proudly at her discovery.",
+  "The shelves hush as Lumi discovers {item} lying just where a quiet breeze settled it.",
+  "Lumi pounces on {item}, half expecting it to float away like everything else here."
+ ],
+ "key": [
+  "A key drifts lazily past Lumi's nose. She snatches it out of the air with a delighted pounce.",
+  "Lumi finds a key tucked inside a sleepy book, used as a bookmark.",
+  "Something glints between the clouds. Lumi fishes out a key and holds it up proudly.",
+  "A whispering shelf seems to giggle as Lumi spots a key resting on its edge.",
+  "Lumi finds a key glowing faintly in the mist, as if it has been waiting just for her.",
+  "A breeze drops a key at Lumi's paws. She thanks the weather politely and keeps it.",
+  "Lumi pulls a key from a drift of cloud, shaking off a few drops of drizzle.",
+  "Lumi discovers a key half hidden under a pile of murmuring pages and claims it happily."
+ ],
+ "vault": [
+  "The vault swings open with a soft sigh of mist, and Lumi finds {item} waiting inside.",
+  "Inside the opened vault, Lumi discovers {item} glowing among quiet old pages.",
+  "Lumi peeks into the open vault and gasps. There sits {item}, all for her.",
+  "A hush of whispers rises as Lumi reaches into the vault and lifts out {item}.",
+  "The vault stands open at last. Lumi finds {item} inside and does a wobbly little twirl.",
+  "Clouds part inside the open vault to reveal {item}. Lumi's whiskers quiver with joy.",
+  "Lumi slips into the opened vault, where {item} rests like a treasured story.",
+  "The books around the vault whisper congratulations as Lumi claims {item}."
+ ],
+ "locked_key": [
+  "Lumi reaches a door that won't budge. A keyhole waits patiently in the mist.",
+  "A locked door blocks Lumi's path. The books nearby whisper that it needs a key.",
+  "Lumi pushes at a cloud-wrapped door, but it's locked tight. A key would do the trick.",
+  "This door is locked, and its keyhole hums softly, as if waiting for a key.",
+  "Lumi sniffs at a locked door. Without a key, it stays stubbornly shut.",
+  "A door stands firmly locked before Lumi, drizzle beading on its keyhole.",
+  "Lumi pats the locked door with a paw. It politely declines to open without a key.",
+  "A sealed door drifts gently in place, locked tight and keeping its secrets until a key arrives."
+ ],
+ "locked_puzzle": [
+  "Lumi reaches a door sealed by a puzzle. The nearby books whisper encouragement.",
+  "A puzzle holds this door shut. Lumi narrows her eyes and gets ready to think.",
+  "The door before Lumi won't open until its puzzle is solved. She flicks her tail thoughtfully.",
+  "Lumi finds a door bound by a puzzle, humming quietly beneath a curl of mist.",
+  "A puzzle seals the way forward. Lumi sits down, whiskers twitching with curiosity.",
+  "This door guards its secrets with a puzzle. Lumi loves a good challenge of any kind.",
+  "Lumi stops before a puzzle-sealed door as soft thunder rumbles somewhere far off.",
+  "The shelves lean in to watch as Lumi faces a door locked by a puzzle."
+ ],
+ "game_cups": [
+  "Three cups sit on a floating shelf. Something is hidden beneath one of them.",
+  "A whispering book sets out three cups and hides something under one. Lumi watches closely.",
+  "Lumi finds three cups resting on a cloud, one of them secretly covering something.",
+  "Three cups wait in a row, and a breeze giggles as if it knows which one hides the prize.",
+  "Something is tucked under one of three cups. Lumi's eyes dart between them.",
+  "Three cups appear in a puff of mist. One hides a little surprise for Lumi.",
+  "Lumi crouches before three cups, tail swishing. Something waits under just one.",
+  "Three cups drift down and settle in a row. Lumi's whiskers twitch at the hidden secret."
+ ],
+ "game_match": [
+  "Cards lie face down on a drifting shelf, waiting to be matched in pairs.",
+  "A book flutters open and scatters cards face down. Lumi is ready to find the pairs.",
+  "Face-down cards float gently in the air, each one hoping to find its twin.",
+  "Lumi finds a spread of cards lying face down, whispering softly to their missing partners.",
+  "Cards rest face down on a bed of cloud. Lumi studies them, eager to match the pairs.",
+  "A breeze lays out cards face down in neat rows. Somewhere among them, pairs are hiding.",
+  "Lumi sits before a set of face-down cards, paws tucked, ready for a matching game.",
+  "The cards lie face down and quiet, and Lumi wiggles with excitement to pair them up."
+ ],
+ "game_win": [
+  "Lumi wins the game and receives {item}! The books rustle in applause.",
+  "A triumphant purr fills the room as Lumi wins and claims {item}.",
+  "Lumi did it! A gentle shower of sparkles brings her {item} as a prize.",
+  "The game is won, and Lumi proudly tucks away {item}.",
+  "Lumi bounces with joy after her win as {item} floats down into her paws.",
+  "Victory! The whispering shelves hand over {item} to a very pleased Lumi.",
+  "Lumi wins the little game and is rewarded with {item}. Her glow brightens.",
+  "A rainbow flickers as Lumi wins, and {item} drifts gently her way."
+ ],
+ "game_lose": [
+  "Not this time, but the books are kind and give Lumi {item} for trying.",
+  "Lumi doesn't win, yet a friendly breeze brings her {item} anyway.",
+  "The game slips away from Lumi, but she still gets {item} for her effort.",
+  "Lumi's ears droop a little until {item} drifts into her paws as a consolation prize.",
+  "No win today, but a whispering shelf offers Lumi {item} for being such a good sport.",
+  "Lumi loses the game with a giggle and happily accepts {item} for trying.",
+  "It wasn't her round, but Lumi still gets {item} and a gentle pat from the mist.",
+  "The game ends without a win. Lumi gets {item} anyway and purrs, cheered right up."
+ ],
+ "enemy": [
+  "A wild {enemy} swoops from behind a shelf and blocks the way! Lumi puffs up her fur.",
+  "Lumi skids to a stop as a wild {enemy} appears in the mist, ready to tussle.",
+  "A wild {enemy} rumbles out of a stormcloud and blocks Lumi's path. Time to be brave!",
+  "The books gasp as a wild {enemy} bars the way. Lumi raises a tiny glowing paw.",
+  "A wild {enemy} drifts down from the high shelves, ruffled and grumpy. Lumi stands her ground.",
+  "Lumi's tail fluffs as a wild {enemy} blocks the aisle. She wobbles, then plants her paws.",
+  "A wild {enemy} pops out from between the pages and won't let Lumi pass!",
+  "Thunder crackles softly as a wild {enemy} blocks the way. Lumi's glow flares bravely."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off into the clouds. Lumi does a tiny victory twirl.",
+  "Lumi wins the scuffle! The {enemy} scurries away behind a drifting shelf.",
+  "With a final brave boop, Lumi sends the {enemy} scampering off into the mist.",
+  "The {enemy} scampers off in a huff, and the books whisper cheers for Lumi.",
+  "Lumi stands tall as the {enemy} scampers away, her glow shining brighter than ever.",
+  "The {enemy} retreats in a gust of wind. Lumi smooths her fur, very pleased.",
+  "Lumi has won! The {enemy} scampers away, grumbling softly into a passing cloud.",
+  "Off goes the {enemy}, scampering up a staircase of drizzle. Lumi purrs proudly."
+ ],
+ "fled": [
+  "Lumi dashes away from the {enemy} and back to the room before, heart pattering.",
+  "Too much! Lumi scampers from the {enemy} and hides in the previous room.",
+  "Lumi zips back the way she came, leaving the {enemy} grumbling in the mist.",
+  "With a squeak, Lumi flees the {enemy} and tumbles into the room she just left.",
+  "Lumi decides bravery can wait and hurries away from the {enemy} to the room before.",
+  "Lumi darts past a drifting shelf and escapes the {enemy}, landing back in the last room.",
+  "The {enemy} was a bit much. Lumi retreats to the room before and catches her breath.",
+  "Lumi runs from the {enemy} in a flurry of sparkles, back to the room she knew."
+ ],
+ "defeat": [
+  "The {enemy} wins this time. A kind breeze carries a sleepy Lumi home, her finds left behind.",
+  "Lumi is too tired to go on after the {enemy}. She is carried home for a nap, leaving her treasures behind.",
+  "The {enemy} was too much. Lumi drifts home on a soft cloud, her finds left behind in the library.",
+  "Worn out by the {enemy}, Lumi is gently carried home to nap. What she found stays behind.",
+  "Lumi yawns after the tussle with the {enemy} and is carried home, leaving her treasures on the shelves.",
+  "The {enemy} scampers off triumphant. A drowsy Lumi is carried home, her finds left behind.",
+  "The {enemy} got the better of Lumi. She is carried home for a cosy nap, empty-pawed.",
+  "A gentle wind scoops up a sleepy Lumi after the {enemy} wins. Her finds stay behind in the clouds."
+ ],
+ "stairs": [
+  "Lumi finds a staircase made of drizzle, spiralling further down into the mist.",
+  "Steps of soft fog lead further down. Lumi peers over the edge, whiskers twitching.",
+  "A staircase of tiny rainclouds drifts here, leading deeper into the library.",
+  "Lumi discovers stairs made of gentle wind, humming as they lead further down.",
+  "Sunbeam steps stretch downwards, and Lumi's tail swishes with curiosity.",
+  "Lumi spots stairs of falling snowflakes that lead further down into the library.",
+  "A staircase of rumbling thunder waits here, leading deeper. Lumi gulps, then grins.",
+  "Rainbow stairs curl down toward the deeper shelves. Lumi pads over to take a look."
+ ],
+ "descend": [
+  "Lumi hops down the drizzly stairs, landing on a deeper floor where the books whisper lower.",
+  "Down, down Lumi goes on steps of fog until she reaches a deeper, quieter floor.",
+  "Lumi skips down the weather stairs and arrives on a deeper floor of drifting shelves.",
+  "Each step chimes like rain as Lumi descends to a deeper level of {place}.",
+  "Lumi floats down the misty stairs, her glow lighting up a new floor below.",
+  "Lumi descends carefully, paws pattering on breezy steps, to a deeper floor.",
+  "The stairs rumble softly as Lumi goes down to a deeper floor full of new whispers.",
+  "Lumi slides down a rainbow banister and tumbles happily onto a deeper floor."
+ ],
+ "home": [
+  "Lumi waves goodbye to the whispering books and heads home with all her treasures.",
+  "Lumi floats out of {place}, paws full of finds, purring all the way home.",
+  "With every treasure tucked safely away, Lumi leaves {place} and trots happily home.",
+  "Lumi steps out of the Cloud Library and heads home, her glow brighter than when she came.",
+  "The shelves bow farewell as Lumi carries everything she found home.",
+  "A friendly breeze escorts Lumi out of {place} and home, her treasures safe with her.",
+  "Lumi leaves the library humming a little tune, every find coming home with her.",
+  "Home at last! Lumi brings all her treasures back from {place}, ready for a cosy nap."
+ ],
+ "abandon": [
+  "Lumi decides that's enough for today and heads home, leaving her finds on the shelves.",
+  "Lumi gives a little yawn and turns for home, leaving what she found behind in {place}.",
+  "Lumi waves goodbye to the books and goes home empty-pawed, her finds left behind.",
+  "The trip ends early. Lumi drifts home, leaving her treasures for the clouds to keep.",
+  "Lumi sets down everything she found and heads home for a quiet cuddle.",
+  "Lumi calls it a day, leaving her finds among the whispering pages as she goes home.",
+  "Lumi leaves {place} early, her treasures left behind like bookmarks for another day.",
+  "With a soft sigh, Lumi gives up the trip and pads home, leaving what she found behind."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels a warm sparkle fizz right down to her tail.",
+  "Lumi drinks a potion that tastes like rain and honey, and her glow brightens.",
+  "One potion later, Lumi feels refreshed and ready for more adventures.",
+  "Lumi gulps down a potion and gives a happy little shiver as her strength returns.",
+  "Lumi drinks a potion and feels light as a cloud again.",
+  "The potion bubbles like a summer breeze. Lumi drinks it down and feels much better.",
+  "Lumi laps up a potion and purrs as a cosy warmth spreads through her.",
+  "After a potion, Lumi's whiskers perk up and her wobbly paws feel steady again."
+ ],
+ "look": [
+  "A book floats past, open at the middle, reading itself. Lumi catches one word as it goes: 'meanwhile'.",
+  "The shelf beside her is labelled 'Stories that end well'. It is by far the longest shelf.",
+  "A bookmark made of a pressed raindrop sticks out of a fat blue book. Lumi leaves it exactly where it is.",
+  "The stairs here are made of drizzle and hold her weight anyway. She does not look down, then does, then wishes she had not.",
+  "A reading lamp shaped like a small sun follows Lumi along the aisle, in case she wants to look at anything.",
+  "Somebody has left a book face down on a cloud to keep their place. The cloud has drifted three shelves along since.",
+  "The books here whisper their first lines to each other. When Lumi listens, they stop and pretend to be asleep."
+ ]
+}

@@ -1,0 +1,36 @@
+/* The arcade shell Yarn Pop, Lumi Conga and Teacup Tower share (templates/games/arcade-lobby.html): the canvas full
+   screen, and the menu or table panel floating over it. Colours come from the theme (common.css); the panels and rows
+   wear Lumi Pet's look (lumi-pet/game.css: rounded panels, a cyan lead line, rows with an icon on the left). */
+
+/* The canvas takes the whole frame: every game on this shell (games.py, extras "arcade/arcade.css") is listed here. */
+#gm[data-game="breakout"], #gm[data-game="snake"], #gm[data-game="teacup-tower"] { display: block; padding: 0; }
+.ar-stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: rgb(18, 8, 32); }
+#ar-canvas { display: block; width: min(100vw, calc(100vh * 1366 / 768)); height: auto; aspect-ratio: 1366 / 768; touch-action: none; }
+.ar-coins { position: absolute; top: .6rem; right: 1rem; margin: 0; color: var(--muted); font-size: .9rem; letter-spacing: .12em; text-transform: uppercase; }
+.ar-coins b { color: #ffe14d; font-size: 1.2rem; margin-left: .3rem; }
+.ar-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(30rem, 92vw);
+            max-height: 86vh; overflow-y: auto; background: rgba(24, 10, 40, .9); backdrop-filter: blur(6px);
+            border-radius: 1rem; border-color: rgba(255, 142, 203, .55); box-shadow: 0 0 28px rgba(255, 142, 203, .22); }
+.ar-name { margin: 0 0 .3rem; font-size: clamp(2rem, 4vw, 3rem); }
+.ar-lead { margin: 0 0 .5rem; font-size: 1.15rem; color: var(--cyan); }
+.ar-panel[hidden] { display: none; }
+.ar-title { margin: .2rem 0 .6rem; font-family: var(--serif); color: var(--ink); text-shadow: 0 0 14px rgba(var(--glow), .5); }
+.ar-muted { color: var(--muted); font-size: .9rem; }
+.ar-actions { display: grid; gap: .5rem; margin: .8rem 0; }
+.ar-actions button { display: flex; gap: .9rem; align-items: center; text-align: left; font-size: 1.05rem; padding: .75rem .85rem;
+                     border-radius: .65rem; text-transform: none; letter-spacing: .04em; }
+.ar-actions button[data-icon]::before { content: attr(data-icon); font-size: 1.4rem; width: 1.5rem; text-align: center; color: var(--cyan); }
+.ar-actions button:focus-visible, .ar-actions button:focus { box-shadow: inset 3px 0 var(--rose); }
+.ar-tables { display: grid; gap: .4rem; }
+.ar-table-row { text-align: left; border-radius: .65rem; }
+.ar-table-row small { color: var(--muted); }
+.ar-seats p, .ar-result p { margin: .25rem 0; }
+.ar-seat b { color: var(--cyan); }
+.ar-seat.you { color: var(--rose); }
+.ar-ready { color: #8be9a8; }
+.ar-result { border: 1px dashed var(--line); border-radius: .65rem; padding: .5rem .7rem; margin: .6rem 0; }
+.ar-win { color: var(--cyan); font-size: 1.15rem; text-shadow: 0 0 10px rgba(0, 240, 255, .5); }
+.ar-chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: .35rem; }
+.ar-chips button { padding: .5rem 0; color: #ffdc83; border-radius: .65rem; }
+.ar-status { min-height: 1.3em; margin: .4rem 0 0; color: var(--rose); }
+.ar-panel button:focus-visible, .ar-panel button:focus { outline: 2px solid var(--cyan); outline-offset: 2px; }

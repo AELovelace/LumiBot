@@ -1,0 +1,32 @@
+{
+  "snacks": [
+    {"id": "apple", "name": "Apple", "icon": "🍎", "price": 0, "fullness": 30, "joy": 3},
+    {"id": "banana", "name": "Banana", "icon": "🍌", "price": 5, "fullness": 35, "joy": 3},
+    {"id": "peanuts", "name": "Peanuts", "icon": "🥜", "price": 6, "fullness": 25, "joy": 5},
+    {"id": "cookie", "name": "Cookie", "icon": "🍪", "price": 8, "fullness": 15, "joy": 10},
+    {"id": "moon-milk", "name": "Moon milk", "icon": "🥛", "price": 9, "fullness": 25, "joy": 6},
+    {"id": "star-biscuit", "name": "Star biscuit", "icon": "⭐", "price": 10, "fullness": 20, "joy": 8},
+    {"id": "lunch", "name": "Packed lunch", "icon": "🍱", "price": 12, "fullness": 45, "joy": 5}
+  ],
+  "treats": [
+    {"id": "aurora-jelly", "name": "Aurora jelly", "icon": "🍮", "price": 40, "fullness": 5, "joy": 25, "boost": "guard"},
+    {"id": "comet-candy", "name": "Comet candy", "icon": "🍬", "price": 40, "fullness": 5, "joy": 30, "boost": "power"},
+    {"id": "stardust-sprinkle", "name": "Stardust sprinkle", "icon": "✨", "price": 60, "fullness": 5, "joy": 40, "boost": "luck"}
+  ],
+  "toys": [
+    {"id": "star-ribbon", "name": "Star ribbon", "icon": "🎀", "price": 0, "minutes": 2, "joy": 25, "energy": -10, "hunger": -5},
+    {"id": "feather-wand", "name": "Feather wand", "icon": "🪶", "price": 200, "minutes": 2, "joy": 35, "energy": -8, "hunger": -4},
+    {"id": "bouncy-moon", "name": "Bouncy moon", "icon": "🌙", "price": 150, "minutes": 2, "joy": 32, "energy": -12, "hunger": -5},
+    {"id": "laser-comet", "name": "Laser comet", "icon": "☄️", "price": 300, "minutes": 3, "joy": 40, "energy": -15, "hunger": -6},
+    {"id": "yarn-ball", "name": "Yarn ball", "icon": "🧶", "price": 0, "rarity": "common", "minutes": 2, "joy": 28, "energy": -10, "hunger": -5},
+    {"id": "paper-boat", "name": "Paper boat", "icon": "⛵", "price": 0, "rarity": "common", "minutes": 2, "joy": 27, "energy": -8, "hunger": -4},
+    {"id": "rubber-duck", "name": "Rubber duck", "icon": "🦆", "price": 0, "rarity": "common", "minutes": 2, "joy": 28, "energy": -9, "hunger": -4},
+    {"id": "squishy-dice", "name": "Squishy dice", "icon": "🎲", "price": 0, "rarity": "common", "minutes": 2, "joy": 29, "energy": -10, "hunger": -5},
+    {"id": "starlight-kite", "name": "Starlight kite", "icon": "🪁", "price": 0, "rarity": "uncommon", "minutes": 3, "joy": 37, "energy": -13, "hunger": -6},
+    {"id": "glow-yoyo", "name": "Glow yo-yo", "icon": "🪀", "price": 0, "rarity": "uncommon", "minutes": 2, "joy": 34, "energy": -9, "hunger": -4},
+    {"id": "tiny-drum", "name": "Tiny drum", "icon": "🥁", "price": 0, "rarity": "uncommon", "minutes": 2, "joy": 35, "energy": -10, "hunger": -5},
+    {"id": "star-jigsaw", "name": "Star jigsaw", "icon": "🧩", "price": 0, "rarity": "rare", "minutes": 3, "joy": 42, "energy": -7, "hunger": -6},
+    {"id": "toy-rocket", "name": "Toy rocket", "icon": "🚀", "price": 0, "rarity": "rare", "minutes": 3, "joy": 45, "energy": -14, "hunger": -6},
+    {"id": "wishing-star", "name": "Wishing star", "icon": "🌠", "price": 0, "rarity": "legendary", "minutes": 3, "joy": 55, "energy": -6, "hunger": -4}
+  ]
+}

@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Spores drift like slow snow as Lumi pads into the hollow.",
+  "Toadstools taller than Lumi line the path in. She feels very small and rather pleased.",
+  "Lumi tumbles into {place}, where spores drift down like slow snow and the moss is soft under her paws.",
+  "Tall toadstools tower over Lumi as she arrives in {place}, her glow turning the drifting spores to gold.",
+  "Lumi pads into Mushroom Hollow, whiskers twitching at the earthy, sleepy smell of moss.",
+  "A hush settles as Lumi arrives in {place}. She fluffs her wings and takes a brave little step.",
+  "Lumi blinks up at the giant toadstools of {place} and gives a happy chirp. An adventure is starting.",
+  "Spores swirl around Lumi like tiny lanterns as she lands in {place}, tail held high with excitement.",
+  "Lumi sinks paw-deep into velvet moss in {place} and decides it is the best place ever.",
+  "The air shimmers faintly as Lumi arrives in {place}, and a toadstool cap sways as if in greeting."
+ ],
+ "start": [
+  "Lumi is back in the mossy room where she first came in. The way home waits right here.",
+  "The familiar toadstools greet Lumi again. This is the room she came in by, and home is close.",
+  "Lumi pats the soft moss of the first room, glad to know the path home starts here.",
+  "Back where her trip began, Lumi watches the spores drift and feels snug knowing home is near.",
+  "Lumi recognises this toadstool ring at once. It is the way she came in, and the way home.",
+  "The entrance room glows gently around Lumi. Home is just a hop away from here.",
+  "Lumi circles the first mossy room with a contented purr. The road home begins at her paws.",
+  "Lumi finds her own little pawprints in the moss. This is where she came in, and home is close by."
+ ],
+ "empty": [
+  "Soft moss, a ring of toadstools, nobody home. Lumi bounces on the biggest one.",
+  "A snail goes by, in no hurry at all. Lumi waits for it to pass.",
+  "Nothing here but quiet moss and spores sinking slowly through the air. Lumi breathes it all in.",
+  "Lumi wanders between tall toadstools in an empty room, listening to the soft hush of the Hollow.",
+  "The room is bare except for a carpet of moss, glittering faintly where Lumi's glow touches it.",
+  "Spores drift down like slow snow in this empty room. Lumi tries to catch one on her nose.",
+  "Lumi finds only a ring of pale mushrooms here, humming with a quiet, sleepy magic.",
+  "A still, misty room with nothing in it. Lumi's glow casts long toadstool shadows on the moss.",
+  "This room holds nothing but the smell of damp earth and a gentle shimmer in the air.",
+  "Lumi tiptoes through a silent room where the toadstool caps glow faintly, like dim little moons."
+ ],
+ "again": [
+  "Lumi pads back through a room she already knows, her old pawprints still pressed into the moss.",
+  "The same tall toadstools nod as Lumi passes through again. She gives them a friendly flick of her tail.",
+  "Lumi trots through a familiar room, the spores still drifting just as she remembers.",
+  "Back in a room she has explored before, Lumi hums a little tune and keeps going.",
+  "Lumi recognises the curve of these mushroom caps and hurries through the room once more.",
+  "This mossy room again. Lumi gives a toadstool a fond pat on her way past.",
+  "Lumi wanders through a room she has seen before, the quiet here feeling almost like home now.",
+  "The familiar glow of this room wraps around Lumi as she passes through again."
+ ],
+ "treasure": [
+  "Nestled in the moss, Lumi finds {item}. She scoops it up with a delighted squeak.",
+  "Lumi spots {item} tucked beneath a toadstool and claims it proudly.",
+  "A sprinkle of spores has settled on {item}. Lumi brushes it clean and keeps it.",
+  "Lumi's glow catches something in the moss. It is {item}! She does a happy little spin.",
+  "Lumi finds {item} resting in a ring of mushrooms, as if the Hollow left it just for her.",
+  "Lumi notices {item} waiting among the moss, and her tail puffs up with joy as she takes it.",
+  "Lumi pounces on {item}, half hidden under a fallen toadstool cap. What a find.",
+  "Lumi discovers {item} between the mushroom stems and tucks it safely away."
+ ],
+ "key": [
+  "Lumi finds a key half buried in soft moss and holds it up to her glow with pride.",
+  "Tucked under a toadstool cap, a key waits. Lumi snatches it up with a gleeful chirp.",
+  "A key lies among the drifting spores, right at Lumi's paws. How lucky.",
+  "Lumi spots a key nestled among the mushroom stems and tucks it safely away.",
+  "A key! Lumi finds it resting on the moss and gives it a happy little pat.",
+  "Lumi's whiskers twitch as she uncovers a key in a ring of tiny mushrooms.",
+  "Lumi finds a key lying in the moss. Somewhere, a door is waiting for it.",
+  "Lumi tugs a key free from a tangle of moss, beaming as if she had found a star."
+ ],
+ "vault": [
+  "The vault swings open and Lumi peeks inside to find {item}. Her eyes go wide.",
+  "Inside the opened vault, Lumi finds {item} resting on a cushion of moss.",
+  "Spores swirl as Lumi steps into the open vault, and there sits {item}. She purrs with delight.",
+  "Lumi slips into the vault and discovers {item} waiting in the hush.",
+  "The vault is open at last! Lumi finds {item} inside and hugs it close.",
+  "Lumi's glow fills the open vault, shining on {item}. She claims it with a proud wiggle.",
+  "Inside the vault, among soft little toadstools, Lumi finds {item}.",
+  "Lumi tiptoes into the vault and gasps at {item}, tucked away like a secret of the Hollow."
+ ],
+ "locked_key": [
+  "A locked door stands among the toadstools. Lumi will need a key to get through.",
+  "Lumi pushes at a mossy door, but it is locked tight. A key would open it.",
+  "A door blocks the way, locked fast. Lumi sniffs the keyhole thoughtfully.",
+  "Lumi finds a locked door overgrown with tiny mushrooms. It needs a key.",
+  "Spores settle on a locked door. Lumi gives it a hopeful nudge, but it won't budge without a key.",
+  "A sturdy locked door stands here, quiet and patient. Somewhere there must be a key.",
+  "Lumi reaches a door that is firmly locked. She will need a key to see what lies past it.",
+  "Lumi pats a locked door draped in moss and twitches her ears. This one wants a key."
+ ],
+ "locked_puzzle": [
+  "A door here is sealed by a puzzle. Lumi tilts her head, ready to think hard.",
+  "Lumi finds a door held shut by a puzzle, standing quietly among the toadstools.",
+  "Spores drift past a door sealed with a puzzle. Lumi's whiskers twitch with curiosity.",
+  "A puzzle seals this mossy door. Lumi sits down, tail curled, to work it out.",
+  "This door won't open until its puzzle is solved. Lumi stretches her paws, determined.",
+  "Lumi reaches a door sealed by an old Hollow puzzle and gives a brave little nod.",
+  "A puzzle guards this door. Lumi's glow brightens as she leans in close.",
+  "The Hollow has sealed this door with a puzzle. Lumi is sure she can figure it out."
+ ],
+ "game_cups": [
+  "Three cups sit on the moss. Something is hidden under one of them.",
+  "Lumi finds three cups set out among the toadstools, with something tucked under one.",
+  "Three little cups wait among the mushrooms. One of them hides a secret.",
+  "Spores drift over three cups set out on the moss. Lumi's ears perk up, for one hides something.",
+  "Three cups are laid out here, and something waits beneath one. Lumi's tail swishes eagerly.",
+  "Lumi spots three cups in a ring of toadstools. Something is hiding under one.",
+  "A game! Three cups stand on the soft moss, and one is keeping a secret.",
+  "Lumi crouches before three cups, eyes bright. Something is hidden under one of them."
+ ],
+ "game_match": [
+  "Cards lie face down on the moss, waiting to be matched in pairs.",
+  "Lumi finds a set of face-down cards among the toadstools. Pairs are hiding in there.",
+  "Spores settle on cards lying face down. Lumi's whiskers quiver. Time to find the pairs.",
+  "A matching game! Cards rest face down in the soft moss, each waiting for its twin.",
+  "Lumi peers at cards lying face down beneath a tall toadstool, ready to match them up.",
+  "Face-down cards are laid out here, each one secretly part of a pair. Lumi wiggles with glee.",
+  "The Hollow has set out cards face down for Lumi. She will need to match them in pairs.",
+  "Lumi pads up to face-down cards on the moss, eager to find every pair."
+ ],
+ "game_win": [
+  "Lumi wins the game and does a happy flip! Her prize is {item}.",
+  "Victory! Lumi claims {item}, and the toadstools seem to glow brighter.",
+  "Lumi wins with a proud purr and tucks {item} away.",
+  "The spores twirl in celebration as Lumi wins {item}.",
+  "Lumi got it! She bounces across the moss with {item}.",
+  "A win for Lumi! She gets {item} and can't stop grinning.",
+  "Lumi wins the little game, and {item} is hers to keep.",
+  "Lumi's glow flares bright as she wins. She hugs {item} close."
+ ],
+ "game_lose": [
+  "Not this time, but Lumi still gets {item} for trying. She brightens right up.",
+  "Lumi doesn't win, yet the Hollow gives her {item} for being brave.",
+  "Lumi's ears droop for a moment, then perk up at {item}, a prize for trying.",
+  "The game slips away from Lumi, but {item} makes a lovely consolation.",
+  "Lumi misses the win, shakes off the spores, and happily takes {item}.",
+  "No win today, but Lumi gets {item} for trying and purrs anyway.",
+  "Lumi loses the game with a giggle and receives {item} for her effort.",
+  "Lumi doesn't quite win, but she gets {item} for trying and tucks it away with a smile."
+ ],
+ "enemy": [
+  "A wild {enemy} pops out from behind a toadstool! Lumi puffs up her fur and gets ready.",
+  "A wild {enemy} blocks the mossy path. Lumi squares her tiny shoulders. Here goes!",
+  "Spores scatter as a wild {enemy} leaps out. Lumi's glow flares bravely.",
+  "Lumi skids to a stop. A wild {enemy} stands in her way, and the tussle begins!",
+  "A wild {enemy} rustles up from the moss and won't let Lumi pass. Time to be brave.",
+  "Lumi's tail fluffs as a wild {enemy} blocks the way. She wobbles, then stands firm.",
+  "Out of the drifting spores comes a wild {enemy}! Lumi raises a determined paw.",
+  "A wild {enemy} plants itself between the toadstools. Lumi takes a deep breath and leaps in."
+ ],
+ "victory": [
+  "The {enemy} gives up and scampers off into the mushrooms. Lumi does a victory wiggle.",
+  "Lumi wins! The {enemy} scurries away between the toadstools.",
+  "With a final brave pounce, Lumi sends the {enemy} scampering off through the spores.",
+  "The {enemy} has had enough and dashes away. Lumi purrs, very pleased with herself.",
+  "Lumi stands tall as the {enemy} scampers off into the moss.",
+  "The {enemy} bolts away beneath the toadstools, and Lumi's glow shines extra bright.",
+  "Beaten, the {enemy} scampers off. Lumi brushes spores from her whiskers proudly.",
+  "Lumi's wobbly courage pays off. The {enemy} scuttles away into the Hollow."
+ ],
+ "fled": [
+  "Lumi decides the {enemy} is too much and darts back to the room before.",
+  "Fur on end, Lumi scampers away from the {enemy} to the previous room.",
+  "Lumi zips back through the spores to the room before, leaving the {enemy} behind.",
+  "Not today! Lumi flees the {enemy} and tumbles into the room she just left.",
+  "Lumi hurries back to the last room, peeking nervously out for the {enemy}.",
+  "With a squeak, Lumi runs from the {enemy} back to the room before and catches her breath.",
+  "Lumi retreats from the {enemy}, hiding behind a toadstool in the room she came from.",
+  "Lumi bolts back to the previous room, heart thumping, the {enemy} left behind."
+ ],
+ "defeat": [
+  "The {enemy} is too much for Lumi. She is carried home for a nap, her finds left in the Hollow.",
+  "Lumi gets tuckered out by the {enemy} and is carried home, leaving her treasures behind.",
+  "Worn out by the {enemy}, Lumi is scooped up and carried home. What she found stays behind.",
+  "The {enemy} wins this time. A sleepy Lumi is carried home, her finds left among the toadstools.",
+  "Lumi flops onto the moss, too tired to go on against the {enemy}. She is carried home, empty-pawed.",
+  "The {enemy} proves too tough. Lumi is carried home to rest, and her finds stay in the Hollow.",
+  "Yawning, Lumi lets the {enemy} have this one. She is carried home and her treasures are left behind.",
+  "The {enemy} was just too much. Lumi dozes off as she is carried home, leaving everything she found."
+ ],
+ "stairs": [
+  "Lumi finds stairs winding down between the toadstool roots.",
+  "Stairs lead further down into the Hollow. Lumi peeks over the top step.",
+  "Mossy stairs lead down, with spores drifting gently into the deeper hush.",
+  "Lumi discovers stairs going further down. Her whiskers tingle with excitement.",
+  "Stairs curl down beneath a giant toadstool. Lumi's glow lights the first step.",
+  "Lumi spots stairs leading deeper. Something mysterious must grow down there.",
+  "Soft, spongy stairs lead further down. Lumi gives the top one a curious sniff.",
+  "Lumi finds stairs sinking further down into the Hollow, glowing faintly with mushroom light."
+ ],
+ "descend": [
+  "Lumi pads down the stairs to a deeper floor, where the spores drift even slower.",
+  "Down, down, down goes Lumi, into a deeper part of the Hollow.",
+  "Lumi hops down the stairs, her glow leading the way to a deeper floor.",
+  "The air grows cooler and mossier as Lumi reaches a deeper floor.",
+  "Step by brave step, Lumi descends to a deeper floor of {place}.",
+  "Lumi tiptoes down the stairs and finds the toadstools here even taller.",
+  "A deeper floor! Lumi shakes the spores from her fur and looks around in wonder.",
+  "Lumi glides down the stairs, tail swishing, into the deeper hush of the Hollow."
+ ],
+ "home": [
+  "Lumi strolls out of {place} with everything she found, ready for a cosy evening.",
+  "Home at last! Lumi carries all her treasures out of the Hollow, purring the whole way.",
+  "Lumi waves goodbye to the toadstools and heads home with every find tucked safe.",
+  "Spores twirl farewell as Lumi walks home from {place}, paws full of treasures.",
+  "Lumi trots home from {place}, proudly bringing everything she found.",
+  "With a happy yawn, Lumi leaves the Hollow and heads home, all her finds safely with her.",
+  "Lumi brushes moss from her paws and walks home with her whole haul.",
+  "Lumi leaves {place} glowing brighter than ever, carrying every treasure home."
+ ],
+ "abandon": [
+  "Lumi decides that is enough for today and heads home, leaving her finds behind in the moss.",
+  "With a little sigh, Lumi gives up the trip and goes home empty-pawed.",
+  "Lumi sets her treasures down among the toadstools and heads home for a rest.",
+  "Lumi waves goodbye to {place}, leaving what she found for another day.",
+  "Tired paws win out. Lumi heads home and leaves her finds to the drifting spores.",
+  "Lumi calls it a day and wanders home, her treasures left in the Hollow.",
+  "Lumi leaves her finds on a soft patch of moss and goes home for a cosy nap.",
+  "Lumi gives up the adventure and goes home, leaving behind everything she found."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels warm and bubbly all over. Much better!",
+  "Lumi gulps down a potion, and her glow flickers back to full brightness.",
+  "A potion later, Lumi stretches, fluffs her fur, and feels ready for anything.",
+  "Lumi drinks a potion with a happy hiccup. She feels much better already.",
+  "Lumi sips a potion beneath a toadstool, and her tired paws feel light again.",
+  "The potion tingles like spore-dust. Lumi perks up, whiskers bright.",
+  "Lumi drinks a potion and purrs as the wobbles melt away.",
+  "One potion, and Lumi is bouncing across the moss again, feeling fresh and brave."
+ ],
+ "look": [
+  "A toadstool as tall as a table has a little door carved in its stem. The door has a doormat. The doormat is a leaf.",
+  "Spores drift down and settle on Lumi's nose. She sneezes, and the whole hollow glows a shade brighter.",
+  "The moss is deep enough to lose a paw in. Lumi loses a paw in it, finds it again, and is pleased both times.",
+  "A ring of small brown mushrooms grows in a perfect circle. Lumi steps round it. You never know with circles.",
+  "A snail is crossing the path with great purpose. Lumi waits. The snail does not say thank you, but it nearly does.",
+  "Under the biggest cap hangs a row of dewdrops, each with a tiny upside-down Lumi in it.",
+  "Something has been nibbling the edge of this mushroom in very neat, very small bites. It left a crumb for later."
+ ]
+}

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Lumi Pet's app icon: her face on her room's night plum. The PNGs beside this file (lumi-192, lumi-512,
+       lumi-180 and the maskable one) are this drawing rendered at each size; redraw them if this changes. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="46%" r="60%"><stop offset="0" stop-color="#5b2a6e"/><stop offset="1" stop-color="#1a0f2e"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+  <path d="M256 60 l9 24 24 9 -24 9 -9 24 -9 -24 -24 -9 24 -9Z" fill="#ffdc83" opacity=".9"/>
+  <path d="M92 150 l5 14 14 5 -14 5 -5 14 -5 -14 -14 -5 14 -5Z M420 138 l4 11 11 4 -11 4 -4 11 -4 -11 -11 -4 11 -4Z" fill="#ff8ecb" opacity=".8"/>
+  <g transform="translate(-112 -22) scale(2.3)">
+    <path d="M92 153 L88 62 Q89 49 100 58 L137 93 Q160 83 183 93 L220 58 Q231 49 232 62 L228 153 Q230 204 160 208 Q90 204 92 153Z" fill="#fce1f2"/>
+    <path d="M101 77 L106 118 L126 102Z M219 77 L214 118 L194 102Z" fill="#ff8ecb"/>
+    <path d="M160 103 L165 116 L179 120 L165 125 L160 139 L155 125 L141 120 L155 116Z" fill="#ffdc83"/>
+    <ellipse cx="129" cy="153" rx="5" ry="9" fill="#3d2450"/><ellipse cx="191" cy="153" rx="5" ry="9" fill="#3d2450"/>
+    <ellipse cx="114" cy="169" rx="13" ry="6" fill="#ff8ecb" opacity=".55"/><ellipse cx="206" cy="169" rx="13" ry="6" fill="#ff8ecb" opacity=".55"/>
+    <path d="M155 165 L160 169 L165 165 M160 169 Q151 184 145 173 M160 169 Q169 184 175 173" fill="none" stroke="#3d2450" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

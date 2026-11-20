@@ -1,0 +1,45 @@
+/* Shared by the built-in games (mnemerynne/games.py): the page frame, side panels and buttons, in the theme's
+   tokens (theme-neon.css by default: night glass, hot-pink glow, cyan traces). A game's own look is its game.css. */
+
+.gm {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: minmax(12rem, 1fr) auto minmax(12rem, 1fr);
+  align-items: center; gap: clamp(.75rem, 2vw, 2rem);
+  min-height: 100vh; padding: clamp(.5rem, 2vh, 1.5rem) clamp(.75rem, 3vw, 2.5rem);
+  color: var(--ink); box-sizing: border-box;
+}
+/* Faint scanlines over everything: the CRT side of the neon look, never in the way of a click. */
+.gm::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, .025) 0 1px, transparent 1px 3px);
+}
+
+.gm-panel {
+  background: var(--glass); border: 1px solid var(--line); box-shadow: var(--bloom, 0 0 0 1px var(--line));
+  padding: clamp(.75rem, 1.6vw, 1.4rem); align-self: center;
+}
+.gm-eyebrow { margin: 0 0 .4rem; color: var(--cyan); font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; }
+.gm-title {
+  margin: 0 0 1rem; font-family: var(--serif); font-size: clamp(1.8rem, 3.4vw, 3rem); line-height: .95; letter-spacing: .06em;
+  color: var(--ink); text-shadow: -2px 0 var(--fringe-l, #00f0ffaa), 2px 0 var(--fringe-r, #ff1450aa), 0 0 18px rgba(var(--glow), .6);
+}
+.gm-title span { display: block; color: var(--rose); }
+.gm-keys { margin: .9rem 0 0; color: var(--muted); font-size: .8rem; letter-spacing: .04em; }
+
+.gm button {
+  font: inherit; font-family: var(--serif); letter-spacing: .08em; text-transform: uppercase; cursor: pointer;
+  color: var(--ink); background: transparent; border: 1px solid var(--line); padding: .6rem .9rem;
+}
+.gm button:hover, .gm button:focus-visible { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, .45); outline: none; }
+.gm button:disabled { opacity: .4; cursor: default; box-shadow: none; }
+.gm .gm-primary {
+  color: #0a0010; background: var(--rose); border-color: var(--rose);
+  box-shadow: 0 0 18px rgba(var(--glow), .7), -2px 0 0 rgba(0, 240, 255, .5), 2px 0 0 rgba(255, 20, 80, .6);
+}
+
+/* Narrow (a phone, or a small frame): one column, the game first. */
+@media (max-width: 900px) {
+  .gm { grid-template-columns: minmax(0, 1fr); align-items: start; }   /* minmax(0, …): a canvas's own size can't widen it */
+  .gm > :nth-child(2) { order: -1; }
+}
+@media (prefers-reduced-motion: reduce) { .gm *, .gm *::before { transition: none !important; animation: none !important; } }

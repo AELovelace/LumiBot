@@ -25,6 +25,10 @@ const {
   depositBigBusiness,
   ensureGuildBigBusiness, // creates the per-guild __BIG_BUSINESS_<gid>__ account if it is missing
   DOLL_STREET_USER_ID,
+  LUMI_HOLDINGS_USER_ID,  // Lumi Holdings Inc.'s account: the LUMI stock's real treasury
+  ensureLumiAccounts,     // makes the nine Lumi-Town accounts if missing
+  moveCoins,              // strict fee-free coin move that throws when refused
+  getSystemState,         // reads the lumi.treasury.* settings without loading src/lumi
 } = require('./sadgirlEconomyStore');
 const { getBigBusinessUserId, getAllGuildConfigs } = require('./guildConfig');
 
@@ -58,6 +62,51 @@ function roundMetric(value) {
 
 function isSyntheticStock(stock) {
   return stock?.entity_type === 'synthetic' || String(stock?.guild_id || '').startsWith('__SYNTH_');
+}
+
+// ---------------------------------------------------------------------------
+// Lumi Holdings Inc. (ticker LUMI): a permanent stock whose treasury is the real __LUMI_HOLDINGS__ account,
+// the reserve behind Lumi-Town Bank (docs/plans/lumi-games-port.md section 3.5).
+// ---------------------------------------------------------------------------
+
+const LUMI_STOCK_GUILD_ID = '__LUMI_HOLDINGS__';   // bb_stocks.guild_id of the LUMI row (same text as its account id)
+const LUMI_TICKER = 'LUMI';                        // reserved: no other stock may take this ticker
+const LUMI_BUSINESS_NAME = 'Lumi Holdings Inc.';   // display name when the row is first made
+const LUMI_DEFAULT_RESERVE_FLOOR = 50000;          // default for setting lumi.treasury.reserveFloor
+const LUMI_DEFAULT_DIVIDEND_RATE = 0.02;           // default for setting lumi.treasury.lumiDividendRate (2% of the excess, weekly)
+
+// True for the LUMI row (entity_type 'lumi', or its fixed guild id).
+function isLumiStock(stock) {
+  return stock?.entity_type === 'lumi' || stock?.guild_id === LUMI_STOCK_GUILD_ID; // either marker is enough
+}
+
+// One numeric 'setting.' value from system_state (the same keys src/lumi/tuning.js and the web panel use).
+function readLumiNumberSetting(key, fallback) {
+  try {
+    const raw = getSystemState(`setting.${key}`);                 // e.g. setting.lumi.treasury.reserveFloor
+    if (raw === null || raw === undefined || raw === '') return fallback; // no override: the default
+    const n = Number(raw);                                        // stored as text
+    return Number.isFinite(n) && n >= 0 ? n : fallback;           // junk or negative: the default
+  } catch {
+    return fallback;                                              // DB not ready: the default
+  }
+}
+
+// LUMI's money rules: the reserve floor its treasury never goes under, and its weekly dividend rate.
+function getLumiPolicy() {
+  return {
+    reserveFloor: Math.floor(readLumiNumberSetting('lumi.treasury.reserveFloor', LUMI_DEFAULT_RESERVE_FLOOR)), // whole SGC
+    dividendRate: Math.min(1, readLumiNumberSetting('lumi.treasury.lumiDividendRate', LUMI_DEFAULT_DIVIDEND_RATE)), // 0..1
+  };
+}
+
+// How many Lumi prizes are still owed (lumi_owed rows); 0 when the Lumi tables don't exist (Lumi games off).
+function countLumiOwed() {
+  try {
+    return Number(db.prepare('SELECT COUNT(*) AS n FROM lumi_owed').get()?.n) || 0; // rows waiting to be paid
+  } catch {
+    return 0;                                                                         // no table yet: nothing owed
+  }
 }
 
 function parseStockMetadata(stock) {
@@ -246,7 +295,9 @@ function generateSyntheticCompanyNames(realNames, count = SYNTHETIC_POOL_SIZE) {
     .slice(0, count);
 }
 
-function createTicker(baseName, taken = new Set()) {
+function createTicker(baseName, takenIn = new Set()) {
+  const taken = new Set(takenIn); // copy, so the caller's set is not changed
+  taken.add(LUMI_TICKER);         // "LUMI" is reserved for Lumi Holdings Inc.: no guild or synthetic stock may take it
   const words = String(baseName || '')
     .split(/[^a-z0-9]+/iu)
     .map((part) => part.trim())
@@ -283,6 +334,9 @@ function createTicker(baseName, taken = new Set()) {
 
 function getCorporateTreasuryBalance(stock) {
   if (!stock) return 0;
+  if (isLumiStock(stock)) {
+    return getBalance(LUMI_HOLDINGS_USER_ID); // LUMI: the real Lumi Holdings balance, never synthetic_treasury (never mints)
+  }
   if (isSyntheticStock(stock)) {
     return Number(stock.synthetic_treasury) || 0;
   }
@@ -318,7 +372,8 @@ function getMarketCapValue(stock) {
 }
 
 function getRealGuildStocksRaw() {
-  return getAllStocksRaw(true).filter((stock) => stock.entity_type !== 'synthetic');
+  // LUMI is left out: its large reserve would skew the guild averages every guild stock is priced against.
+  return getAllStocksRaw(true).filter((stock) => stock.entity_type !== 'synthetic' && !isLumiStock(stock)); // real guild stocks only
 }
 
 function getRealMarketSnapshot() {
@@ -413,6 +468,7 @@ function buildPerformanceMetrics(stock, treasuryBalance, investedCapital, snapsh
 }
 
 function computeTargetPerformanceScore(stock, snapshot) {
+  if (isLumiStock(stock)) return 1; // LUMI is priced on its reserve alone (a neutral score), not against the guilds
   const investedCapital = getCurrentInvestmentCapital(stock.id);
 
   if (isSyntheticStock(stock)) {
@@ -481,7 +537,7 @@ function calculateDynamicPrice(stock) {
   const intrinsicPerShare = marketCap > 0
     ? marketCap / referenceFloat
     : Math.max(MIN_SHARE_PRICE, snapshotPriceFallback(stock));
-  const performanceMultiplier = getPerformanceMultiplier(Number(stock.performance_score) || 1);
+  const performanceMultiplier = isLumiStock(stock) ? 1 : getPerformanceMultiplier(Number(stock.performance_score) || 1); // LUMI: reserve per share, no performance boost
   const demandMultiplier = getDemandMultiplier(Number(stock.demand_pressure) || 0);
   const rawPrice = clamp(intrinsicPerShare * performanceMultiplier * demandMultiplier, MIN_SHARE_PRICE, MAX_SHARE_PRICE);
 
@@ -680,12 +736,16 @@ function syncStockUniverse() {
 
       listedIds = [...realStocks.map((stock) => stock.id), ...bestSynthetic.map((stock) => stock.id)];
     }
+    // LUMI is permanent: always listed, on top of (never instead of) the guild and synthetic listings.
+    const lumiIds = refreshedStocks.filter((stock) => isLumiStock(stock)).map((stock) => stock.id); // 0 or 1 row
+    listedIds = [...listedIds, ...lumiIds]; // it never takes a synthetic slot
 
     const listedSet = new Set(listedIds);
+    const listingRank = (stock) => (stock.entity_type === 'guild' ? 0 : isLumiStock(stock) ? 1 : 2); // guilds, then LUMI, then synthetics
     const orderedListed = getAllStocksRaw(true)
       .filter((stock) => listedSet.has(stock.id))
       .sort((a, b) => {
-        if (a.entity_type !== b.entity_type) return a.entity_type === 'guild' ? -1 : 1;
+        if (listingRank(a) !== listingRank(b)) return listingRank(a) - listingRank(b); // group order first
         return (Number(b.performance_score) || 0) - (Number(a.performance_score) || 0);
       });
 
@@ -709,6 +769,42 @@ function syncStockUniverse() {
   } finally {
     syncInProgress = false;
   }
+}
+
+/**
+ * Make sure Lumi Holdings Inc. (ticker LUMI) is on the exchange: creates the __LUMI_HOLDINGS__ account and the
+ * bb_stocks row if missing, keeps it entity_type 'lumi', active and listed, and frees the LUMI ticker if an older
+ * stock happened to take it. Called once by src/lumi/index.js initLumiGames(). Returns the LUMI row.
+ */
+function ensureLumiHoldingsStock() {
+  if (!db) return null;                                                        // exchange not initialised
+  ensureLumiAccounts();                                                        // the treasury account must exist first
+  const squatter = db.prepare('SELECT * FROM bb_stocks WHERE ticker = ? AND guild_id != ?').get(LUMI_TICKER, LUMI_STOCK_GUILD_ID); // another stock holding "LUMI"?
+  if (squatter) {
+    const taken = new Set(getAllStocksRaw(true).map((stock) => stock.ticker)); // every ticker in use
+    const fresh = createTicker(squatter.business_name, taken);                 // a new one (createTicker never returns LUMI)
+    db.prepare("UPDATE bb_stocks SET ticker = ?, updated_at = datetime('now') WHERE id = ?").run(fresh, squatter.id); // move it off LUMI
+    logger.info(`Private Stock: ${squatter.business_name} re-ticked ${LUMI_TICKER} -> ${fresh} (LUMI is reserved).`); // admin breadcrumb
+  }
+  const existing = db.prepare('SELECT * FROM bb_stocks WHERE guild_id = ?').get(LUMI_STOCK_GUILD_ID); // the LUMI row, if made before
+  if (existing) {
+    db.prepare(`
+      UPDATE bb_stocks
+      SET ticker = ?, entity_type = 'lumi', status = 'active', is_listed = 1, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(LUMI_TICKER, existing.id); // permanent: always active, listed and called LUMI
+  } else {
+    const treasury = getBalance(LUMI_HOLDINGS_USER_ID);                        // whatever the reserve holds now
+    const openingPrice = roundCurrency(Math.max(MIN_SHARE_PRICE, treasury > 0 ? treasury / BASE_REFERENCE_FLOAT : 25)); // reserve per reference share
+    db.prepare(`
+      INSERT INTO bb_stocks (guild_id, ticker, business_name, share_price, initial_price, entity_type, status, is_listed,
+                             dividend_rate, performance_score, base_performance, display_order)
+      VALUES (?, ?, ?, ?, ?, 'lumi', 'active', 1, ?, 1, 1, 0)
+    `).run(LUMI_STOCK_GUILD_ID, LUMI_TICKER, LUMI_BUSINESS_NAME, openingPrice, openingPrice, getLumiPolicy().dividendRate); // new permanent listing
+    logger.info(`Private Stock: listed ${LUMI_TICKER} (${LUMI_BUSINESS_NAME}) at ${openingPrice} SGC.`); // admin breadcrumb
+  }
+  syncStockUniverse();                                                         // re-rank the board with LUMI in it
+  return db.prepare('SELECT * FROM bb_stocks WHERE guild_id = ?').get(LUMI_STOCK_GUILD_ID) || null; // the fresh row
 }
 
 // ---------------------------------------------------------------------------
@@ -896,7 +992,17 @@ function buyShares(userId, username, stockId, investmentAmount) {
       if (feeInfo.changes === 0) throw new Error('Doll Street account is missing.'); // fee would vanish, so roll back
     }
 
-    if (isSyntheticStock(stock)) {
+    if (isLumiStock(stock)) {
+      const credit = db.prepare(`
+        UPDATE accounts SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(netInvestment, netInvestment, LUMI_HOLDINGS_USER_ID); // the net buy becomes Lumi-Town reserve capital
+      if (credit.changes === 0) throw new Error('Lumi Holdings account is missing.'); // coins would vanish: roll back
+      db.prepare(`
+        INSERT INTO transactions (from_user_id, to_user_id, amount, fee, type, note)
+        VALUES (?, ?, ?, ?, 'lumi_share_buy', ?)
+      `).run(userId, LUMI_HOLDINGS_USER_ID, netInvestment, dollStreetCut, `LUMI share purchase by ${username}`); // ledger row the treasury page counts
+    } else if (isSyntheticStock(stock)) {
       db.prepare(`
         UPDATE bb_stocks
         SET synthetic_treasury = synthetic_treasury + ?, updated_at = datetime('now')
@@ -1016,8 +1122,20 @@ function sellShares(userId, username, stockId, sharesToSell) {
         error: `${stock.business_name} treasury is too illiquid right now (${treasuryBalance.toFixed(0)} SGC).`,
       };
     }
+    if (isLumiStock(stock)) { // LUMI: a sale may never take Lumi Holdings under its reserve floor
+      const { reserveFloor } = getLumiPolicy(); // lumi.treasury.reserveFloor (default 50,000)
+      if (treasuryBalance - proceeds < reserveFloor) {
+        const room = Math.max(0, treasuryBalance - reserveFloor); // what could be paid out right now
+        return {
+          success: false,
+          error: `LUMI is illiquid right now: Lumi Holdings must keep its ${reserveFloor.toLocaleString()} SGC reserve, so only ${room.toLocaleString()} SGC of sales can be paid. Try a smaller sale or wait for Lumi-Town to grow.`,
+        };
+      }
+    }
 
-    if (isSyntheticStock(stock)) {
+    if (isLumiStock(stock)) {
+      moveCoins(LUMI_HOLDINGS_USER_ID, userId, proceeds, 'lumi_share_sell', `Sold ${sharesToSell.toFixed(4)} LUMI`); // reserve -> seller, throws if short
+    } else if (isSyntheticStock(stock)) {
       db.prepare(`
         UPDATE bb_stocks
         SET synthetic_treasury = synthetic_treasury - ?, updated_at = datetime('now')
@@ -1029,8 +1147,10 @@ function sellShares(userId, username, stockId, sharesToSell) {
       if (!debit.success) throw new Error(debit.error); // treasury debit failed: throw so the seller is NOT paid from nothing
     }
 
-    const credit = adjustBalance(userId, proceeds, `Sold ${sharesToSell.toFixed(4)} shares of ${stock.ticker}`); // pay the seller
-    if (!credit.success) throw new Error(credit.error); // credit failed: throw so the treasury debit is undone too
+    if (!isLumiStock(stock)) { // LUMI's moveCoins above already paid the seller (debit + credit in one step)
+      const credit = adjustBalance(userId, proceeds, `Sold ${sharesToSell.toFixed(4)} shares of ${stock.ticker}`); // pay the seller
+      if (!credit.success) throw new Error(credit.error); // credit failed: throw so the treasury debit is undone too
+    }
 
     const costBasisRemoved = holding.avg_cost_basis * sharesToSell;
     const newShares = holding.shares - sharesToSell;
@@ -1144,9 +1264,19 @@ function distributeDividend(stockId, overridePool = null) {
     return { success: false, error: `${stock.business_name} treasury is empty.` };
   }
 
+  const lumi = isLumiStock(stock); // LUMI pays only from the reserve's excess above its floor
+  if (lumi && countLumiOwed() > 0) { // Lumi-Town still owes players prizes: those come first
+    return { success: false, error: 'LUMI dividends are paused while Lumi-Town Bank still owes players prizes.' };
+  }
+  const lumiPolicy = lumi ? getLumiPolicy() : null; // reserve floor + weekly rate (tuning keys lumi.treasury.*)
+  const payable = lumi ? Math.max(0, treasuryBalance - lumiPolicy.reserveFloor) : treasuryBalance; // what may leave the treasury
+  if (lumi && payable <= 0) {
+    return { success: false, error: `Lumi Holdings is at or under its ${lumiPolicy.reserveFloor.toLocaleString()} SGC reserve floor: no dividend this time.` };
+  }
+
   const dividendPool = overridePool != null
-    ? Math.floor(Math.min(Number(overridePool) || 0, treasuryBalance)) // whole SGC, never more than the treasury holds
-    : Math.floor(treasuryBalance * stock.dividend_rate);
+    ? Math.floor(Math.min(Number(overridePool) || 0, payable)) // whole SGC, never more than may leave the treasury
+    : Math.floor(payable * (lumi ? lumiPolicy.dividendRate : stock.dividend_rate)); // LUMI: rate x excess above the floor
 
   if (dividendPool <= 0) {
     return { success: false, error: 'Dividend pool is zero. Nothing to distribute.' };
@@ -1162,7 +1292,9 @@ function distributeDividend(stockId, overridePool = null) {
     return { success: false, error: 'Total shares outstanding is zero.' };
   }
 
-  const dividendPerShare = dividendPool / totalShares;
+  // LUMI divides by at least the 100-share reference float its price uses, so a tiny early holder can't collect the
+  // whole pool earned on Central Bank's seed; whatever isn't paid out simply stays in the reserve.
+  const dividendPerShare = dividendPool / (lumi ? Math.max(totalShares, BASE_REFERENCE_FLOAT) : totalShares); // SGC per share
 
   let result; // filled in by the transaction below
   try { // any throw inside the transaction rolls back the whole dividend run for this stock
@@ -1177,7 +1309,9 @@ function distributeDividend(stockId, overridePool = null) {
       ensureAccount(holder.user_id, holder.username);
 
       // Take the coins from the company FIRST, then pay the holder, and stop everything if either step fails
-      if (isSyntheticStock(stock)) {
+      if (lumi) {
+        moveCoins(LUMI_HOLDINGS_USER_ID, holder.user_id, payout, 'lumi_dividend', `LUMI dividend: ${payout} SGC`); // reserve -> holder in one step
+      } else if (isSyntheticStock(stock)) {
         db.prepare(`
           UPDATE bb_stocks
           SET synthetic_treasury = synthetic_treasury - ?, updated_at = datetime('now')
@@ -1188,8 +1322,10 @@ function distributeDividend(stockId, overridePool = null) {
         if (!debit.success) throw new Error(debit.error); // treasury couldn't pay: roll back instead of minting the dividend
       }
 
-      const credit = adjustBalance(holder.user_id, payout, `Dividend from ${stock.ticker}: ${payout} SGC`); // pay the shareholder
-      if (!credit.success) throw new Error(credit.error); // credit failed: roll back the treasury debit too
+      if (!lumi) { // LUMI's moveCoins above already paid the holder (debit + credit in one step)
+        const credit = adjustBalance(holder.user_id, payout, `Dividend from ${stock.ticker}: ${payout} SGC`); // pay the shareholder
+        if (!credit.success) throw new Error(credit.error); // credit failed: roll back the treasury debit too
+      }
 
       db.prepare(`
         UPDATE bb_shareholders
@@ -1304,6 +1440,8 @@ function getStockSummary(stockId) {
     investedCapital,
     marketCap,
     isSynthetic: isSyntheticStock(stock),
+    isLumi: isLumiStock(stock), // true for Lumi Holdings Inc. (LUMI)
+    lumiPolicy: isLumiStock(stock) ? getLumiPolicy() : null, // reserve floor + dividend rate, for LUMI only
     metrics,
   };
 }
@@ -1322,6 +1460,9 @@ function creditPromotionalValueForGuild(guildId, amount, note = 'Promotional cha
   const stock = getStockByGuild(guildId);
   if (!stock) {
     return { success: false, error: `No stock found for guild ${guildId}.` };
+  }
+  if (isLumiStock(stock)) { // promo value is minted coin: never pour it into the Lumi-Town reserve
+    return { success: false, error: 'Lumi Holdings Inc. does not take promotional credits.' };
   }
 
   const credited = Math.floor(normalizedAmount); // whole SGC only (promo values like 2.5 per link round down)
@@ -1419,6 +1560,12 @@ function backfillDollStreetFees({ dryRun = false } = {}) {
 module.exports = {
   initPrivateStockStore,
   getDb,
+  ensureLumiHoldingsStock,     // create/keep the permanent LUMI listing (src/lumi/index.js calls it at init)
+  isLumiStock,                 // true for the LUMI row
+  getLumiPolicy,               // { reserveFloor, dividendRate } from the lumi.treasury.* settings
+  getCorporateTreasuryBalance, // a stock's real treasury balance (LUMI: the __LUMI_HOLDINGS__ account)
+  LUMI_TICKER,                 // 'LUMI'
+  LUMI_STOCK_GUILD_ID,         // '__LUMI_HOLDINGS__'
   syncStockUniverse,
   ensureStockForGuild,
   getStockByGuild,

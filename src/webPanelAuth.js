@@ -157,10 +157,10 @@ function createSession(discordId, username, avatar, roles, { isPanelAdmin = fals
   return signToken(token, sessionSecret);
 }
 
-function getSession(req) {
+function getSession(req, opts = {}) {   // opts.cookieName: an app with its own cookie (Lumi: 'lumi_sess')
   const { sessionSecret } = getPanelAuthConfig();
   const cookies = parseCookies(req);
-  const signed = cookies[SESSION_COOKIE_NAME];
+  const signed = cookies[opts.cookieName || SESSION_COOKIE_NAME];   // default: the shared panel/games cookie
   if (!signed) return null;
   const token = verifyToken(signed, sessionSecret);
   if (!token) return null;
@@ -173,10 +173,10 @@ function getSession(req) {
   return sess;
 }
 
-function destroySession(req) {
+function destroySession(req, opts = {}) {   // opts.cookieName: which app's cookie to log out
   const { sessionSecret } = getPanelAuthConfig();
   const cookies = parseCookies(req);
-  const signed = cookies[SESSION_COOKIE_NAME];
+  const signed = cookies[opts.cookieName || SESSION_COOKIE_NAME];   // default: the shared panel/games cookie
   if (!signed) return;
   const token = verifyToken(signed, sessionSecret);
   if (token) sessions.delete(token);
@@ -184,21 +184,23 @@ function destroySession(req) {
 
 function buildSessionCookieHeader(signedToken, opts = {}) {
   const { sessionTtlMs, secureCookies } = getPanelAuthConfig();
-  return buildSetCookieHeader(SESSION_COOKIE_NAME, signedToken, {
+  return buildSetCookieHeader(opts.cookieName || SESSION_COOKIE_NAME, signedToken, {   // opts.cookieName: per-app cookie
     maxAgeSeconds: Math.floor(sessionTtlMs / 1000),
     secure: opts.secure ?? secureCookies,
     httpOnly: true,
     sameSite: opts.sameSite || 'Lax',
+    path: opts.cookiePath || '/',   // opts.cookiePath: only sent under this path (Lumi: /lumipet)
   });
 }
 
 function buildClearCookieHeader(opts = {}) {
   const { secureCookies } = getPanelAuthConfig();
-  return buildSetCookieHeader(SESSION_COOKIE_NAME, '', {
+  return buildSetCookieHeader(opts.cookieName || SESSION_COOKIE_NAME, '', {   // must match the name it was set with
     maxAgeSeconds: 0,
     secure: opts.secure ?? secureCookies,
     httpOnly: true,
     sameSite: opts.sameSite || 'Lax',
+    path: opts.cookiePath || '/',   // and the same path, or the browser keeps the old cookie
   });
 }
 
@@ -594,7 +596,7 @@ Login complete. You can close this window.
 
 function handleLogoutRoute(req, res, opts = {}) {
   const loginPath = opts.loginPath || `${opts.basePath || ''}/auth/discord/login`;
-  destroySession(req);
+  destroySession(req, opts.cookieOptions || {});   // the same cookie name the app logged in with
   res.writeHead(302, {
     'Set-Cookie': buildClearCookieHeader(opts.cookieOptions),
     Location: loginPath,
@@ -676,8 +678,8 @@ function requireAuth(req) {
   return session?.isPanelAdmin ? session : null;
 }
 
-function requireUserAuth(req) {
-  return getSession(req);
+function requireUserAuth(req, opts = {}) {   // opts.cookieName: read an app's own session cookie
+  return getSession(req, opts);
 }
 
 function getRealHost(req) {
@@ -811,4 +813,5 @@ module.exports = {
   scriptJson,           // JSON that is safe to print inside a <script> block
   getSession,
   destroySession,
+  createSession,        // make a signed session token (used by the OAuth callback; tests use it to fake a login)
 };

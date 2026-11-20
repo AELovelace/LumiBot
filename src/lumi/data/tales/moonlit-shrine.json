@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Paper lanterns sway as Lumi steps into the shrine. The moon here never sets.",
+  "Lumi bows to the stone fox at the gate, just in case, and goes in.",
+  "Lumi pads into {place}, where paper lanterns sway and the moon hangs round and patient overhead.",
+  "The stone gate hums softly as Lumi slips through, her glow mixing with the silver moonlight of {place}.",
+  "Lumi arrives at the Moonlit Shrine and bows her little head, just in case the lanterns are watching.",
+  "A hush settles over Lumi's whiskers as she steps into {place}. Even her wings flutter quietly here.",
+  "Lumi blinks up at the moon that never sets and decides it must be keeping an eye on her. She feels braver already.",
+  "Paper lanterns flicker hello as Lumi tiptoes onto the cool stone of the shrine, tail high with excitement.",
+  "Lumi lands lightly at the edge of {place}. The air smells of incense and old rain, and her ears twitch with wonder.",
+  "The moon pours silver over the shrine steps as Lumi arrives, glowing a little brighter to say hello back."
+ ],
+ "start": [
+  "Lumi is back at the shrine gate where she began. The way home waits in the lantern light.",
+  "The first room again, with its familiar lanterns. Lumi's way home is right here whenever she wants it.",
+  "Lumi returns to the quiet entrance hall. The moonlight here feels like an old friend.",
+  "Back where the trip began, Lumi spots the path home glowing faintly beneath the patient moon.",
+  "Lumi pads into the entry court once more and gives the welcoming lanterns a small, proud nod.",
+  "The stone room where Lumi first arrived is calm and still. Home is only a few soft steps from here.",
+  "Lumi is back at the shrine's threshold, where the way home rests in a pool of moonlight.",
+  "Familiar paper lanterns greet Lumi again. She sits for a moment by the way home, glowing contentedly."
+ ],
+ "empty": [
+  "A quiet courtyard of raked sand. Lumi resists walking on it. Mostly.",
+  "Moonlight pools on old stone. Lumi sits in it for a moment, like a warm lap.",
+  "This room holds only moonlight and the soft creak of a swaying lantern. Lumi breathes it in.",
+  "Lumi finds nothing here but smooth stone and a hush so deep she can hear her own wings.",
+  "A single paper lantern glows in an otherwise empty room. Lumi gives it a polite little nod.",
+  "Moonbeams slant across bare stone. Lumi chases one with her paw, just for fun.",
+  "The room is empty, but the air smells of sweet incense, and Lumi's tail curls happily.",
+  "Lumi pads through a quiet chamber where shadows and lantern light take turns dancing on the walls.",
+  "Nothing here but a mossy stone basin holding the moon's reflection. Lumi peers in and sees herself, glowing.",
+  "Wind chimes tinkle somewhere unseen as Lumi wanders an empty, peaceful room."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows. The lanterns sway as if they remember her too.",
+  "Familiar stones under familiar paws. Lumi passes through with a happy little hum.",
+  "Lumi recognises this quiet chamber and its patient moonlight, and hurries on with a swish of her tail.",
+  "Back through a room already explored, Lumi notices the lanterns flicker a fond hello.",
+  "Lumi crosses this room again, leaving a faint trail of fairy glow on the stone.",
+  "Lumi has been here before. She walks a little more confidently now, ears up.",
+  "The same soft hush greets Lumi as she wanders back through this lantern-lit room.",
+  "Lumi pads past the spot where she paused before, the moon still watching from above."
+ ],
+ "treasure": [
+  "Lumi spots {item} resting beneath a paper lantern and scoops it up with a delighted chirp.",
+  "There, glinting in the moonlight, is {item}. Lumi pounces on it happily.",
+  "Lumi finds {item} tucked among the quiet stones of the shrine. What a lovely surprise.",
+  "Something shimmers in a pool of silver light: {item}! Lumi tucks it away with care.",
+  "Lumi's whiskers twitch. She noses beside a fallen lantern and discovers {item}.",
+  "Left as if for an offering, {item} waits on a smooth stone. Lumi takes it with a grateful bow.",
+  "Lumi finds {item} lying in the hush of the room and wiggles with excitement.",
+  "The moonlight seems to shine just for {item}. Lumi gathers it up, glowing proudly."
+ ],
+ "key": [
+  "Lumi finds a key lying in the moonlight and holds it up with a triumphant little purr.",
+  "A key! Lumi spots it beneath a lantern and tucks it safely away.",
+  "Something glints on the stones. Lumi bats at it and discovers a key.",
+  "Lumi finds a key resting quietly in the shrine, as if it had been waiting just for her.",
+  "The lanterns flicker brighter as Lumi picks up a key. Somewhere, a lock must be waiting.",
+  "Lumi's paw closes around a key. She gives a proud flick of her tail.",
+  "A key gleams softly under the never-setting moon. Lumi claims it with a happy hop.",
+  "Lumi finds a key and wonders what door it will open. Her wings buzz with anticipation."
+ ],
+ "vault": [
+  "The vault opens with a soft sigh, and inside Lumi finds {item}, glowing in the moonlight.",
+  "Lumi peeks into the open vault and discovers {item}. Her eyes go wide with delight.",
+  "Inside the vault, lit by a single lantern, waits {item}. Lumi takes it reverently.",
+  "The vault stands open at last. Lumi reaches in and finds {item}.",
+  "Moonlight spills into the opened vault and lands on {item}. Lumi purrs with joy.",
+  "Lumi tiptoes into the vault and finds {item}, kept safe in the shrine's quiet keeping.",
+  "The vault's treasure is {item}! Lumi gives a happy twirl.",
+  "Patient stone has guarded {item} for ages, and now Lumi gets to take it with her."
+ ],
+ "locked_key": [
+  "Lumi reaches a door that stays firmly shut. It needs a key.",
+  "A locked door stands silent under the lanterns. Lumi will need a key to pass.",
+  "Lumi pushes at the door with both paws, but it is locked tight. A key would help.",
+  "This door is locked. Lumi sniffs the keyhole thoughtfully.",
+  "A shrine door bars the way, locked and waiting for a key.",
+  "Lumi finds a locked door glowing faintly in the moonlight. Only a key will open it.",
+  "The door won't budge. Lumi flicks her tail; somewhere there must be a key.",
+  "A locked door, quiet as the shrine stones around it, waits for someone with a key."
+ ],
+ "locked_puzzle": [
+  "Lumi reaches a door sealed by a puzzle. She sits down and tilts her head, ready to think.",
+  "A puzzle seals this door shut. Lumi's whiskers twitch with curiosity.",
+  "The door won't open until its puzzle is solved. Lumi stretches her paws, determined.",
+  "Lumi finds a door bound by an old shrine puzzle. The lanterns seem to hold their breath.",
+  "A sealed door waits under the moon, guarded by a puzzle. Lumi's eyes sparkle at the challenge.",
+  "This door is sealed by a puzzle. Lumi hums a little thinking tune.",
+  "Lumi discovers a door that only a puzzle can open. She fluffs up, brave and curious.",
+  "A puzzle holds this shrine door closed. Lumi settles in to give it her best try."
+ ],
+ "game_cups": [
+  "Three cups wait in the lantern light, and something is hidden under one of them.",
+  "Lumi finds three cups set out beneath the moon. One of them hides a secret.",
+  "Three little cups sit quietly in the shrine. Lumi's tail swishes; one hides a surprise.",
+  "Someone has left three cups out for a game. Lumi leans in close, eyes bright.",
+  "Three cups, one hidden treasure. Lumi wiggles, ready to play.",
+  "In a pool of moonlight stand three cups. Something waits beneath one of them.",
+  "Lumi spots three cups set out by the lanterns. She just knows one is hiding something.",
+  "Three cups are waiting for a curious player. Lumi is very curious indeed."
+ ],
+ "game_match": [
+  "Cards lie face down on the cool stone, waiting to be matched in pairs.",
+  "Lumi finds face-down cards beneath the lanterns. Time to find the pairs.",
+  "Face-down cards wait in the moonlight. Lumi's whiskers quiver; somewhere there are matching pairs.",
+  "A matching game! Cards lie face down, each one hiding a twin.",
+  "Lumi spots cards laid face down by the shrine lanterns, ready to be paired up.",
+  "The cards rest face down, quiet as the shrine itself. Lumi is eager to match them.",
+  "Someone has set out face-down cards for a game of pairs. Lumi settles in happily.",
+  "Cards lie hidden face down under the never-setting moon. Lumi flexes her paws."
+ ],
+ "game_win": [
+  "Lumi wins! She receives {item} and does a happy little spin.",
+  "The lanterns flare bright as Lumi wins the game and earns {item}.",
+  "Victory for Lumi! She claims {item} with a proud purr.",
+  "Lumi wins the game and earns {item}. Even the moon seems to smile.",
+  "A perfect game! Lumi bounces with joy and tucks away {item}.",
+  "Lumi has won, and {item} is hers. Her glow shimmers with delight.",
+  "With a triumphant chirp, Lumi wins and receives {item}.",
+  "The shrine rewards a clever cat. Lumi wins the game and gets {item}."
+ ],
+ "game_lose": [
+  "Not quite this time, but Lumi gets {item} for trying. She purrs anyway.",
+  "Lumi doesn't win, but the shrine gifts her {item} for being such a good sport.",
+  "The game slips away from her, yet Lumi still receives {item}. Not bad at all.",
+  "Lumi misses the win, but {item} is hers for trying. Her tail stays high.",
+  "So close! Lumi doesn't win, but she gets {item} as a kind consolation.",
+  "No win today, but the lanterns glow warmly as Lumi receives {item} for her effort.",
+  "Lumi gives it her best and gets {item} for trying. She'll win next time, surely.",
+  "The game isn't Lumi's, but {item} is. She bows politely and tucks it away."
+ ],
+ "enemy": [
+  "A wild {enemy} leaps out from behind a lantern and blocks the way! Lumi puffs up bravely.",
+  "A wild {enemy} stands in Lumi's path. Her wings buzz; it's time to be brave.",
+  "The moonlight wobbles as a wild {enemy} appears. Lumi squares her tiny paws for a tussle.",
+  "A wild {enemy} won't let Lumi pass! She fluffs her fur and glows her brightest.",
+  "Lumi meets a wild {enemy} on the quiet stones. It looks ready for a scuffle, and so is she.",
+  "A wild {enemy} blocks the way, eyes gleaming in the lantern light. Lumi stands her ground.",
+  "Out of the shrine's shadows comes a wild {enemy}! Lumi gives a small but determined hiss.",
+  "A wild {enemy} bars the path under the watchful moon. Lumi gathers her wobbly courage."
+ ],
+ "victory": [
+  "The {enemy} scampers off into the shadows. Lumi lets out a proud little purr.",
+  "Lumi wins! The {enemy} dashes away between the lanterns.",
+  "With a final brave bat of her paw, Lumi sends the {enemy} scampering off.",
+  "The {enemy} has had enough and scurries off into the moonlight. Lumi glows with pride.",
+  "Lumi stands tall as the {enemy} scampers away. The lanterns seem to cheer.",
+  "Off goes the {enemy}, scampering across the quiet stones. Lumi smooths her ruffled fur.",
+  "The {enemy} turns tail and scampers off. Lumi does a tiny victory hop.",
+  "Beaten fair and square, the {enemy} skitters away. Lumi bows to the moon."
+ ],
+ "fled": [
+  "Lumi scurries away from the {enemy} and back to the room before, heart thumping.",
+  "Too wild! Lumi darts away from the {enemy} and back to the last room.",
+  "Lumi decides the {enemy} can have that room for now and hurries back the way she came.",
+  "With a startled squeak, Lumi flits away from the {enemy} to the room before.",
+  "Lumi retreats from the {enemy} to the previous room, catching her breath under a lantern.",
+  "The {enemy} is a bit much. Lumi zips back to the room she just left.",
+  "Lumi flees the {enemy} and tumbles back into the room before, glad of the quiet.",
+  "Ears flat, Lumi runs from the {enemy} back to the last room and fluffs herself calm."
+ ],
+ "defeat": [
+  "The {enemy} was too much. Lumi is carried home for a cosy nap, leaving her finds behind.",
+  "Lumi is tuckered out by the {enemy} and carried home sleepy. Her treasures stay in the shrine.",
+  "The {enemy} wins this time. Lumi is gently carried home to rest, her finds left behind.",
+  "Worn out by the {enemy}, Lumi is carried home under the moon. What she found stays behind.",
+  "Lumi can't manage the {enemy} today. She's carried home for a nap, and her finds stay in the shrine.",
+  "The {enemy} proves too wild. A sleepy Lumi is carried home, leaving her discoveries behind.",
+  "Lumi yawns after her tussle with the {enemy} and is carried home. Everything she found stays behind.",
+  "Too tired to go on after the {enemy}, Lumi is carried home to nap. Her finds stay with the lanterns."
+ ],
+ "stairs": [
+  "Lumi finds stone stairs leading further down, lit by a trail of paper lanterns.",
+  "Stairs lead further down into the shrine. Lumi peers over the edge, whiskers twitching.",
+  "Lumi discovers a stairway going deeper, cool air drifting up from below.",
+  "Worn stone steps lead further down. Lumi's tail curls with curiosity.",
+  "Lumi spots stairs winding further down, moonlight spilling partway after them.",
+  "A quiet stairway leads further down. Lumi wonders what the lower shrine holds.",
+  "Stairs! Lumi finds a way further down, and her glow brightens with excitement.",
+  "Lumi finds stairs leading further down, where the lantern light grows soft and dim."
+ ],
+ "descend": [
+  "Lumi pads down the stairs to a deeper floor. The lanterns here glow a softer silver.",
+  "Step by step, Lumi descends deeper into {place}.",
+  "Lumi flutters down the stairs and arrives on a deeper floor, quiet as a held breath.",
+  "Down goes Lumi to a deeper floor, the moon's glow following faintly after her.",
+  "Lumi hops off the last step onto a deeper floor. The air smells of old incense.",
+  "Lumi descends to a deeper floor of the shrine, her own glow lighting the stones.",
+  "The stairs carry Lumi deeper. New lanterns flicker to life as she arrives.",
+  "Lumi reaches a deeper floor, ears up and wings buzzing with brave curiosity."
+ ],
+ "home": [
+  "Lumi steps out of {place} with all her treasures, waving a paw goodbye to the lanterns.",
+  "Lumi heads home from the Moonlit Shrine, her bag full and her glow bright.",
+  "With everything she found, Lumi leaves the shrine behind. The moon watches her all the way home.",
+  "Lumi walks home happy, carrying every treasure from {place}.",
+  "The lanterns flicker farewell as Lumi leaves with her finds, ready for a cosy evening.",
+  "Lumi bows once to the shrine and trots home with all her treasures.",
+  "Home again! Lumi brings back everything she found in {place}, purring all the way.",
+  "Lumi leaves the quiet stones behind and heads home, proudly carrying her finds."
+ ],
+ "abandon": [
+  "Lumi decides that's enough for today and heads home, leaving her finds in the shrine.",
+  "Lumi gives up the trip and walks home, her discoveries left behind under the lanterns.",
+  "With a small sigh, Lumi leaves {place} empty-pawed. Her finds stay with the moon.",
+  "Lumi turns for home, leaving what she found resting in the shrine.",
+  "Lumi calls it a day and heads home. The shrine keeps her treasures for now.",
+  "Lumi leaves the trip behind, and her finds too. Home and a warm cushion are calling.",
+  "Lumi slips away from the shrine without her treasures. There's always another moonlit night.",
+  "Lumi gives up for now and wanders home, leaving everything she found among the quiet stones."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels warm and bright again. Her glow flickers back to full.",
+  "Gulp! Lumi drinks a potion and feels much better, tail swishing.",
+  "Lumi drinks a potion in the lantern light and perks right up.",
+  "A potion later, Lumi feels refreshed and ready for more of {place}.",
+  "Lumi laps up a potion and her wings buzz with new energy.",
+  "Lumi drinks a potion and sighs happily as she feels better. The moon seems pleased.",
+  "One potion, and Lumi feels like herself again, whiskers twitching with renewed courage.",
+  "Lumi sips a potion by the quiet stones and her glow brightens. Much better."
+ ],
+ "look": [
+  "A row of paper fortunes is tied to a branch. Lumi reads one: 'A small light goes a long way.' She agrees.",
+  "The stone fox by the wall has a moss scarf and one worn ear, rubbed smooth by a hundred years of pats. Lumi adds one.",
+  "Someone left a saucer of milk at the little altar. It is not for Lumi. She checks twice that it is not for Lumi.",
+  "A bell rope hangs just out of reach. Lumi jumps, misses, and the bell rings anyway, very softly, to be kind.",
+  "The lantern nearest her has a moth inside its paper, asleep. Lumi dims her glow so as not to wake it.",
+  "Moonlight falls through the roof in one neat square. A fallen leaf lies in it like a letter nobody has opened.",
+  "The floor stones are carved with tiny cats chasing a tiny moon. The last cat has nearly caught it."
+ ]
+}

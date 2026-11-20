@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Dust motes dance as Lumi climbs into the attic. Somewhere, a music box winds down.",
+  "A rocking horse nods as Lumi comes up the ladder. She nods back.",
+  "Lumi squeezes through a dusty hatch into {place}, whiskers twitching at the smell of old toys and older secrets.",
+  "A rocking horse creaks hello as Lumi arrives at {place}, her glow lighting up a sea of cardboard boxes.",
+  "Lumi pads into {place} and a friendly ghost waves a sheet-corner at her. She waves her tail right back.",
+  "Dust motes swirl like tiny stars as Lumi floats up into the attic, ready for an adventure among forgotten toys.",
+  "Lumi arrives at {place} with a brave little hop, only jumping a tiny bit when a music box starts playing by itself.",
+  "The attic sighs a sleepy, dusty sigh as Lumi steps inside. Somewhere, a teddy bear seems to be watching kindly.",
+  "Lumi peeks into {place}, sneezes at the dust, and decides that a sneeze is a perfectly good way to say hello.",
+  "Lantern-bright and bouncing, Lumi tiptoes into {place}, where boxes stack high and the floorboards whisper."
+ ],
+ "start": [
+  "Lumi is back by the attic hatch she climbed through. The way home glows softly, right where she left it.",
+  "The familiar dusty doorway again. Lumi pats it with a paw, glad to know home is just a hop away.",
+  "Lumi returns to the room where she came in. A friendly ghost tidies a box nearby and nods at her.",
+  "Back at the start, Lumi spots her own little paw prints in the dust, leading the way home.",
+  "The first room of {place} feels almost cosy now. The way home waits patiently by the hatch.",
+  "Lumi curls her tail around the hatch where she began. Home is close, and the attic feels a bit less spooky.",
+  "Here is the room Lumi came in by, and the old rocking chair still creaks a gentle welcome back.",
+  "Lumi finds herself back at the entrance, where a sliver of warm light from home peeks through the hatch."
+ ],
+ "empty": [
+  "Old boxes, soft with dust. A friendly ghost waves from behind a lampshade.",
+  "A jack-in-the-box has already popped. Lumi pats it kindly on the head.",
+  "This room holds nothing but dust and the faint giggle of a ghost who seems to be hiding behind nothing at all.",
+  "Lumi steps into a quiet corner of the attic. A rocking horse sways gently, though nobody is riding it.",
+  "Cobwebs drape the beams like lace. Lumi admires them, then sneezes, then admires them again.",
+  "An empty room, apart from a faint smell of crayons and the creak of floorboards settling in for a nap.",
+  "Old boxes sit stacked and silent here. Lumi pokes one; it is empty, and somehow that feels mysterious.",
+  "A pale ghostly glow drifts across the room and vanishes. Lumi blinks, decides it was friendly, and carries on.",
+  "Moonlight from a round little window paints the dusty floor silver. Nothing else is here, and that is lovely.",
+  "A wind-up mouse lies on its side, all wound down. Lumi gives it a polite sniff and lets it rest."
+ ],
+ "again": [
+  "Lumi trots back through a room she knows, and the dust seems to remember her paw prints.",
+  "This room again. The rocking horse gives Lumi a little nod as she passes, still rocking all on its own.",
+  "Lumi crosses familiar floorboards, hopping over the one that squeaks like a startled toy duck.",
+  "A friendly ghost floats by and waves, as if to say it has seen Lumi here before. She waves back.",
+  "The same stacked boxes, the same cobwebs. Lumi feels very grown-up for knowing her way around.",
+  "Lumi pads through this room once more, humming the tune the music box played the first time.",
+  "Back through a room she has already explored. It feels a little friendlier the second time.",
+  "Lumi passes through the familiar room, giving the sleepy teddy in the corner a gentle boop on the nose."
+ ],
+ "treasure": [
+  "Tucked between two dusty boxes, Lumi finds {item}. She purrs and tucks it safely away.",
+  "A friendly ghost points a wispy finger, and there it is: {item}, waiting just for Lumi.",
+  "Lumi lifts the lid of an old toy chest and discovers {item} inside. Her glow brightens with delight.",
+  "Lying on the floorboards beneath the rocking horse is {item}. Lumi scoops it up with a happy wiggle.",
+  "Lumi spots {item} peeking out from under a moth-nibbled blanket and claims it with a proud little mew.",
+  "Among the scattered building blocks sits {item}. Lumi bats it once for fun, then keeps it.",
+  "Something glints in the dust. Lumi brushes it off with her tail and finds {item}.",
+  "A tin soldier seems to stand guard over {item}. Lumi thanks him politely and takes it along."
+ ],
+ "key": [
+  "A key lies in the tiny front hall of a dusty dollhouse. Lumi carefully fishes it out with one paw.",
+  "Lumi finds a key dangling from a ribbon on the rocking horse. It stops rocking just long enough for her to take it.",
+  "A friendly ghost drops a key at Lumi's paws, gives a shy little bow, and fades away.",
+  "Under a pile of jigsaw pieces, Lumi uncovers a key. She holds it up and it catches her glow.",
+  "A jack-in-the-box pops up holding a key. Lumi squeaks with surprise, then takes it with a polite nod.",
+  "A key rests on a dusty windowsill, waiting. Lumi picks it up and feels very important indeed.",
+  "Lumi finds a key in the pocket of a patchwork rag doll, who seems pleased to have kept it safe.",
+  "Clink! Something falls from a high shelf, and Lumi finds a key glinting in the dust."
+ ],
+ "vault": [
+  "The vault creaks open with a sleepy yawn, and inside Lumi finds {item}, snug as a toy in a box.",
+  "Dust puffs out as the vault door swings wide. Lumi peers in and discovers {item}.",
+  "Inside the opened vault, a ghostly glow fades to reveal {item}. Lumi gasps with joy.",
+  "Lumi tiptoes into the open vault, where {item} sits among old forgotten treasures.",
+  "The vault is open at last, and Lumi finds {item} resting on a velvet cushion gone grey with dust.",
+  "A music box tinkles as Lumi steps into the vault. There, waiting patiently, is {item}.",
+  "Lumi wriggles into the open vault and comes out with {item}, her tail held high like a flag.",
+  "The friendly ghosts seem to cheer softly as Lumi lifts {item} from the opened vault."
+ ],
+ "locked_key": [
+  "A door with a little keyhole blocks the way. Lumi rattles it hopefully, but it needs a key.",
+  "Lumi reaches a locked door painted with faded toy soldiers. It will not budge without a key.",
+  "A sturdy attic door stands shut, its keyhole peering at Lumi like a curious eye.",
+  "Lumi pushes at a locked door, and a ghost behind it whispers that a key would help.",
+  "This door is locked tight. Lumi sniffs the keyhole, smells only dust, and sighs a small sigh.",
+  "A locked door stops Lumi in her tracks. Somewhere in the attic, there must be a key.",
+  "Lumi finds a door shut fast with an old lock. She gives it a stern look, but it stays locked.",
+  "A locked door bars the way, and a dangling paper chain rustles as Lumi taps it. It needs a key."
+ ],
+ "locked_puzzle": [
+  "A door ahead is sealed by a puzzle. Lumi sits down, wraps her tail around her paws, and thinks very hard.",
+  "Lumi reaches a door that will only open for a clever cat who can solve its puzzle.",
+  "A puzzle seals this door shut. A friendly ghost hovers nearby, looking just as curious as Lumi.",
+  "The door is held closed by some kind of puzzle-magic. Lumi's whiskers quiver with determination.",
+  "Lumi finds a door sealed by a puzzle, and the rocking horse rocks faster, as if to cheer her on.",
+  "This door is sealed with a puzzle. Lumi narrows her eyes, ready to show it who the clever one is.",
+  "A puzzle guards the door ahead. Lumi stretches, flexes her toes, and gets ready to think.",
+  "The door won't open until its puzzle is solved. Lumi glows a little brighter, as if that might help her think."
+ ],
+ "game_cups": [
+  "A friendly ghost sets out three little cups and hides something under one. Lumi watches very closely.",
+  "Three cups sit in a row on a dusty tea table. Something is hidden under one, and Lumi's tail twitches.",
+  "A ghost giggles and lines up three cups. Lumi leans in, whiskers forward, ready to guess.",
+  "Three cups wait on an upturned toy box, one of them hiding a secret. Lumi stares hard at each one.",
+  "The teddy bears have set out three cups for a game. Something is tucked under one of them.",
+  "Lumi finds three cups in a neat little row. Somewhere beneath one, a surprise is waiting.",
+  "Three dusty cups, one hidden prize. Lumi wiggles like she is about to pounce.",
+  "A ghostly hand sets three cups on the floorboards, then vanishes. Something is hidden under one."
+ ],
+ "game_match": [
+  "A row of cards lies face down on the dusty floor, waiting to be matched in pairs.",
+  "A ghost has dealt out a set of cards face down. Lumi peers at them, determined to remember.",
+  "Cards lie face down across an old toy chest lid. Lumi rubs her paws together, ready to find the pairs.",
+  "Lumi finds a scatter of face-down cards. Somewhere among them, pairs are hiding.",
+  "Old cards rest face down in tidy rows. The rocking horse rocks, as if eager to watch.",
+  "Face-down cards cover a little play table. Lumi decides she has an excellent memory, probably.",
+  "A friendly ghost spreads cards face down and floats back to watch Lumi match them up.",
+  "Dusty cards lie face down in a patient row, each one waiting for its twin."
+ ],
+ "game_win": [
+  "Lumi wins the game! A friendly ghost claps its floppy sleeves and hands her {item}.",
+  "Hooray! The attic cheers with a jingle of toy bells as Lumi wins {item}.",
+  "Lumi does a victory spin in the dust and proudly collects {item}.",
+  "The rocking horse rocks with delight as Lumi wins {item}.",
+  "Clever Lumi! She wins the little game and scoops up {item}, purring loudly.",
+  "The teddy bears seem to beam as Lumi claims her prize: {item}.",
+  "Lumi wins, and a happy ghost drifts down to present her with {item}.",
+  "Success! Lumi's glow flares bright as she tucks {item} away."
+ ],
+ "game_lose": [
+  "Not this time, but the friendly ghost gives Lumi {item} for trying so hard.",
+  "Lumi flops onto her back with a sigh, and a kindly teddy tucks {item} beside her anyway.",
+  "Lumi doesn't win, but the attic ghosts are good sports and hand her {item}.",
+  "Oh, so close! Lumi gets {item} as a little consolation prize and feels much better.",
+  "The win slips past Lumi, but a tin soldier salutes and offers her {item}.",
+  "Lumi grumbles a tiny grumble, then cheers right up when she's given {item}.",
+  "No win today, but the rocking horse nods kindly and Lumi receives {item}.",
+  "Lumi loses gracefully and is rewarded with {item} for being such a good sport."
+ ],
+ "enemy": [
+  "A wild {enemy} bursts out from behind a toy box and blocks the way! Lumi puffs up her fur.",
+  "The rocking horse stops dead as a wild {enemy} appears. Lumi takes a wobbly but brave stance.",
+  "A wild {enemy} tumbles down from a dusty shelf, ready to tussle. Lumi raises her glowing paws.",
+  "Uh-oh! A wild {enemy} blocks Lumi's path, and the friendly ghosts all hide behind their sheets.",
+  "Lumi hears a rustle among the boxes, and out pops a wild {enemy}! Time to be brave.",
+  "A wild {enemy} stands in the way, looking very grumpy. Lumi gulps, then squares her tiny shoulders.",
+  "Dust flies as a wild {enemy} leaps out! Lumi's tail fluffs up to twice its size.",
+  "A wild {enemy} won't let Lumi pass. She glows her brightest and gets ready for a scuffle."
+ ],
+ "victory": [
+  "With a final bop, Lumi sends the {enemy} scampering off behind the boxes.",
+  "The {enemy} gives up and scurries away into the dusty shadows. Lumi does a proud little dance.",
+  "Lumi wins! The {enemy} scampers off, and the friendly ghosts peek out to cheer.",
+  "The {enemy} bolts past the rocking horse and out of sight. Lumi smooths her ruffled fur.",
+  "Beaten fair and square, the {enemy} skitters away. Lumi lets out a triumphant mew.",
+  "The {enemy} scampers off with a huff, and the attic settles back into its cosy hush.",
+  "Lumi stands tall as the {enemy} retreats into a pile of old toys. What a brave fairy cat.",
+  "Off goes the {enemy}, scampering away in a puff of dust. Lumi sneezes victoriously."
+ ],
+ "fled": [
+  "Lumi decides that was quite enough and dashes away from the {enemy}, back to the room before.",
+  "With a squeak, Lumi scurries back the way she came, leaving the {enemy} behind.",
+  "Lumi zips back to the previous room, heart pounding. The {enemy} doesn't follow.",
+  "Tail fluffed, Lumi bolts from the {enemy} and hides behind a familiar stack of boxes.",
+  "Lumi retreats in a flurry of dust, back to the room she was just in. The {enemy} can wait.",
+  "Brave can also mean knowing when to run! Lumi scampers away from the {enemy} to the last room.",
+  "Lumi skedaddles away from the {enemy} to the room before, and a friendly ghost pats her head kindly.",
+  "Lumi tumbles back into the room before, safe from the {enemy} for now."
+ ],
+ "defeat": [
+  "The {enemy} is too much for Lumi. A friendly ghost carries her home for a nap, and her finds stay behind.",
+  "Lumi gets all tuckered out by the {enemy}. She is carried home, sleepy, leaving her treasures in the dust.",
+  "Oof! The {enemy} wins this round. Lumi is gently carried home to rest, and everything she found stays behind.",
+  "Too tired to go on after the {enemy}, Lumi is scooped up and carried home. Her finds stay in the attic.",
+  "The {enemy} wears Lumi out. The friendly ghosts float her home for a nap, though her treasures are left behind.",
+  "Lumi curls up, beaten by the {enemy}, and is carried home to her cosy bed with empty paws.",
+  "The {enemy} proves too tricky. Lumi is carried home for a long nap, and what she found stays in the attic.",
+  "Lumi yawns a defeated yawn after facing the {enemy}. She is carried home, her finds left among the old toys."
+ ],
+ "stairs": [
+  "Lumi finds a narrow staircase leading further down, its steps creaking like a sleepy old toy.",
+  "Behind a stack of boxes, stairs lead further down into the attic's hidden depths.",
+  "A ghost points to a set of stairs going down. Lumi peers into the gloom with wide eyes.",
+  "Lumi discovers stairs leading deeper down. A faint music-box tune drifts up from below.",
+  "Dusty steps lead further down. Lumi's whiskers tingle with excitement.",
+  "Lumi finds stairs heading down, each step lined with tiny forgotten toys.",
+  "A creaky staircase winds further down. Lumi's glow spills over the first few steps.",
+  "Stairs! They lead further down, and Lumi wonders what other toys are waiting below."
+ ],
+ "descend": [
+  "Lumi pads down the creaky stairs, step by step, to a deeper floor of {place}.",
+  "Down, down goes Lumi, her glow lighting the way to a deeper, dustier floor.",
+  "Lumi hops down the stairs, and a deeper floor of the attic opens up around her.",
+  "Each step squeaks a different note as Lumi climbs down to the next floor.",
+  "Lumi descends carefully, a friendly ghost floating along beside her for company.",
+  "Down the stairs Lumi goes, into a deeper floor where even older toys are sleeping.",
+  "Lumi tiptoes down to a deeper floor, the music-box tune growing a little louder.",
+  "With a brave little breath, Lumi heads down the stairs to explore a deeper floor."
+ ],
+ "home": [
+  "Lumi waves goodbye to the friendly ghosts and heads home, paws full of treasures.",
+  "Lumi climbs out of {place} with everything she found, purring all the way home.",
+  "The rocking horse rocks a farewell as Lumi trots home with her whole haul.",
+  "Lumi slips out through the attic hatch, carrying all her finds home to show off.",
+  "Home again! Lumi brings every last treasure from {place}, and a little dust too.",
+  "Lumi leaves the attic with all she found, already dreaming of her next adventure.",
+  "With her treasures safely tucked away, Lumi skips out of {place} and home for supper.",
+  "Lumi says goodnight to the old toys and heads home, glowing proudly with her finds."
+ ],
+ "abandon": [
+  "Lumi decides she's had enough adventure for today and heads home, leaving her finds in the attic.",
+  "With a sleepy yawn, Lumi gives up the trip. Her treasures stay behind among the dusty boxes.",
+  "Lumi waves goodbye to the ghosts and goes home empty-pawed, leaving her finds behind.",
+  "Lumi sets down everything she found and slips out of {place}, ready for a nap at home.",
+  "The attic can keep its treasures for now. Lumi trots home with nothing but dust on her paws.",
+  "Lumi calls it a day and heads home, leaving her finds for the friendly ghosts to mind.",
+  "Feeling a bit too wobbly to carry on, Lumi leaves {place} and her treasures behind.",
+  "Lumi tiptoes home without her finds, and the rocking horse rocks a gentle goodbye."
+ ],
+ "potion": [
+  "Lumi sips a potion and her glow flickers back to full brightness. She feels much better.",
+  "Gulp! Lumi drinks a potion, and the tired wobble leaves her whiskers.",
+  "A friendly ghost cheers as Lumi drinks a potion and perks right up.",
+  "Lumi laps up a potion and feels warm and fizzy all over, good as new.",
+  "One potion later, Lumi stretches, purrs, and feels ready for anything the attic holds.",
+  "Lumi drinks a potion and hiccups out a tiny sparkle. She feels wonderful.",
+  "Lumi takes a sip of potion, and the dusty tiredness melts right away.",
+  "The potion tastes of honey and starlight. Lumi feels bright and bouncy again."
+ ],
+ "look": [
+  "A rocking horse rocks by itself in the corner, slowing down as Lumi looks, like someone caught humming.",
+  "A music box plays three notes and stops. Lumi nudges it and it plays the fourth, which was the one it was shy about.",
+  "A teddy bear with one button eye has been tucked into a shoebox bed. Lumi pulls the hanky blanket up a little.",
+  "Dust drifts in the light from the round window, and a friendly ghost is practising being dust among it.",
+  "Tin soldiers stand in a line, all facing the wall. One has turned round to see who came in. He has kind paint.",
+  "A wind-up mouse sits by the skirting board. Lumi stares at it. It has the good sense to stay wound down.",
+  "There is a dolls' house here with every light on. In the smallest window, a much smaller cat is looking out at her."
+ ]
+}

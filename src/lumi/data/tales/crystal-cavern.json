@@ -1,0 +1,235 @@
+{
+ "enter": [
+  "Crystals hum as Lumi enters the cavern, and her own glow hums back.",
+  "Every step into the cavern echoes twice. Lumi tries a tiny meow to hear it.",
+  "Lumi flutters into {place}, and the crystals hum hello. Her tiny gasp of delight echoes back twice.",
+  "The glow of {place} washes over Lumi's whiskers. She puffs up her chest, ready for adventure, and her brave little mew echoes twice.",
+  "Lumi tiptoes into {place}, where every crystal sings a soft note. She hums along, a little off-key, and the cave hums it back.",
+  "Shimmering light dances across Lumi's fur as she arrives at {place}. Her tail sparkles to match the crystals.",
+  "Lumi peeks into {place} and blinks at all the glimmer. Hello, she calls. Hello, hello, the cavern answers.",
+  "A gentle hum fills {place} as Lumi drifts in, wings fluttering with excitement. Today feels like a lucky day.",
+  "Lumi lands softly at the mouth of {place}. The crystals brighten one by one, as if they have been waiting just for her.",
+  "Lumi wiggles her nose at the cool, sparkly air of {place}. Somewhere deep inside, something echoes twice, and she grins."
+ ],
+ "start": [
+  "Lumi is back where she first came in. The crystals here hum a familiar tune, the one that means home is close.",
+  "The welcoming glow of the entrance surrounds Lumi again. The way home shimmers softly nearby.",
+  "Lumi pads back into the first room. Its crystals still glow just as warmly as when she arrived.",
+  "Here is the room where it all began. Lumi gives the friendly crystals a little nod, and they hum back.",
+  "Lumi recognises this room straight away. The path home glimmers here, patient and bright.",
+  "Back at the entrance, Lumi hears her own pawsteps echo twice. The way home waits right here.",
+  "The starting room twinkles as Lumi returns. A soft breeze from home drifts in to ruffle her fur.",
+  "Lumi settles for a moment in the room she came in by. The crystals hum a lullaby about the way home."
+ ],
+ "empty": [
+  "Crystals crowd the walls. Lumi sees a dozen small Lumis looking back.",
+  "Drip. Drip. The cavern keeps its own slow time, and Lumi listens.",
+  "This room holds nothing but humming crystals. Lumi listens for a while, swaying to their quiet song.",
+  "Lumi finds only soft light and echoes here. She meows once, just to hear it come back twice.",
+  "The crystals in this room glow a sleepy blue. There is nothing here, but Lumi thinks it is very pretty.",
+  "An empty chamber sparkles around Lumi. Her shadow stretches across the glittering walls in funny shapes.",
+  "Nothing waits here except a gentle hum. Lumi twirls in the middle of the room, and the light twirls with her.",
+  "Lumi peeks into every glittering corner. Only echoes and starry reflections live in this room.",
+  "This quiet room is full of shimmer and nothing else. Lumi breathes in the cool, sparkly air.",
+  "Tiny crystals chime as Lumi passes, ringing like little bells. The room is empty, but it sounds lovely."
+ ],
+ "again": [
+  "Lumi passes through a room she knows. The crystals hum the same tune as before, and she hums along.",
+  "This glittering room looks familiar. Lumi spots her own paw prints in the crystal dust.",
+  "Lumi wanders back through a room she has already explored. The echoes seem to remember her.",
+  "Back in a room she visited before, Lumi gives a friendly wave to the brightest crystal.",
+  "Lumi trots through a familiar chamber. Her reflection in the crystals trots along beside her.",
+  "The crystals in this room glow a little brighter, as if glad to see Lumi again.",
+  "Lumi retraces her steps through a room she knows. Her purr echoes twice, warm and content.",
+  "This room has not changed since Lumi was last here. She hops along, tail held high."
+ ],
+ "treasure": [
+  "Something glints between the crystals. Lumi pounces and finds {item}!",
+  "Lumi spots {item} resting in a pool of crystal light. She scoops it up with a happy chirp.",
+  "The crystals hum louder, as if pointing. There lies {item}, waiting just for Lumi.",
+  "Lumi finds {item} tucked in a sparkly nook. Her delighted mew echoes twice around the room.",
+  "A soft glow reveals {item} on the cavern floor. Lumi bats it gently, then claims it as her own.",
+  "Lumi's whiskers twitch. There, among the shimmering stones, is {item}!",
+  "Treasure! Lumi finds {item} glittering in the crystal light and does a little victory wiggle.",
+  "Lumi discovers {item} lying where the humming is strongest. What a wonderful find."
+ ],
+ "key": [
+  "Lumi finds a key glinting among the crystals. It hums softly in her paws.",
+  "A key lies in a ring of crystal light. Lumi tucks it away with a proud little purr.",
+  "Something shiny catches Lumi's eye. A key! She holds it up, and the room hums approvingly.",
+  "Lumi spots a key sparkling in the crystal dust. Somewhere, a door must be waiting for it.",
+  "Tink, tink! Lumi nudges a key and listens to the sound echo twice. She keeps it safe.",
+  "A key rests on a glowing stone, as if placed there for Lumi. She takes it carefully.",
+  "Lumi uncovers a key between two humming crystals. Her tail swishes with excitement.",
+  "There is a key here, shimmering like starlight. Lumi grabs it with both front paws."
+ ],
+ "vault": [
+  "The vault swings open with a crystal chime. Inside, Lumi finds {item}!",
+  "Light spills from the open vault, and there sits {item}. Lumi's eyes go wide with wonder.",
+  "Lumi peeks into the open vault and discovers {item}. The whole cavern seems to hum in celebration.",
+  "The vault is open at last. Lumi reaches inside and finds {item} glittering in the glow.",
+  "With a soft hum, the vault reveals its secret. Lumi happily claims {item}.",
+  "Inside the opened vault, {item} waits in a nest of sparkles. Lumi purrs so loudly it echoes twice.",
+  "Lumi tiptoes into the open vault and finds {item}. All that searching was worth it.",
+  "The vault's treasure is {item}! Lumi holds it close as the crystals hum their approval."
+ ],
+ "locked_key": [
+  "A locked door glimmers before Lumi. It will need a key to open.",
+  "Lumi pushes at a sparkling door, but it stays firmly locked. A key would do the trick.",
+  "This shimmering door is locked tight. Lumi taps it, and the tap echoes twice, but it does not budge.",
+  "A crystal-lit door blocks the way, and it is locked. Lumi wishes she had a key.",
+  "Lumi finds a locked door humming quietly to itself. Only a key will open it.",
+  "The door here is locked. Lumi gives it a hopeful sniff, but she will need a key.",
+  "A glowing door stands closed and locked. Lumi peers at the keyhole with great curiosity.",
+  "Lumi reaches a locked door that sparkles mysteriously. Somewhere, a key must fit it."
+ ],
+ "locked_puzzle": [
+  "A door glimmers before Lumi, sealed by a puzzle. She tilts her head and gets thinking.",
+  "This door is sealed with a puzzle. The crystals hum softly, as if cheering her on.",
+  "Lumi finds a door that will only open for a clever solver. Her whiskers twitch with determination.",
+  "A puzzle guards this shimmering door. Lumi sits down, tail curled, ready to think hard.",
+  "The way is sealed by a puzzle. Lumi's thinking hum echoes twice around the cavern.",
+  "A mysterious door glows here, closed by a puzzle. Lumi loves a good brain teaser.",
+  "Lumi reaches a puzzle-sealed door. The crystals around it pulse gently, waiting.",
+  "This door will not open without solving its puzzle. Lumi flexes her paws and focuses."
+ ],
+ "game_cups": [
+  "Three cups sit in a row on a glowing stone. Something is hidden under one of them.",
+  "Lumi finds three cups shimmering in the crystal light. One of them hides a secret.",
+  "Three little cups wait on a sparkly ledge. Lumi's ears perk up. Something is under one.",
+  "A cup game! Three cups gleam before Lumi, and only one hides something.",
+  "Three cups are set out among the crystals. Lumi watches them with big, curious eyes.",
+  "The crystals hum as Lumi spots three cups. Something waits under one of them.",
+  "Lumi comes upon three cups, lined up neatly. One of them is hiding something nice.",
+  "Three cups glimmer on the cavern floor. Lumi's tail twitches. Which one hides the prize?"
+ ],
+ "game_match": [
+  "Cards lie face down across a glittering stone. They are waiting to be matched in pairs.",
+  "Lumi finds rows of face-down cards shimmering in the crystal glow. A matching game!",
+  "A matching game waits here. The cards lie face down, their backs sparkling softly.",
+  "Face-down cards are spread across the floor. Lumi's eyes sparkle. She loves finding pairs.",
+  "The crystals light up a set of face-down cards. Each one has a twin somewhere.",
+  "Lumi discovers cards lying face down, humming faintly. They need to be matched in pairs.",
+  "A neat grid of face-down cards glows before Lumi. Time to find the pairs.",
+  "Lumi sits before a spread of face-down cards. The cavern hums, ready for the game."
+ ],
+ "game_win": [
+  "Lumi wins! The crystals ring like bells, and she receives {item}.",
+  "Hooray! Lumi's victory mew echoes twice as she collects {item}.",
+  "Lumi did it! She happily tucks away {item}, glowing with pride.",
+  "The game is won, and Lumi earns {item}. She does a sparkly little spin.",
+  "Lumi wins the game and gets {item}. The whole cavern hums a cheerful tune.",
+  "Success! Lumi claims {item} and purrs so hard her wings tremble.",
+  "Lumi is a winner! She proudly receives {item} as the crystals twinkle brighter.",
+  "With a joyful leap, Lumi wins the game and takes home {item}."
+ ],
+ "game_lose": [
+  "Not this time, but Lumi still gets {item} for trying. She gives a brave little smile.",
+  "Lumi does not win, but the cavern hums kindly and gives her {item} anyway.",
+  "Oh well! Lumi receives {item} for trying and shakes off her disappointment.",
+  "The game did not go her way, but Lumi gets {item} as a consolation. Not bad at all.",
+  "Lumi misses the win, yet {item} is hers for trying. She purrs, cheered up already.",
+  "Close, but not quite. Lumi takes {item} for her effort and flicks her tail cheerfully.",
+  "Lumi loses the game, but the crystals hum softly and offer her {item}.",
+  "No win today, but Lumi earns {item} for trying. She'll get it next time."
+ ],
+ "enemy": [
+  "A wild {enemy} pops out from behind a crystal! Lumi puffs up her fur and gets ready.",
+  "A wild {enemy} blocks the way, its shadow flickering on the glowing walls. Lumi stands her ground.",
+  "Uh oh! A wild {enemy} appears, and its grumble echoes twice. Lumi raises a wobbly paw.",
+  "A wild {enemy} stands in Lumi's path. She swallows, then lifts her chin bravely.",
+  "The crystals flash as a wild {enemy} bounds into view. Lumi gets into her pouncing pose.",
+  "A wild {enemy} won't let Lumi pass! Her tail fluffs up to twice its size.",
+  "Lumi meets a wild {enemy} in the shimmering light. Time to be brave!",
+  "A wild {enemy} hops out, blocking the way. Lumi's wings buzz with nervous courage."
+ ],
+ "victory": [
+  "Lumi wins! The {enemy} scampers off into the sparkles, and the crystals hum in triumph.",
+  "The {enemy} scurries away, its footsteps echoing twice. Lumi stands tall and proud.",
+  "Lumi did it! The {enemy} dashes off, and Lumi lets out a happy, wobbly cheer.",
+  "With a final pounce, Lumi sends the {enemy} scampering into the shimmering dark.",
+  "The {enemy} has had enough and scampers off. Lumi smooths her ruffled fur, beaming.",
+  "Victory! The {enemy} scurries away, and the crystals glow brighter for brave Lumi.",
+  "Lumi beats the {enemy}, who scampers off grumbling. Her heart is still going thump-thump.",
+  "The {enemy} skitters away into the glittering tunnels. Lumi purrs with relief and pride."
+ ],
+ "fled": [
+  "Lumi zips back to the room before, leaving the {enemy} behind. Phew!",
+  "Too scary! Lumi dashes away from the {enemy}, her pawsteps echoing twice as she runs.",
+  "Lumi decides the {enemy} can wait and scurries back to the previous room.",
+  "With a squeak, Lumi flutters away from the {enemy} back to safety.",
+  "Lumi retreats from the {enemy}, tail fluffed, and catches her breath in the room before.",
+  "Not today, {enemy}! Lumi scampers back to the last room as fast as her wings allow.",
+  "Lumi runs from the {enemy} back the way she came. The crystals hum soothingly to calm her.",
+  "Lumi hurries away from the {enemy} and hides in the room before, peeking out carefully."
+ ],
+ "defeat": [
+  "The {enemy} was too much for Lumi. She is gently carried home for a nap, leaving her finds behind.",
+  "Lumi sighs as the {enemy} wins. She is carried home to rest, and whatever she found stays in the cavern.",
+  "Too tired to go on after the {enemy}, Lumi is carried home for a cosy nap. Her finds stay behind.",
+  "The {enemy} got the better of Lumi this time. She dozes off on the way home, empty-pawed.",
+  "Lumi's wings droop after facing the {enemy}. She is carried home to snooze, her treasures left behind.",
+  "The {enemy} wins this round. Sleepy Lumi is carried home, and her finds stay with the humming crystals.",
+  "Lumi was no match for the {enemy} today. Home she goes for a nap, leaving everything behind.",
+  "After the {enemy}, Lumi needs a rest. She is carried home yawning, and what she found is left behind."
+ ],
+ "stairs": [
+  "Lumi finds stairs leading further down, glowing faintly in the crystal light.",
+  "A set of glittering stairs leads deeper into the cavern. Lumi peers down with curiosity.",
+  "Stairs! They spiral further down, humming softly. Lumi wonders what waits below.",
+  "Lumi discovers stairs going further down. A cool, sparkly breeze drifts up from them.",
+  "Crystal-lit stairs lead further down. Lumi's whiskers tingle with excitement.",
+  "Lumi spots stairs leading deeper. The echoes from below sound twice as mysterious.",
+  "Here are stairs that lead further into the cavern's heart. Lumi's tail swishes eagerly.",
+  "Shimmering stairs wait here, leading further down. Lumi takes a brave breath."
+ ],
+ "descend": [
+  "Lumi pads down the stairs to a deeper floor. The crystals here hum a lower, richer note.",
+  "Down, down goes Lumi into the deeper cavern. The glow grows softer and more magical.",
+  "Lumi descends to a deeper floor, where the echoes sound even dreamier.",
+  "Step by step, Lumi goes down the stairs. A new floor sparkles to greet her.",
+  "Lumi reaches a deeper floor. Brighter crystals twinkle all around her.",
+  "Lumi flutters down the stairs. The deeper cavern hums a welcome just for her.",
+  "Down the stairs she goes! Lumi arrives at a deeper floor full of new shimmering wonders.",
+  "Lumi descends carefully, wings out for balance. The deeper floor glows a gentle violet."
+ ],
+ "home": [
+  "Lumi waves goodbye to {place} and trots home with all her treasures. What a day!",
+  "The crystals hum farewell as Lumi heads home, carrying everything she found.",
+  "Lumi leaves {place} with her finds held close. Her happy purr echoes twice behind her.",
+  "Home at last! Lumi brings back all her sparkly treasures from {place}.",
+  "Lumi steps out of {place}, tired but delighted, with every find tucked safely away.",
+  "Out of the glowing cavern and home she goes. Lumi can't wait to admire her treasures.",
+  "Lumi bids {place} goodnight and carries her finds home, tail held high.",
+  "Lumi heads home from {place} with all her discoveries, humming the crystals' tune."
+ ],
+ "abandon": [
+  "Lumi decides that is enough for today and heads home, leaving her finds behind.",
+  "With a little sigh, Lumi leaves {place} and goes home empty-pawed. Maybe next time.",
+  "Lumi gives up the trip and wanders home. Whatever she found stays among the crystals.",
+  "Lumi turns for home, letting {place} keep what she found. She'll be back another day.",
+  "Feeling ready for home, Lumi leaves everything behind. The crystals hum her a soft goodbye.",
+  "Lumi calls it a day and heads home without her finds. A nap sounds lovely right now.",
+  "Lumi leaves {place} early, her treasures left behind. Her goodbye echoes twice.",
+  "Lumi decides to go home, leaving her finds for the cavern to keep safe."
+ ],
+ "potion": [
+  "Lumi sips a potion and feels a warm sparkle all the way to her tail.",
+  "Glug, glug! Lumi drinks a potion, and her glow brightens like the crystals around her.",
+  "Lumi drinks a potion and feels much better. Her wings flutter with new energy.",
+  "A potion perks Lumi right up. She gives a happy hiccup that echoes twice.",
+  "Lumi gulps down a potion and feels lovely and refreshed. Ready to explore again!",
+  "The potion tastes like starlight. Lumi feels her strength return with a cosy tingle.",
+  "Lumi drinks a potion and stretches happily. Every whisker feels brand new.",
+  "After a potion, Lumi glows twice as bright and purrs with relief."
+ ],
+ "look": [
+  "Lumi taps a crystal and it sings one clear note. The crystal next to it answers a little late, like a shy friend.",
+  "Deep inside the biggest crystal is a tiny frozen bubble. Lumi presses her nose to it and sees herself upside down.",
+  "Her glow goes into the wall pink and comes out the other side in seven colours. She does it again on purpose.",
+  "A drip falls from the ceiling every few breaths. Where it lands, a new crystal the size of a whisker is growing.",
+  "Lumi mews, and the cave mews back twice, the second one higher. She is fairly sure the second one is teasing.",
+  "Someone stacked five small stones here, biggest to smallest. The top one is a chip of crystal, still faintly warm.",
+  "The floor here is so polished that Lumi can see the stars of her own wings under her paws."
+ ]
+}

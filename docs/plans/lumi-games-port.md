@@ -1,12 +1,20 @@
 # Plan: bring Lumi Pet and the Lumi minigames from erinne into LumiBot, paid in SadGirlCoin
 
-Status: **on hold** (2026-11-19). Nothing is built yet. Doll's answers are in **§10 Decisions**.
+Status: **building** (started 2026-11-19, branch `feat/lumi-town`). Doll's call: port everything in one go, then test
+it all at the end. Doll's answers are in **§10 Decisions**.
 
-> ⏸ **Waiting on erinne's new player-home system** (`C:\scripts\erinne\docs\plans\lumi-pet-social.md`: free walking,
-> local chat, visiting houses). On 2026-11-19 only its phase 1 (free walking) was built. Port Lumi Pet after it is
-> finished, so `house.js`, `room-ui.js`, `lumihouse.py` and `lumitown.py` are ported once, in their final form.
-> Before starting, re-check erinne's `git log` for changes to the files listed in §1/§3.8, and update §3.8 and the
-> Phase 5 social scope to match.
+> ✅ erinne's player-home system is finished (all four phases of `lumi-pet-social.md`). erinne also added **Lumi City**
+> (`lumicity.py`: apartments, two towns, plots, house styles, yard pieces, estate capsules). The port source is erinne
+> commit **`43a24f4`** (was `0ddc466`; `43a24f4` only adds Lumi City's top and bottom bars everywhere, front-end only,
+> merged by hand into `public/lumi/lumi-pet/`). Lumi City is in scope, and its spending goes to a 9th system account,
+> **`__LUMI_REALTY__` "Lumi City Realty"**.
+>
+> Pricing rule:
+> - Game code always passes erinne's native amounts.
+> - `sgc.js` scales them with the admin-page tuning: `price = max(1, round(native × scale × priceMult))`, `payout = floor(native × scale × payoutMult)`.
+> - The page uses the same formula (`window.LUMI_TUNING` / `LumiPrice`), so the price shown is the price charged.
+>
+> The internal API that the game modules build on is documented in `src/lumi/CONTRACT.md`.
 Source: `C:\scripts\erinne` (Mnemerynne, Python/FastAPI). Its tree is clean. erinne is reference only: we copy from it and never edit it.
 
 Goal: friends in Doll's Discord server log in at **https://sadgirlsclub.wtf/lumipet/** and play Lumi Pet and the Lumi
@@ -227,7 +235,10 @@ Doll's rule: payouts can come down as long as buy-ins come down too, so playing 
 
 Because entry and payout shrink by the same factor, each game's **player return** (prizes ÷ entries) is exactly what it was in erinne. A run that earned in erinne still earns here, just in smaller numbers that suit real SGC.
 
-Teacup Tower and Yarn Pop take their score from the browser (only bounded), so they get a daily cap from day one. Every game gets a per-player daily cap (default 100 SGC of prizes, editable, and 0 = no cap).
+**Daily caps (Doll, 2026-11-19): every game is uncapped by default** (`dailyCap` 0 = no cap). The cap stays as an
+admin option per game on `/lumi`: set it above 0 (SGC of prizes per player per LA day) when abuse shows up, e.g. for
+Teacup Tower and Yarn Pop, which take their score from the browser (only bounded). erinne's own game rules are not
+caps and stay: the daily visit prize once a day, house-warming gifts from at most 3 homes a day.
 
 ### The admin page: `/lumi` on the web panel (admin-only, port 7777)
 
@@ -269,6 +280,8 @@ From erinne `migrations/games/0001_games.sql` + `0002_lumi_launch.sql`:
 New:
 - `lumi_coin_refs`, `lumi_daily(user_id, game, day, earned)`, `lumi_owed`
 - `lumi_accounts`, `lumi_admin_log`
+- `lumi_flats(n INTEGER PK AUTOINCREMENT, user_id TEXT UNIQUE)`: Lumi Heights flat numbers in the order players first
+  got a Lumi (Lumi City, `lumicity.init()`)
 
 Rules:
 - **`user_id` is TEXT** (Discord snowflakes are bigger than 2^53). erinne's INTEGER ids inside JSON saves become strings too.
@@ -368,7 +381,7 @@ Each phase ends with `npm test` green, `node --check` on new files, a play-throu
 ## 9. Risks and gotchas
 
 - **Asset licences**: the Breakout sounds and power-ups and the Lumi-Soft sounds are from royalty-free sample packs Doll bought (2026-11-19). Add `public/lumi/CREDITS.md` naming the packs (Doll to fill in), and keep the files inside the game, never as a downloadable pack.
-- **Client-trusted scores**: Teacup Tower and Yarn Pop only bound the browser's score, so they get daily caps from day one. Server replay can come later.
+- **Client-trusted scores**: Teacup Tower and Yarn Pop only bound the browser's score. They are uncapped by default like every game (Doll's call); an admin sets a daily cap on `/lumi` if they get farmed. Server replay can come later.
 - **In-memory social state** (town, houses, parties) resets when the bot restarts. A banner on reconnect is enough.
 - **Shared DB writers**: SGCServer writes the same economy file, hence `busy_timeout` and "try again".
 - **One process**: everything assumes a single Node process (true today). The worker pool stays out of the Lumi games.
