@@ -38,10 +38,10 @@ const CATEGORY_ENTRY = /^[a-z0-9-]{1,32}(:[a-z0-9-]{1,32})?$/u;                 
 const LEDGER_TYPE = /^lumi_([a-z0-9-]{1,32})_([a-z0-9-]{1,32})$/u;                 // lumi_<game>_<kind>
 const NOT_GAMES = new Set(['share', 'owed', 'emergency', 'admin']);                 // lumi_* types that are not games
 const PREVIEW_NATIVES = [                                                           // representative erinne numbers (plan section 4)
-  { label: 'Arcade entry', game: 'soft', key: 'entry', native: 25, kind: 'price' },            // 25 -> 5 at 0.2
-  { label: 'Capsule', game: 'pet', key: 'capsule', native: 150, kind: 'price' },               // 150 -> 30
-  { label: 'Moon capsule', game: 'pet', key: 'moon', native: 300, kind: 'price' },             // 300 -> 60
-  { label: 'Lumi-Soft continue', game: 'soft', key: 'continue', native: 50, kind: 'price' },    // 50 -> 10
+  { label: 'Capsule', game: 'pet', key: 'capsule', native: 150, kind: 'price' },               // item: 150 -> 150 at item scale 1
+  { label: 'Moon capsule', game: 'pet', key: 'moon', native: 300, kind: 'price' },             // item: 300 -> 300 at item scale 1
+  { label: 'Arcade entry', game: 'soft', key: 'entry', native: 25, kind: 'price' },            // play: 25 -> 5 at play scale 0.2
+  { label: 'Lumi-Soft continue', game: 'soft', key: 'continue', native: 50, kind: 'price' },    // play: 50 -> 10 at play scale 0.2
 ];                                                                                  // more rows come from the define() registry
 const POLICY_FIELDS = [                                                             // the treasury policy form, in order
   { field: 'bankTarget', key: 'lumi.treasury.bankTarget', label: 'Bank target (SGC = 100% health)' },           // whole SGC
@@ -311,11 +311,17 @@ function lumiStockInfo() {
   }
 }
 
-// What a native amount becomes at a given scale (same formula as tuning.js; overrides win).
-function previewAmount(game, key, native, kind, scaleValue) {
+// Which scale bucket ('play' | 'item') a preview row uses (the same key rule as tuning.js).
+function rowBucket(kind, key) {
+  return kind === 'price' ? tuning.priceBucket(key) : tuning.payoutBucket(key);    // price keys and payout keys have their own sets
+}
+
+// What a native amount becomes at the given scales { play, item } (same formula as tuning.js; overrides win).
+function previewAmount(game, key, native, kind, scales) {
   const g = tuning.gameSettings(game);                                              // this game's knobs
   const overrides = kind === 'price' ? g.priceOverrides : g.payoutOverrides;        // exact SGC overrides
   if (Object.prototype.hasOwnProperty.call(overrides, key)) return { value: overrides[key], override: true }; // override wins
+  const scaleValue = scales[rowBucket(kind, key)];                                  // play or item scale, by key
   if (kind === 'price') return { value: native === 0 ? 0 : Math.max(1, Math.round(native * scaleValue * g.priceMult)), override: false }; // price formula
   return { value: Math.max(0, Math.floor(native * scaleValue * g.payoutMult)), override: false }; // payout formula
 }
@@ -433,8 +439,8 @@ function renderGames(p, stats) {
     const def = tuning.definedGames().find((d) => d.game === game);                 // registry entry
     const fid = `knob-${game}`;                                                     // the row's form id
     const keyHints = [];                                                            // "entry 25 -> 5" hints
-    for (const [key, native] of Object.entries(def?.priceKeys || {})) keyHints.push(`${key}${typeof native === 'number' ? ` ${native}→${tuning.scalePrice(game, key, native)}` : ''}`); // prices
-    for (const [key, native] of Object.entries(def?.payoutKeys || {})) keyHints.push(`${key}${typeof native === 'number' ? ` ${native}→${tuning.scalePayout(game, key, native)}` : ''} (prize)`); // prizes
+    for (const [key, native] of Object.entries(def?.priceKeys || {})) keyHints.push(`${key}${typeof native === 'number' ? ` ${native}→${tuning.scalePrice(game, key, native)}` : ''} (${tuning.priceBucket(key)})`); // prices, scaled by their own bucket (play / item)
+    for (const [key, native] of Object.entries(def?.payoutKeys || {})) keyHints.push(`${key}${typeof native === 'number' ? ` ${native}→${tuning.scalePayout(game, key, native)}` : ''} (${tuning.payoutBucket(key) === 'item' ? 'item value' : 'prize'})`); // payouts: prize (play scale) or item value (item scale)
     const s = stats[game] || { d1: emptyWindow(), d7: emptyWindow() };              // stats or zeroes
     return [
       '<tr>',                                                                       // 24 h row
@@ -453,7 +459,7 @@ function renderGames(p, stats) {
   return [
     '<section class="lumi-sec" id="knobs">',                                        // anchor
     '<h2>&gt; Game Knobs &amp; Live Stats</h2>',                                    // heading
-    `<p class="lumi-small">Prices = erinne's number × scale (${esc(tuning.scale())}) × price×, min 1. Prizes = native × scale × payout× (rounded down). Daily cap = SGC of prizes per player per LA day (0 = none). Return = SGC out ÷ SGC in: under 100% is not worth playing, over 200% is printing money.</p>`, // help
+    `<p class="lumi-small">Prices = erinne's number × bucket scale × price×, min 1: entry / continue / bet use the play scale (${esc(tuning.scale())}), every shop item the item scale (${esc(tuning.itemScale())}). Prizes = native × play scale × payout× (rounded down); buyback / move-in give back an item's value at the item scale. Daily cap = SGC of prizes per player per LA day (0 = none). Return = SGC out ÷ SGC in: under 100% is not worth playing, over 200% is printing money.</p>`, // help
     '<div class="lumi-wrap"><table class="lumi-table">',                            // scrolls on phones
     '<tr><th>Game</th><th>On</th><th>Price×</th><th>Payout×</th><th>Daily cap</th><th></th><th>Window</th><th>Spends</th><th>SGC in</th><th>SGC out</th><th>Return</th><th>House net</th><th></th></tr>', // header
     rows,                                                                           // the games
@@ -485,31 +491,42 @@ function renderOverrides(p) {
   return `<section class="lumi-sec" id="overrides"><h2>&gt; Per-item Overrides</h2>${blocks}</section>`; // section HTML
 }
 
-// Section 4: the economy scale with its preview table.
-function renderScale(p, previewScale, previewError) {
-  const current = tuning.scale();                                                   // saved scale
-  const target = previewScale ?? current;                                           // what the preview shows
-  const rows = previewRows().map((r) => {
+// Section 4: the two economy scales (play + item) with their preview table.
+function renderScale(p, preview, previewError) {
+  const current = { play: tuning.scale(), item: tuning.itemScale() };               // saved scales
+  const target = { play: preview.play ?? current.play, item: preview.item ?? current.item }; // what the preview shows
+  const row = (r) => {
     const now = r.kind === 'price' ? tuning.scalePrice(r.game, r.key, r.native) : tuning.scalePayout(r.game, r.key, r.native); // what it is today
     const next = previewAmount(r.game, r.key, r.native, r.kind, target);            // what it would become
-    return `<tr><td>${esc(r.label)}<div class="lumi-small">${esc(`${r.game} · ${r.key}`)}</div></td><td>${r.kind === 'price' ? 'price' : 'prize'}</td><td class="lumi-num">${fmt(r.native)}</td><td class="lumi-num">${fmt(now)}</td><td class="lumi-num"${next.value !== now ? ' style="color:#ffaa44"' : ''}>${fmt(next.value)}${next.override ? ' <span class="lumi-small">(override)</span>' : ''}</td></tr>`; // one row
-  }).join('\n');                                                                    // every row
+    const kindText = r.kind === 'price' ? 'price' : rowBucket(r.kind, r.key) === 'item' ? 'item value' : 'prize'; // what sort of number it is
+    return `<tr><td>${esc(r.label)}<div class="lumi-small">${esc(`${r.game} · ${r.key}`)}</div></td><td>${kindText}</td><td class="lumi-num">${fmt(r.native)}</td><td class="lumi-num">${fmt(now)}</td><td class="lumi-num"${next.value !== now ? ' style="color:#ffaa44"' : ''}>${fmt(next.value)}${next.override ? ' <span class="lumi-small">(override)</span>' : ''}</td></tr>`; // one row
+  };
+  const all = previewRows();                                                        // every preview row
+  const group = (bucket, title) => [
+    `<tr><th colspan="5">${esc(title)}: now ${esc(current[bucket])}, preview ${esc(target[bucket])}</th></tr>`, // the bucket's sub-heading
+    ...all.filter((r) => rowBucket(r.kind, r.key) === bucket).map(row),            // its rows
+  ].join('\n');                                                                     // one group
+  const changed = target.play !== current.play || target.item !== current.item;     // anything to save?
   return [
     '<section class="lumi-sec" id="scale">',                                        // anchor
-    '<h2>&gt; Economy Scale</h2>',                                                  // heading
-    `<p>Saved scale: <strong>${esc(current)}</strong>. Every Lumi price and prize is erinne's number × this. Preview a new value first, then save it.</p>`, // help
+    '<h2>&gt; Economy Scales</h2>',                                                 // heading
+    `<p>Saved play scale: <strong>${esc(current.play)}</strong> · saved item scale: <strong>${esc(current.item)}</strong>. The play scale prices a go at a game (entry, continue, bet) and every prize; the item scale prices every shop item, capsule, plot, potion and seed, and the buybacks / move-in refunds that give an item's value back. Preview new values first, then save them.</p>`, // help
+    '<p class="lumi-small">Why two (Doll, 2026-11-19): players already earn 15 SGC an hour in voice chat, so items keep erinne\'s prices; play costs and prizes stay scaled together so minigames stay worth playing.</p>', // the reason
     previewError ? `<div class="flash flash-error">${esc(previewError)}</div>` : '', // bad preview value
     `<form method="GET" action="${esc(p(ROUTE))}" class="lumi-inline">`,           // preview = GET, changes nothing
-    `<label for="previewScale" style="margin:0">Preview scale</label><input id="previewScale" type="number" step="0.01" min="0.01" max="10" name="previewScale" value="${esc(target)}">`, // value
+    `<label for="previewScale" style="margin:0">Play scale</label><input id="previewScale" type="number" step="0.01" min="0.01" max="10" name="previewScale" value="${esc(target.play)}">`, // play value
+    `<label for="previewItemScale" style="margin:0">Item scale</label><input id="previewItemScale" type="number" step="0.01" min="0.01" max="10" name="previewItemScale" value="${esc(target.item)}">`, // item value
     '<button type="submit" class="btn btn-sm">Preview</button>',                    // show the table
     '</form>',                                                                      // end preview form
     '<div class="lumi-wrap"><table class="lumi-table">',                            // preview table
-    `<tr><th>Item</th><th>Kind</th><th>erinne native</th><th>Now (scale ${esc(current)})</th><th>At scale ${esc(target)}</th></tr>`, // header
-    rows,                                                                           // rows
+    `<tr><th>Item</th><th>Kind</th><th>erinne native</th><th>Now</th><th>At play ${esc(target.play)} · item ${esc(target.item)}</th></tr>`, // header
+    group('item', 'Item scale'),                                                    // items first: capsule, moon capsule ...
+    group('play', 'Play scale'),                                                    // then entries, continues and prizes
     '</table></div>',                                                               // end table
     `<form method="POST" action="${esc(p(`${ROUTE}/scale`))}" class="lumi-inline">`, // the save form
-    `<input type="hidden" name="scale" value="${esc(target)}">`,                    // the previewed value
-    `<button type="submit" class="btn btn-warn"${target === current ? ' disabled' : ''}>Save scale ${esc(target)}</button>`, // only when it changes
+    `<input type="hidden" name="scale" value="${esc(target.play)}">`,               // the previewed play scale
+    `<input type="hidden" name="itemScale" value="${esc(target.item)}">`,           // the previewed item scale
+    `<button type="submit" class="btn btn-warn"${changed ? '' : ' disabled'}>Save play ${esc(target.play)} · item ${esc(target.item)}</button>`, // only when one changes
     '</form>',                                                                      // end save form
     '</section>',                                                                   // end section
   ].join('\n');                                                                     // section HTML
@@ -601,11 +618,12 @@ function renderPage(p, url, flash) {
     return `${renderFlash(flash)}<h2>&gt; Lumi-Town</h2><div class="flash flash-info">Lumi-Town is not running in this process (it starts with the Lumi Games server; LUMI_WEB_ENABLED=false turns it off), so there is nothing to manage yet.</div>`; // friendly note
   }
   tuning.reload();                                                                  // show the freshest knobs
-  let previewScale = null;                                                          // ?previewScale=...
+  const preview = { play: null, item: null };                                       // ?previewScale=...&previewItemScale=...
   let previewError = '';                                                            // a bad value message
-  const rawPreview = url?.searchParams?.get('previewScale');                        // from the preview form
-  if (rawPreview !== null && rawPreview !== undefined && rawPreview !== '') {
-    try { previewScale = parseDecimal(rawPreview, 'Preview scale', { min: 0, max: 10, minExclusive: true }); } // validate
+  for (const [bucket, param, label] of [['play', 'previewScale', 'Preview scale'], ['item', 'previewItemScale', 'Preview item scale']]) {
+    const rawPreview = url?.searchParams?.get(param);                               // from the preview form
+    if (rawPreview === null || rawPreview === undefined || rawPreview === '') continue; // not previewed: keep the saved one
+    try { preview[bucket] = parseDecimal(rawPreview, label, { min: 0, max: 10, minExclusive: true }); } // validate
     catch (error) { previewError = error.message; }                                 // show why, keep the saved scale
   }
   const status = treasury.status();                                                 // balances, health, flows, owed
@@ -613,11 +631,11 @@ function renderPage(p, url, flash) {
   return [
     PAGE_CSS,                                                                       // page styles
     renderFlash(flash),                                                             // last action's result
-    '<nav class="lumi-toc"><a href="#treasury">Treasury</a><a href="#knobs">Game knobs</a><a href="#overrides">Overrides</a><a href="#scale">Scale</a><a href="#policy">Policy</a><a href="#actions">Actions</a><a href="#log">Admin log</a></nav>', // in-page links
+    '<nav class="lumi-toc"><a href="#treasury">Treasury</a><a href="#knobs">Game knobs</a><a href="#overrides">Overrides</a><a href="#scale">Scales</a><a href="#policy">Policy</a><a href="#actions">Actions</a><a href="#log">Admin log</a></nav>', // in-page links
     renderTreasury(status, lumiStockInfo()),                                        // 1
     renderGames(p, stats),                                                          // 2
     renderOverrides(p),                                                             // 3
-    renderScale(p, previewScale, previewError),                                     // 4
+    renderScale(p, preview, previewError),                                          // 4
     renderPolicy(p, status.policy),                                                 // 5
     renderActions(p, status),                                                       // 6
     renderLog(),                                                                    // 7
@@ -664,13 +682,18 @@ const ACTIONS = {
     return { type: 'success', message: `${gameLabel(game)}: saved ${changed.join(' and ')}.`, anchor: 'overrides' }; // done
   },
 
-  // Save the global economy scale.
+  // Save the play scale (field `scale`) and/or the item scale (field `itemScale`); a missing field is left alone.
   scale(body, who) {
-    const value = parseDecimal(body.scale, 'Scale', { min: 0, max: 10, minExclusive: true }); // above 0, at most 10
-    const old = tuning.scale();                                                     // for the message
-    if (value === old) return { type: 'info', message: `Scale is already ${old}.`, anchor: 'scale' }; // no-op
-    tuning.set('lumi.scale', String(value), who);                                   // write + log
-    return { type: 'success', message: `Economy scale changed from ${old} to ${value}.`, anchor: 'scale' }; // done
+    const fields = [['scale', 'lumi.scale', 'Play scale', tuning.scale()], ['itemScale', 'lumi.itemScale', 'Item scale', tuning.itemScale()]]; // [form field, setting, label, saved value]
+    const next = [];                                                                // validated changes, written only when all are good
+    for (const [field, key, label, old] of fields) {
+      if (body[field] === undefined) continue;                                      // not sent: unchanged
+      const value = parseDecimal(body[field], label, { min: 0, max: 10, minExclusive: true }); // above 0, at most 10
+      if (value !== old) next.push({ key, label, old, value });                     // a real change
+    }
+    if (!next.length) return { type: 'info', message: `Scales unchanged (play ${tuning.scale()}, item ${tuning.itemScale()}).`, anchor: 'scale' }; // no-op
+    for (const c of next) tuning.set(c.key, String(c.value), who);                  // write + log each (lumi_admin_log)
+    return { type: 'success', message: next.map((c) => `${c.label} changed from ${c.old} to ${c.value}.`).join(' '), anchor: 'scale' }; // done
   },
 
   // Save the treasury policy (every field validated before anything is written).

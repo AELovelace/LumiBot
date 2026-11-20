@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-require("../../public/lumi/lumi-tuning.js"); // LumiBot: window.LumiPrice / LumiPayout at the default scale (0.2), as every page has them
+require("../../public/lumi/lumi-tuning.js"); // LumiBot: window.LumiPrice / LumiPayout at the default scales (satchel prizes: play 0.2), as every page has them
 const UI = require("../../public/lumi/lumi-pet/dungeon-ui.js");
 const Art = require("../../public/lumi/lumi-pet/dungeon-art.js");
 const data = name => JSON.parse(readFileSync(new URL("../../src/lumi/data/" + name, import.meta.url), "utf8"));

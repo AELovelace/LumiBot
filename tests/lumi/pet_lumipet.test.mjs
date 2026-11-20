@@ -19,6 +19,9 @@ const state = (uid, now) => db.tx(() => lp.state(uid, now));          // read + 
 const setPet = (uid, fields) => db.tx(() => { const pet = save.peek(uid); Object.assign(pet, fields); save.save(uid, pet); }); // put a pet in a known condition
 const balance = (id) => eco.getBalance(id);                            // SGC
 const refused = (fn, re) => assert.throws(fn, (e) => e instanceof lp.PetError && re.test(e.message)); // a PetError with these words
+const ITEM_SCALE = 1;                                                  // the default lumi.itemScale: snacks, toys, decor, wear and capsules are items
+const itemSgc = (native) => Math.max(1, Math.round(native * ITEM_SCALE)); // an item price in SGC by the rule (min 1)
+const itemBack = (native) => Math.floor(native * ITEM_SCALE);          // an item-value payout (buyback / move-in) by the rule
 
 test("the last quarter of every meter takes exactly one day; fast at the top, slow at the bottom", () => {
   for (const b of Object.values(lp.DECAY)) {
@@ -58,10 +61,11 @@ test("cuddles add joy and a moment with a cooldown; free food never runs out, bo
   const fed = act(a, "feed", T0, { item: "apple" }).pet;                // free apple
   assert.equal(fed.hunger, 40);
   refused(() => act(a, "feed", T0 + lp.COOLDOWN, { item: "cookie" }), /no cookie left/);
-  const bought = act(a, "buy", T0, { item: "cookie", count: 2 });       // 2 x 8 native = 2 x 2 SGC
-  assert.deepEqual(bought.said, { bought: "cookie", count: 2, paid: 4 });
-  assert.equal(bought.coins, 996);
-  assert.equal(balance("__LUMI_SNACKS__") >= 4, true);                  // the Snack Stand got it
+  const bought = act(a, "buy", T0, { item: "cookie", count: 2 });       // 2 x 8 native = 2 x 8 SGC (items keep erinne's price)
+  const cookie = itemSgc(lp._ITEMS.cookie.price);                       // one cookie in SGC
+  assert.deepEqual(bought.said, { bought: "cookie", count: 2, paid: 2 * cookie });
+  assert.equal(bought.coins, 1000 - 2 * cookie);
+  assert.equal(balance("__LUMI_SNACKS__") >= 2 * cookie, true);         // the Snack Stand got it
   assert.deepEqual(act(a, "feed", T0 + lp.COOLDOWN, { item: "cookie" }).pet.inventory, { cookie: 1 });
   assert.deepEqual(act(a, "feed", T0 + 2 * lp.COOLDOWN, { item: "cookie" }).pet.inventory, {});
   for (const wrong of ["star-ribbon", "nothing", null]) refused(() => act(a, "feed", T0 + HOUR, { item: wrong }), /pantry/);
@@ -102,13 +106,13 @@ test("play is timed and pays once when it finishes; a nap cut short earns nothin
 test("toys are bought once (whatever count was asked) and only owned toys can be played with", () => {
   const a = newPlayer();
   refused(() => act(a, "play", T0, { item: "bouncy-moon" }), /toy box/);
-  assert.equal(act(a, "buy", T0, { item: "bouncy-moon", count: 5 }).coins, 1000 - 30); // 150 native -> 30 SGC, once
+  assert.equal(act(a, "buy", T0, { item: "bouncy-moon", count: 5 }).coins, 1000 - itemSgc(lp._ITEMS["bouncy-moon"].price)); // 150 native -> 150 SGC, once
   refused(() => act(a, "buy", T0, { item: "bouncy-moon" }), /already has/);
   assert.equal(act(a, "play", T0, { item: "bouncy-moon" }).pet.task.item, "bouncy-moon");
 });
 
 test("the shop refuses what can't be afforded with a 402 and takes nothing; free things aren't for sale; the pantry has a limit", () => {
-  const a = newPlayer(2);                                               // lunch is 12 native -> 2 SGC; banana...
+  const a = newPlayer(itemSgc(lp._ITEMS.lunch.price));                  // lunch is 12 native -> 12 SGC: exactly that much
   act(a, "buy", T0, { item: "lunch" });                                 // exactly affordable
   assert.equal(balance(a), 0);
   assert.throws(() => act(a, "buy", T0, { item: "lunch" }), (e) => e instanceof errors.LumiError && e.status === 402 && /Not enough SGC/.test(e.message));
@@ -135,7 +139,7 @@ test("decorating buys once at the Boutique, then swaps for free; capsule-only, f
   const a = newPlayer();
   const priced = Object.values(lp._DECOR).find((p) => p.price && !p.same_as && p.spot === "rug"); // a rug for sale
   const out = act(a, "decorate", T0, { item: priced.id });
-  assert.equal(out.said.paid, Math.max(1, Math.round(priced.price * 0.2))); // scaled
+  assert.equal(out.said.paid, itemSgc(priced.price));                    // an item: erinne's price x item scale
   assert.equal(out.pet.house.rug, priced.id);
   assert.equal(act(a, "decorate", T0, { item: priced.id }).said, null);  // owned: free swap
   const capsuleOnly = Object.values(lp._DECOR).find((p) => "rarity" in p);
@@ -159,8 +163,8 @@ test("walls and floors can be painted any colour, per room", () => {
 
 test("accessories are bought once then worn and taken off freely; capsule-only ones can't be bought", () => {
   const a = newPlayer();
-  const bought = act(a, "wear", T0, { item: "acc-bow" });               // 60 native -> 12 SGC
-  assert.equal(bought.said.paid, 12);
+  const bought = act(a, "wear", T0, { item: "acc-bow" });               // 60 native -> 60 SGC
+  assert.equal(bought.said.paid, itemSgc(lp._WEAR["acc-bow"].price));
   assert.equal(bought.pet.outfit[lp._WEAR["acc-bow"].slot], "acc-bow");
   assert.equal(act(a, "wear", T0, { item: "acc-bow" }).pet.outfit[lp._WEAR["acc-bow"].slot], undefined); // off
   const capsuleOnly = Object.values(lp._WEAR).find((w) => w.rarity && !w.price);
@@ -175,17 +179,17 @@ test("the capsule rolls a rarity then a prize; a repeat pays back half its value
   const rng = () => 0;                                                  // roll 0: the first rarity (common), its first prize
   const first = act(a, "capsule", T0, { rng });
   assert.equal(first.said.rarity, "common");
-  assert.equal(first.said.paid, 30);                                    // 150 native -> 30 SGC (Moon Capsule Co.)
-  assert.ok(balance("__LUMI_CAPSULES__") >= 30);
+  assert.equal(first.said.paid, itemSgc(lp.CLOSET.capsule.price));      // 150 native -> 150 SGC (Moon Capsule Co.)
+  assert.ok(balance("__LUMI_CAPSULES__") >= itemSgc(lp.CLOSET.capsule.price));
   const won = first.said.capsule;
   const again = act(a, "capsule", T0, { rng });                         // the same prize again
   assert.equal(again.said.capsule, won);
   assert.equal(again.said.duplicate, true);
   const prize = lp._PRIZES.find((p) => p.id === won);
   const native = Math.floor((prize.price || lp.CLOSET.values.common) / 2);
-  assert.equal(again.said.buyback, Math.floor(native * 0.2));           // half its value, scaled
+  assert.equal(again.said.buyback, itemBack(native));                    // half its value, at the item scale
   const moon = act(a, "capsule", T0, { item: "moon", rng });            // the dearer one
-  assert.equal(moon.said.paid, 60);
+  assert.equal(moon.said.paid, itemSgc(lp.CLOSET.moon.price));          // 300 native -> 300 SGC
   assert.ok(["rare", "epic", "legendary"].includes(moon.said.rarity));
   refused(() => act(a, "capsule", T0, { item: "sun" }), /doesn't know that capsule/);
 });
@@ -219,10 +223,10 @@ test("one moving box a day; an older house moves in afresh with its SGC given ba
   setPet(b, { moved_in: 0, decor: [priced.id], house: { [priced.spot]: priced.id } });
   const moved = state(b, T0 + 1000).pet;
   assert.deepEqual([moved.decor, moved.moved_in, moved.unpacked], [[], 1, 0]);
-  assert.equal(balance(b), Math.floor(priced.price * 0.2));             // the move-in refund, scaled, no cap
+  assert.equal(balance(b), itemBack(priced.price));                     // the move-in refund at the item scale, no cap
   setPet(b, { moved_in: 0 });
   state(b, T0 + 2000);
-  assert.equal(balance(b), Math.floor(priced.price * 0.2));             // paid once (lumi-move-in:<uid>)
+  assert.equal(balance(b), itemBack(priced.price));                     // paid once (lumi-move-in:<uid>)
 });
 
 test("her name and colour are hers to choose", () => {

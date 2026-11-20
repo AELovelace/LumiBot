@@ -3,10 +3,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-createRequire(import.meta.url)("../../public/lumi/lumi-tuning.js"); // LumiBot: LumiPrice on globalThis (default tuning: x0.2), as on a page
+createRequire(import.meta.url)("../../public/lumi/lumi-tuning.js"); // LumiBot: LumiPrice on globalThis (default tuning: play x0.2, items x1), as on a page
 const Pk = createRequire(import.meta.url)("../../public/lumi/lumi-pet/picker-ui.js");
 const data = name => JSON.parse(readFileSync(new URL("../../src/lumi/data/" + name, import.meta.url), "utf8"));
 const house = data("house.json"), closet = data("closet.json");
+const ITEM_SCALE = 1;                                                   // the default item scale: every price in these lists is an item
+const itemSgc = native => Math.max(1, Math.round(native * ITEM_SCALE)); // an item price in SGC by the rule (min 1)
+const priceOf = (list, id) => list.flatMap(group => group.items).find(item => item.id === id).price; // a piece's erinne price
 // A Lumi who has bought the tier-1 piece (the old free starter) for every spot, and put it out.
 const firsts = Object.fromEntries(house.spots.filter(spot => !spot.same_as).map(spot => [spot.id, spot.items.find(item => !item.worn).id])); // (shared walls have no pieces of their own)
 const starters = Object.values(firsts).filter(id => house.spots.some(spot => spot.items.some(item => item.id === id && item.price)));
@@ -114,7 +117,7 @@ test("the closet is the capsule and one row a place on Lumi, with nothing as a c
   assert.deepEqual(view.wear.map(r => r.key), ["capsule", "capsule-moon", "slot-head", "slot-neck", "slot-wings", "slot-back", "slot-paws", "slot-tail"]);
   assert.deepEqual(view.slot("capsule").send, { action: "capsule" });
   assert.deepEqual(view.slot("capsule-moon").send, { action: "capsule", item: "moon" });
-  assert.match(view.slot("capsule-moon").hint, /^60 SGC · rare, epic or legendary only · a repeat pays back half its value$/);
+  assert.match(view.slot("capsule-moon").hint, new RegExp(`^${itemSgc(closet.moon.price)} SGC · rare, epic or legendary only · a repeat pays back half its value$`)); // 300 native -> 300 SGC
   const head = view.slot("slot-head");
   assert.deepEqual([head.shown, head.hint, head.wear, head.options.length], [null, "◀ Nothing ▶ · nothing on", ["head", null], 22]);   // nothing, then twenty hats and the Lumi-Soft goggles
   head.local();
@@ -123,7 +126,7 @@ test("the closet is the capsule and one row a place on Lumi, with nothing as a c
 
 test("flipping a place on Lumi tries it on, and Enter buys, wears, takes off or explains", () => {
   const key = { "slot:head": "acc-bow" };
-  assert.deepEqual([lists({}, null, key).slot("slot-head").hint, lists({}, null, key).slot("slot-head").send], ["◀ Ribbon bow ▶ · Common · 12 SGC · Enter buys it", { action: "wear", item: "acc-bow" }]);
+  assert.deepEqual([lists({}, null, key).slot("slot-head").hint, lists({}, null, key).slot("slot-head").send], [`◀ Ribbon bow ▶ · Common · ${itemSgc(priceOf(closet.slots, "acc-bow"))} SGC · Enter buys it`, { action: "wear", item: "acc-bow" }]); // 60 native -> 60 SGC
   assert.equal(lists({ closet: ["acc-bow"] }, null, key).slot("slot-head").hint, "◀ Ribbon bow ▶ · Common · hers · Enter puts it on");
   const worn = lists({ closet: ["acc-bow"], outfit: { head: "acc-bow" } });
   assert.deepEqual([worn.slot("slot-head").hint, worn.slot("slot-head").icon, worn.slot("slot-head").send], ["◀ Ribbon bow ▶ · Common · wearing it", "✓", undefined]);
@@ -150,8 +153,8 @@ test("the capsules are also sold at the top of the Shop", () => {
   const snap = { closet: { capsule: { name: "Star Capsule", price: 150 }, moon: { name: "Moon Capsule", price: 300 } } };
   const rows = Pk.capsuleRows(snap);
   assert.deepEqual(rows.map(r => [r.key, r.name, r.send]), [["capsule", "Star Capsule", { action: "capsule" }], ["capsule-moon", "Moon Capsule", { action: "capsule", item: "moon" }]]);
-  assert.match(rows[0].hint, /^30 SGC/);
-  assert.match(rows[1].hint, /^60 SGC · rare, epic or legendary only/);
+  assert.match(rows[0].hint, new RegExp(`^${itemSgc(150)} SGC `));                 // the Star Capsule: 150 native -> 150 SGC
+  assert.match(rows[1].hint, new RegExp(`^${itemSgc(300)} SGC · rare, epic or legendary only`)); // the Moon Capsule: 300 -> 300
 });
 
 test("a bare spot says so, the boxes come first, and a worn piece waits in its box until it is unpacked", () => {
@@ -174,7 +177,7 @@ test("buying is try before you buy: the first choice shows it, the second buys i
   const full = lists({}, "rug");
   const moon = full.spot("rug-moon");
   assert.deepEqual([moon.preview, moon.send], [["rug", "rug-moon"], { action: "decorate", item: "rug-moon" }]);
-  assert.equal(moon.ask, "Here's the Moon rug in the room. Choose it again to buy it for 20 SGC.");
+  assert.equal(moon.ask, `Here's the Moon rug in the room. Choose it again to buy it for ${itemSgc(priceOf(house.spots, "rug-moon"))} SGC.`); // 100 native -> 100 SGC
   assert.equal(full.spot("rug-oval").ask, undefined, "Already hers: no need to ask");
   const hat = lists({}, null, {}).wear.find(r => r.key === "slot-head");
   hat.local && hat.local();

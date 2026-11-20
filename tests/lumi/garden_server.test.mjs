@@ -2,7 +2,7 @@
 // flowers and their tree, the press and its daily bands, helpers and Lumi's build, abilities, the two minigames,
 // gifts, decorations, moonrise and reminders. erinne drove these through lumipet.garden_act; here the garden module is
 // driven directly (current -> advance -> act -> save, as lumipet.gardenAct does) with a pet object, so the tests
-// don't depend on the pet module. Coins are SGC: native prices are scaled by tuning (0.2 by default).
+// don't depend on the pet module. Coins are SGC: native prices are scaled by tuning (nursery items x1, prizes x0.2 by default).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -61,6 +61,7 @@ function set(fields = {}, garden = {}) { // erinne _set: put the saved garden in
 }
 const refused = (fn, re) => assert.throws(fn, (e) => e instanceof G.GardenError && re.test(e.message)); // a GardenError with words
 const sgcPrice = (key, native) => tuning.scalePrice("garden", key, native);          // what the nursery charges
+const itemSgc = (native) => Math.max(1, Math.round(native * 1));                     // the rule for an item at the default item scale 1
 
 // --------------------------------------------------------------------------- the catalog
 test("the flowers start free, open in order and end in perennials", () => {
@@ -185,7 +186,8 @@ test("each garden grows its own tree with SGC or starpowder", () => {
   refused(() => g("unlock", T0, quiet(), { item: "glowbell" }), /given 40 starpowder/);
   set({}, { given: 40 });
   refused(() => g("unlock", T0, quiet(), { item: "starpoppy" }), /Starpoppy grows from Pixie Puff: unlock it first/);
-  assert.equal(g("unlock", T0, quiet(), { item: "glowbell" }).coins, 1000 - sgcPrice("glowbell", bell.coins)); // 25 native -> 5 SGC
+  assert.equal(sgcPrice("glowbell", bell.coins), itemSgc(bell.coins));                // a seed is an item: erinne's price
+  assert.equal(g("unlock", T0, quiet(), { item: "glowbell" }).coins, 1000 - sgcPrice("glowbell", bell.coins)); // 25 native -> 25 SGC
   assert.equal(eco.getBalance("__LUMI_NURSERY__"), sgcPrice("glowbell", bell.coins));                        // to the Nursery
   refused(() => g("unlock", T0, quiet(), { item: "glowbell" }), /can unlock/);
   set({ powder: rose.stardust - 1 }, { given: rose.needs, unlocked: LADDER.slice(0, rose.rung) });
@@ -211,8 +213,8 @@ test("plots cost more each time and a garden holds sixteen", () => {
   assert.equal(look().plot_price, 25);                                              // native
   assert.equal(look().plots.length, 4);
   const out = g("plot");
-  assert.deepEqual(out.said, { bought: "plot", paid: sgcPrice("plot", 25) });        // 5 SGC
-  assert.ok(out.coins === 995 && out.garden.plots.length === 5 && out.garden.plot_price === 31);
+  assert.deepEqual(out.said, { bought: "plot", paid: itemSgc(25) });                 // 25 SGC (an item)
+  assert.ok(out.coins === 1000 - itemSgc(25) && out.garden.plots.length === 5 && out.garden.plot_price === 31);
   set({}, { plots: Array.from({ length: 16 }, G._empty) });
   assert.equal(look().plot_price, null);
   refused(() => g("plot"), /every plot/);

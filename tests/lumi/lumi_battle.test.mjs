@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-require("../../public/lumi/lumi-tuning.js"); // LumiBot: window.LumiPrice / LumiPayout at the default scale (0.2), as every page has them
+require("../../public/lumi/lumi-tuning.js"); // LumiBot: window.LumiPrice / LumiPayout at the default scales (play 0.2, items 1), as every page has them
 const UI = require("../../public/lumi/lumi-pet/battle-ui.js");
 const Art = require("../../public/lumi/lumi-pet/enemies.js");
 const catalog = JSON.parse(readFileSync(new URL("../../src/lumi/data/battle.json", import.meta.url), "utf8"));
@@ -14,6 +14,7 @@ const rules = { costs: [1, 1, 2, 2, 3, 3, 5, 5], respec: 100, potion: 20, potion
   stat_keys: STATS, stat_names: { hp: "Health", attack: "Attack", defense: "Defense", magic: "Magic", ward: "Ward", speed: "Speed", mp: "MP" },
   kit: { ether: { name: "Mana potion", icon: "💧", price: 25, about: "Gives back half her MP" }, "x-attack": { name: "X-Attack", icon: "⚔", price: 30, about: "Attack and magic up a stage" },
     "x-defend": { name: "X-Defend", icon: "⛨", price: 30, about: "Defense and ward up a stage" }, "x-speed": { name: "X-Speed", icon: "➶", price: 30, about: "Speed up a stage" } } };
+const itemSgc = native => Math.max(1, Math.round(native * 1));       // the Outfitters sell items: erinne's price x the default item scale 1
 const slots = [["cybertek", 10], ["magitek", 15], ["cybertek", 25], ["magitek", 35], ["cybertek", 45]];
 
 function snapshot(pet = {}, fight = null, extra = {}) { // What the server would send, for a pet in a given state.
@@ -56,7 +57,7 @@ test("the front page offers a fight, skills, moves, mods and potions, and a wake
   const napping = open(snapshot({ faint_until: 61000, skills: ["heavy-paw"] }));
   assert.deepEqual(napping.rows.map(r => r.key), ["heal", "stats", "skills", "moves", "mods", "potions", "kit", "respec"]);
   assert.deepEqual(napping.row("heal").send, { action: "heal" });
-  assert.match(napping.row("heal").hint, /10 SGC · or free in 60s/);
+  assert.match(napping.row("heal").hint, new RegExp(`^${itemSgc(rules.heal)} SGC · or free in 60s`)); // heal 50 native -> 50 SGC
 });
 
 test("choosing an opponent sends only a tier", () => {
@@ -124,7 +125,7 @@ test("the Stats page places a point at a time, lets Auto place the rest, and tak
   assert.match(page.row("stat-attack").note, /as many points as her level allows/);         // 6 of 6 at level 3
   assert.match(page.row("stats-auto").hint, /Leaning on attack, health, speed/);
   assert.deepEqual([page.row("auto-stats").name, page.row("auto-stats").send], ["Auto on level-up: off", { action: "auto_stats" }]);
-  assert.match(page.row("stats-reset").hint, /20 SGC/);
+  assert.match(page.row("stats-reset").hint, new RegExp(`^${itemSgc(rules.stat_reset)} SGC `)); // reset 100 native -> 100 SGC
   const none = open(snapshot({ level: 1 }), "stats");
   assert.match(none.row("stat-hp").note, /No points waiting/);
   assert.equal(none.row("stats-reset"), undefined, "Nothing placed: nothing to take back");
@@ -133,5 +134,5 @@ test("the Stats page places a point at a time, lets Auto place the rest, and tak
 test("fight items are bought one at a time, up to nine of each", () => {
   const shop = open(snapshot({}, null, { kit: { ether: 4 } }), "kit");
   assert.deepEqual(shop.rows.slice(1).map(r => r.send), ["ether", "x-attack", "x-defend", "x-speed"].map(item => ({ action: "kit", item, count: 1 })));
-  assert.match(shop.row("buy-ether").hint, /5 SGC · .* carrying 4 of 9/);
+  assert.match(shop.row("buy-ether").hint, new RegExp(`^${itemSgc(rules.kit.ether.price)} SGC · .* carrying 4 of 9`)); // ether 25 native -> 25 SGC
 });

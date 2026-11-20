@@ -11,7 +11,8 @@ it all at the end. Doll's answers are in **§10 Decisions**.
 >
 > Pricing rule:
 > - Game code always passes erinne's native amounts.
-> - `sgc.js` scales them with the admin-page tuning: `price = max(1, round(native × scale × priceMult))`, `payout = floor(native × scale × payoutMult)`.
+> - `sgc.js` scales them with the admin-page tuning: `price = max(1, round(native × bucketScale × priceMult))`, `payout = floor(native × bucketScale × payoutMult)`.
+> - Two scales, picked by the tuning key (§4): the **play scale** (`lumi.scale`, 0.2) for `entry` / `continue` / `bet` and every prize; the **item scale** (`lumi.itemScale`, 1) for every shop item and the `buyback` / `movein` payouts.
 > - The page uses the same formula (`window.LUMI_TUNING` / `LumiPrice`), so the price shown is the price charged.
 >
 > The internal API that the game modules build on is documented in `src/lumi/CONTRACT.md`.
@@ -229,11 +230,20 @@ Every number in that table (entry, divisor, price, cap) comes from `tuning.js` (
 
 Doll's rule: payouts can come down as long as buy-ins come down too, so playing well still earns.
 
-**Default: scale both by the same factor.** The Lumi economy scale defaults to **0.2**:
-- Every entry, continue and shop price is ×0.2, rounded, with a minimum of 1. Arcade entry 25 → **5**; Lumi-Soft continues 50/100/200/400 → **10/20/40/80**; capsule 150 → **30**; moon capsule 300 → **60**.
-- Every payout is ×0.2: Prism score ÷10 → **÷50**; Launch metres ÷20 → **÷100**; Lumi-Soft ÷250 → **÷1250**; arcade 1 per point → **1 per 5 points**; battle EXP×0.6 → **×0.12**; daily visit 25 → **5**; housewarming 10 → **2**.
+**Two scales (Doll, 2026-11-19).** Players already earn 15 SGC an hour in voice chat, so **items keep erinne's prices**; play costs and prizes stay scaled together so minigames stay profitable. The scale is picked by the tuning **key** sgc passes (the page's `LumiPrice` / `LumiPayout` only know game + key, so the rule is key-only):
 
-Because entry and payout shrink by the same factor, each game's **player return** (prizes ÷ entries) is exactly what it was in erinne. A run that earned in erinne still earns here, just in smaller numbers that suit real SGC.
+| Bucket | Setting (default) | Price keys | Payout keys |
+|---|---|---|---|
+| **Play scale** | `lumi.scale` (0.2) | exactly `entry`, `continue`, `bet` | everything except `buyback` / `movein`: `win`, `betwin`, `press`, `token`, `visit`, `housewarm` ... |
+| **Item scale** | `lumi.itemScale` (1) | every other key: pet snack/toy/decor/wear ids, `capsule`, `moon`, city `plot` / style / yard ids / `capsule`, battle `respec` / `potion` / `heal` / `reset` / mod and kit ids, garden `plot` / flower ids | exactly `buyback`, `movein` (an item's value given back) |
+
+City office `sale` is paid `{ exact: true }` and is never scaled.
+
+- **Play scale, ×0.2**, rounded, with a minimum of 1. Arcade entry 25 → **5**; Lumi-Soft continues 50/100/200/400 → **10/20/40/80**; showdown bet chips likewise.
+- Every prize is ×0.2: Prism score ÷10 → **÷50**; Launch metres ÷20 → **÷100**; Lumi-Soft ÷250 → **÷1250**; arcade 1 per point → **1 per 5 points**; battle EXP×0.6 → **×0.12**; daily visit 25 → **5**; housewarming 10 → **2**.
+- **Item scale, ×1**: erinne's own prices. A cookie 8 → **8**; capsule 150 → **150**; moon capsule 300 → **300**; a battle potion 20 → **20**; a LefTown block-1 plot 6,000 → **6,000**. A capsule repeat pays back half the prize's value at the same ×1.
+
+Because entry and payout shrink by the same factor, each minigame's **player return** (prizes ÷ entries) is exactly what it was in erinne. A run that earned in erinne still earns here, just in smaller numbers that suit real SGC. Items are what that SGC (and voice-chat SGC) buys.
 
 **Daily caps (Doll, 2026-11-19): every game is uncapped by default** (`dailyCap` 0 = no cap). The cap stays as an
 admin option per game on `/lumi`: set it above 0 (SGC of prizes per player per LA day) when abuse shows up, e.g. for
@@ -253,7 +263,7 @@ A new page in `src/webPanel.js` (as its own file, `src/lumiAdminPage.js`, to kee
    - **Live stats**: plays, SGC in, SGC out, **player return %**, house net (24 h / 7 d from the ledger).
    - A warning badge when player return is under 100% (not profitable to play) or over 200% (it's printing).
 3. **Shop prices**: a price multiplier per category, plus per-item overrides for the pet shop, boutique, capsules, outfitters and nursery.
-4. **Economy scale**: the global scale (default 0.2), with a preview of what every number becomes before you save.
+4. **Economy scales**: the play scale (default 0.2) and the item scale (default 1), with a preview (items grouped under the item scale, entries/continues/prizes under the play scale) of what every number becomes before you save.
 5. **Treasury policy**:
    - Bank target and ceiling, the sliding-scale bands, sweep interval and refill buffer.
    - Holdings reserve floor, LUMI dividend rate and emergency-draw order.
@@ -391,7 +401,7 @@ Each phase ends with `npm test` green, `node --check` on new files, a play-throu
 
 ## 10. Decisions (Doll, 2026-11-19)
 
-1. **Payouts**: lowering payouts is fine *if buy-ins drop with them, so playing stays profitable*. → Scale both by the same factor (default 0.2), with live player-return stats and an **admin page to control all of it** (§4).
+1. **Payouts**: lowering payouts is fine *if buy-ins drop with them, so playing stays profitable*. → Scale both by the same factor (default 0.2), with live player-return stats and an **admin page to control all of it** (§4). Later the same day: **items keep erinne's prices** (item scale 1), because players already earn 15 SGC an hour in voice chat; only play costs and prizes use the 0.2 play scale (§4).
 2. **Money**: seeding from Central Bank is fine (250k). → **Lumi-Town Bank** is the main account. **Lumi Holdings Inc.** is a permanent stock that serves as its reserve capital. Themed accounts hold each category of sales. One pool of liquidity via a **sliding-scale sweep** and **emergency draws** (§3).
 3. **Who can play**: keep the current setup (members of Doll's server).
 4. **Assets**: from royalty-free sample packs Doll bought, so they're OK to serve.

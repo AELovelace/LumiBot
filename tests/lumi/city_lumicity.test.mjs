@@ -23,6 +23,8 @@ const balance = (id) => eco.getBalance(id);                             // SGC
 const refused = (fn, re) => assert.throws(fn, (e) => e instanceof lp.PetError && re.test(e.message)); // her words
 const clone = (o) => JSON.parse(JSON.stringify(o));                     // a copy to break
 const plots = () => eco.getEconomyDb().prepare("SELECT * FROM lumi_plots").all(); // every owned plot
+const ITEM_SCALE = 1;                                                   // the default lumi.itemScale: city plots, styles, yard and the capsule are items
+const itemSgc = (native) => Math.max(1, Math.round(native * ITEM_SCALE)); // an item price by the rule (min 1)
 
 test("the shipped city and estate are valid, and broken ones are refused", () => {
   assert.equal(lc.ESTATE.styles.length, 30);
@@ -60,7 +62,7 @@ test("suggested prices fall away from Downtown, the avenue costs more; lot ids a
   assert.ok(lc.suggested("left", 99, 1) >= lc.CITY.price.floor);
   const avenue = Object.values(lc._LOTS).find((l) => l.frontage === "avenue").lot, lane = Object.values(lc._LOTS).find((l) => l.frontage === "lane").lot;
   assert.ok(lc.suggested("left", 1, avenue) > lc.suggested("left", 1, lane));
-  assert.equal(lc.suggestedSgc("left", 1, 1), Math.round(lc.suggested("left", 1, 1) * 0.2));
+  assert.equal(lc.suggestedSgc("left", 1, 1), itemSgc(lc.suggested("left", 1, 1))); // a plot is an item: erinne's own price
   assert.deepEqual(lc.parse("l-3-5"), ["left", 3, 5]);
   refused(() => lc.parse("x-1-1"), /isn't a plot/);
   refused(() => lc.parse("l-0-1"), /isn't a plot/);
@@ -161,7 +163,7 @@ test("house styles are bought once and put up on her own plot; yard pieces are s
   const a = newPlayer(100_000);
   const style = lc.ESTATE.styles[2];
   refused(() => act(a, "style_set", { item: style.id }), /haven't got that house style/);
-  assert.equal(act(a, "style_buy", { item: style.id }).said.paid, Math.round(style.price * 0.2));
+  assert.equal(act(a, "style_buy", { item: style.id }).said.paid, itemSgc(style.price)); // a house style is an item
   refused(() => act(a, "style_buy", { item: style.id }), /already got that one/);
   refused(() => act(a, "style_set", { item: style.id }), /need a plot first/);
   act(a, "buy", { plot: "l-1-5" });
@@ -181,10 +183,10 @@ test("the Keepsake Capsule rolls a rarity then a piece; a repeat pays back half;
   const a = newPlayer(100_000);
   const rng = () => 0;                                                  // always the first common
   const first = act(a, "capsule", { rng });
-  assert.deepEqual([first.said.rarity, first.said.duplicate, first.said.paid], ["common", false, 40]); // 200 native -> 40 SGC
+  assert.deepEqual([first.said.rarity, first.said.duplicate, first.said.paid], ["common", false, itemSgc(200)]); // 200 native -> 200 SGC (item)
   const again = act(a, "capsule", { rng });
   assert.equal(again.said.duplicate, true);
-  assert.equal(again.said.buyback, Math.floor(Math.floor(lc.ESTATE.values.common / 2) * 0.2));
+  assert.equal(again.said.buyback, Math.floor(Math.floor(lc.ESTATE.values.common / 2) * ITEM_SCALE)); // half its value back, at the item scale
   const b = newPlayer(100_000);
   db.tx(() => { const pet = lp.load(b); lp.estateOf(pet).yard = lc._KEEPSAKES.map((p) => p.id); lp._save(b, pet); });
   const held = balance(b);

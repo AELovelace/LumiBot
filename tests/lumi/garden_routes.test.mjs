@@ -30,8 +30,9 @@ test("the garden takes choices and never amounts", async () => {
 test("a plot is paid in SGC to the Starpowder Nursery; not enough SGC is a 402", async () => {
   const bought = await post(URL_, { action: "plot" });
   assert.equal(bought.status, 200, JSON.stringify(bought.body));
-  assert.deepEqual(bought.body.said, { bought: "plot", paid: 5 });                   // 25 native x 0.2
-  assert.equal(env.eco.getBalance("__LUMI_NURSERY__"), 5);
+  const plotSgc = Math.max(1, Math.round(25 * 1));                                    // a plot is an item: 25 native x item scale 1
+  assert.deepEqual(bought.body.said, { bought: "plot", paid: plotSgc });
+  assert.equal(env.eco.getBalance("__LUMI_NURSERY__"), plotSgc);
   env.eco.getEconomyDb().prepare("UPDATE accounts SET balance = 1 WHERE user_id = ?").run(ME);
   const poor = await post(URL_, { action: "plot" });
   assert.equal(poor.status, 402);

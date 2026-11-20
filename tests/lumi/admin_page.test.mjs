@@ -186,19 +186,63 @@ test("overrides: validated whole SGC >= 0, saved through setGame", async () => {
 test("economy scale: preview changes nothing, saving does", async () => {
   seedEconomy();                                                                  // known state
   const preview = await request("/lumi?previewScale=0.4", { headers: { cookie: ADMIN_COOKIE } }); // GET preview
-  assert.match(preview.body, /At scale 0\.4/);
-  assert.match(preview.body, /Save scale 0\.4/);
+  assert.match(preview.body, /At play 0\.4 · item 1</);                           // play previewed, item kept
+  assert.match(preview.body, /Save play 0\.4 · item 1</);
   tuning.reload();
   assert.equal(tuning.scale(), 0.2);                                              // preview didn't save
   const junk = await request("/lumi?previewScale=-1", { headers: { cookie: ADMIN_COOKIE } }); // bad preview
   assert.match(junk.body, /Preview scale must be/);
   const saved = await follow(await post("/lumi/scale", { scale: "0.4" }));        // save it
-  assert.match(saved.body, /from 0\.2 to 0\.4/);
+  assert.match(saved.body, /Play scale changed from 0\.2 to 0\.4/);
   assert.equal(tuning.scale(), 0.4);
-  assert.equal(tuning.scalePrice("pet", "capsule", 150), 60);                     // 150 * 0.4
+  assert.equal(tuning.scalePrice("soft", "entry", 25), 10);                       // a play price: 25 * 0.4
+  assert.equal(tuning.scalePrice("pet", "capsule", 150), 150);                    // an item: still 150 * item scale 1
   assert.equal(lastLog("lumi.scale").new, "0.4");
+  assert.equal(lastLog("lumi.itemScale"), undefined);                             // item scale untouched, not logged
   const zero = await follow(await post("/lumi/scale", { scale: "0" }));           // 0 is refused
   assert.match(zero.body, /flash-error/);
+});
+
+test("item scale: the preview groups items and play, saving logs it, play is untouched", async () => {
+  seedEconomy();                                                                  // known state
+  const page = await request("/lumi", { headers: { cookie: ADMIN_COOKIE } });     // the page as saved
+  const section = page.body.slice(page.body.indexOf('id="scale"'), page.body.indexOf('id="policy"')); // the scales section only
+  const itemAt = section.indexOf("Item scale: now 1");                            // the item group heading
+  const playAt = section.indexOf("Play scale: now 0.2");                          // the play group heading
+  assert.ok(itemAt > 0 && playAt > itemAt);                                       // items first, then play
+  const items = section.slice(itemAt, playAt);                                    // the item rows
+  const plays = section.slice(playAt);                                            // the play rows
+  assert.match(items, /Capsule<div class="lumi-small">pet · capsule<\/div><\/td><td>price<\/td><td class="lumi-num">150<\/td><td class="lumi-num">150</); // 150 -> 150
+  assert.match(items, /Moon capsule<div class="lumi-small">pet · moon<\/div><\/td><td>price<\/td><td class="lumi-num">300<\/td><td class="lumi-num">300</); // 300 -> 300
+  assert.match(plays, /Arcade entry<div class="lumi-small">soft · entry<\/div><\/td><td>price<\/td><td class="lumi-num">25<\/td><td class="lumi-num">5</); // 25 -> 5
+  assert.match(plays, /Lumi-Soft continue<div class="lumi-small">soft · continue<\/div><\/td><td>price<\/td><td class="lumi-num">50<\/td><td class="lumi-num">10</); // 50 -> 10
+  assert.doesNotMatch(plays, /pet · capsule/);                                    // no item under play
+  assert.doesNotMatch(items, /soft · entry/);                                     // no play row under items
+  const preview = await request("/lumi?previewItemScale=0.5", { headers: { cookie: ADMIN_COOKIE } }); // preview the item scale
+  assert.match(preview.body, /At play 0\.2 · item 0\.5</);
+  assert.match(preview.body, /<td class="lumi-num">150<\/td><td class="lumi-num">150<\/td><td class="lumi-num" style="color:#ffaa44">75</); // capsule would be 75
+  const junk = await request("/lumi?previewItemScale=abc", { headers: { cookie: ADMIN_COOKIE } }); // bad preview
+  assert.match(junk.body, /Preview item scale must be/);
+  const saved = await follow(await post("/lumi/scale", { scale: "0.2", itemScale: "0.5" })); // the save form sends both
+  assert.match(saved.body, /Item scale changed from 1 to 0\.5/);
+  assert.doesNotMatch(saved.body, /Play scale changed/);                          // play was the same
+  assert.equal(tuning.itemScale(), 0.5);
+  assert.equal(tuning.scale(), 0.2);
+  assert.equal(tuning.scalePrice("pet", "capsule", 150), 75);                     // item: 150 * 0.5
+  assert.equal(tuning.scalePrice("soft", "entry", 25), 5);                        // play: unchanged
+  const log = lastLog("lumi.itemScale");                                          // audit row
+  assert.equal(log.who, "AdminDoll");
+  assert.equal(log.new, "0.5");
+  assert.equal(lastLog("lumi.scale"), undefined);                                 // play not rewritten
+  const same = await follow(await post("/lumi/scale", { scale: "0.2", itemScale: "0.5" })); // nothing differs
+  assert.match(same.body, /Scales unchanged/);
+  const zero = await follow(await post("/lumi/scale", { scale: "0.3", itemScale: "0" })); // 0 is refused...
+  assert.match(zero.body, /Item scale must be/);
+  assert.equal(tuning.scale(), 0.2);                                              // ...and nothing was written
+  const knobs = page.body.slice(page.body.indexOf('id="knobs"'), page.body.indexOf('id="overrides"')); // the game rows
+  assert.match(knobs, /entry 25→5 \(play\)/);                                     // a play key shows its play price
+  assert.match(knobs, /capsule 150→150 \(item\)/);                                // an item key shows its item price (as saved when the page loaded)
+  assert.match(knobs, /visit 25→5 \(prize\)/);                                    // a prize uses the play scale
 });
 
 test("treasury policy: validated, only changed keys written", async () => {

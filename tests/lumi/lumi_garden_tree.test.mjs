@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-require("../../public/lumi/lumi-tuning.js");                     // LumiBot: LumiPrice/LumiPayout on globalThis (default scale 0.2)
+require("../../public/lumi/lumi-tuning.js");                     // LumiBot: LumiPrice/LumiPayout on globalThis (default scales: play 0.2, items 1)
 const T = require("../../public/lumi/lumi-pet/garden-tree.js");
 const Art = require("../../public/lumi/lumi-pet/garden-tree-art.js");
 const catalog = JSON.parse(readFileSync(new URL("../../src/lumi/data/garden.json", import.meta.url), "utf8"));
@@ -21,6 +21,7 @@ function page(name, view, cursor, more = {}) {
   const went = [], ctx = { garden: view, cursor, seed: "moondaisy", level: 1, go: change => went.push(change), ...more };
   return { went, rows: T.rows(name, ctx), choice: T.choice(name, ctx, cursor), lines: T.lines(name, ctx, cursor), ctx };
 }
+const itemSgc = native => Math.max(1, Math.round(native * 1));       // a seed's SGC price: erinne's price x the default item scale 1
 const clicks = svg => [...svg.matchAll(/data-click="([^"]+)"/g)].map(m => m[1]);
 
 test("the flower tree: Moondaisy at the top, three branches under it, the crown below the cut branches", () => {
@@ -44,7 +45,7 @@ test("a flower is unlocked, open, waiting or locked, and Enter says or does the 
   assert.deepEqual(page("seeds", view, "glowbell").choice, { send: { action: "unlock", item: "glowbell" }, name: "Unlock Glowbell" });
   const glow = page("seeds", view, "glowbell");
   assert.deepEqual([glow.rows[0].send, glow.rows[0].url, glow.rows[0].icon], [{ action: "unlock", item: "glowbell" }, "garden", "✧"]);
-  assert.match(glow.rows[0].name, /Unlock Glowbell \(5 SGC\)/);
+  assert.match(glow.rows[0].name, new RegExp(`Unlock Glowbell \\(${itemSgc(of("glowbell").coins)} SGC\\)`)); // a seed is an item: 25 native -> 25 SGC
   assert.match(page("seeds", view, "pixie-puff").choice.say, /given 50 starpowder \(45 so far\)/);
   assert.match(page("seeds", view, "dewdrop-star").choice.say, /^Dewdrop Star grows from Glowbell: unlock it first\.$/);
   assert.match(page("seeds", garden(), "midnight-rose").choice.say, /grows from Glass Lily or Phoenix Daisy: unlock one of them first/);
@@ -61,7 +62,7 @@ test("the flower page's words: the tree at a glance, the flower, how it grows, a
   assert.match(sun[0], /^Flower tree · 5 of 42 unlocked/);
   assert.equal(sun[1], "Slow giants: Little Sun");
   assert.match(sun[2], /1 h 15 · 349 powder · plant again/);
-  assert.equal(sun[3], "Ready to unlock: 14 SGC");             // LumiBot: 70 native -> 14 SGC
+  assert.equal(sun[3], `Ready to unlock: ${itemSgc(70)} SGC`);  // LumiBot: 70 native -> 70 SGC (an item)
   assert.equal(sun[4], "Grows from Moon Mushroom or ✓ Sugar Trumpet", "the bridge it can be had through is ticked");
   assert.match(page("seeds", view, "moon-fern").lines[2], /grows back/);
   assert.equal(page("seeds", view, "moondaisy").lines[3], "Unlocked, and the seed Enter plants");

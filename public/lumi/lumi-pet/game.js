@@ -1409,6 +1409,7 @@
     if (APP === "lumi-dungeons" || APP === "lumi-garden") settings.push({ key: "town", icon: "🏘", name: "Back to town", hint: "Lumi City: Lumi Heights, the Arcade, the Casino, Lumi Realty and her house", // Out of the tavern's door, or the garden's gate.
       local: function () { openApp("lumi-town", { at: APP === "lumi-garden" ? "garden" : "tavern" }); } });
     if (!inApp && !framed) settings.push({ key: "install", icon: "⬇", name: "Install " + NAME, hint: "Its own icon on your home screen, opening straight here", local: installApp }); // In a browser tab: each of Lumi's apps can be an app of its own.
+    settings.push({ key: "sign-out", icon: "↪", name: "Sign out", hint: "Log out of Lumi-Town on this device", local: signOut }); // LumiBot: the games hub had the only Sign out; now it lives here, last, in every Lumi app's settings
     return settings;
   }
 
@@ -2804,6 +2805,17 @@
         setReminders("on"); say("Reminders are on for this device. Lumi will nudge you when she needs you, never at night.");
       });
     }).catch(function (problem) { say(problem && problem.status ? problem.message : "Reminders couldn't be switched on in this browser."); });
+  }
+
+  function signOut() { // LumiBot: the Sign out row. First press asks, second POSTs auth/logout (clears lumi_sess), then the login page.
+    if (pendingConfirm !== "sign-out") { pendingConfirm = "sign-out"; say("Sign out of Lumi-Town on this device? Choose Sign out once more."); return; } // never on one stray press
+    pendingConfirm = null; // asked and answered
+    fetch(window.LUMI_PAGES + "auth/logout", { method: "POST", credentials: "same-origin", redirect: "manual", cache: "no-store" }) // a same-origin POST, so the router's cross-site check lets it through
+      .then(function (response) {
+        if (response.type !== "opaqueredirect" && !response.ok) throw new Error("sign out refused: " + response.status); // the server answers 302 -> login; anything else is a refusal
+        location.href = window.LUMI_PAGES + "login"; // signed out: the Sign in with Discord page
+      })
+      .catch(function () { say("Couldn't sign out just now. Try again in a moment."); }); // offline or refused: still signed in, say so
   }
 
   function bringOldMemories() { // Happy moments counted in this browser before pets lived on the account move over, once.

@@ -11,17 +11,41 @@ const ME = "111111111111111111";                                      // a Disco
 const balance = (id) => eco.getBalance(id);                           // shorthand
 const ledger = (type) => eco.getEconomyDb().prepare("SELECT * FROM transactions WHERE type = ? ORDER BY id").all(type); // rows of one type
 
-test("prices scale by 0.2 with a 1 SGC minimum; free stays free; payouts floor", () => {
+test("play prices and prizes scale by 0.2, items by 1; 1 SGC minimum; free stays free; payouts floor", () => {
   resetLumi(eco);
-  assert.equal(tuning.scale(), 0.2);                                  // the default global scale
-  assert.equal(tuning.scalePrice("breakout", "entry", 25), 5);        // arcade entry 25 -> 5
-  assert.equal(tuning.scalePrice("soft", "continue", 50), 10);        // continues 50 -> 10
-  assert.equal(tuning.scalePrice("pet", "capsule", 150), 30);         // capsule 150 -> 30
-  assert.equal(tuning.scalePrice("pet", "snacks", 2), 1);             // 0.4 rounds to 0, but never below 1
+  assert.equal(tuning.scale(), 0.2);                                  // the default play scale
+  assert.equal(tuning.itemScale(), 1);                                // the default item scale (erinne's own prices)
+  assert.equal(tuning.scalePrice("breakout", "entry", 25), 5);        // arcade entry 25 -> 5 (play)
+  assert.equal(tuning.scalePrice("soft", "continue", 50), 10);        // continues 50 -> 10 (play)
+  assert.equal(tuning.scalePrice("snake", "bet", 10), 2);             // a showdown bet chip 10 -> 2 (play)
+  assert.equal(tuning.scalePrice("pet", "capsule", 150), 150);        // capsule 150 -> 150 (item)
+  assert.equal(tuning.scalePrice("pet", "moon", 300), 300);           // moon capsule 300 -> 300 (item)
+  assert.equal(tuning.scalePrice("pet", "snacks", 2), 2);             // an item at its native price
   assert.equal(tuning.scalePrice("pet", "snacks", 0), 0);             // a free snack stays free
-  assert.equal(tuning.scalePayout("prism", "win", 9), 1);             // 1.8 floors to 1
+  assert.equal(tuning.scalePayout("prism", "win", 9), 1);             // 1.8 floors to 1 (prize: play)
   assert.equal(tuning.scalePayout("prism", "win", 4), 0);             // 0.8 floors to 0 (allowed)
-  assert.equal(tuning.scalePayout("pet", "visit", 25), 5);            // daily visit 25 -> 5
+  assert.equal(tuning.scalePayout("pet", "visit", 25), 5);            // daily visit 25 -> 5 (prize: play)
+  assert.equal(tuning.scalePayout("pet", "buyback", 75), 75);         // a capsule repeat gives back its value (item)
+  assert.equal(tuning.scalePayout("pet", "movein", 40), 40);          // the move-in refund is an item value (item)
+  assert.equal(tuning.priceBucket("entry"), "play");                  // the key decides the bucket
+  assert.equal(tuning.priceBucket("cookie"), "item");                 // any shop item id
+  assert.equal(tuning.payoutBucket("betwin"), "play");                // a prize
+  assert.equal(tuning.payoutBucket("movein"), "item");                // an item value
+});
+
+test("the two scales move independently and the 1 SGC minimum holds in both buckets", () => {
+  resetLumi(eco);
+  tuning.set("lumi.itemScale", "0.5", "test");                        // halve item prices
+  assert.equal(tuning.scalePrice("pet", "capsule", 150), 75);         // 150 x 0.5
+  assert.equal(tuning.scalePrice("pet", "snacks", 1), 1);             // 0.5 rounds... never below 1
+  assert.equal(tuning.scalePrice("breakout", "entry", 25), 5);        // play prices untouched
+  assert.equal(tuning.scalePayout("pet", "buyback", 75), 37);         // 37.5 floors to 37
+  assert.equal(tuning.scalePayout("pet", "visit", 25), 5);            // prizes untouched
+  tuning.set("lumi.scale", "0.4", "test");                            // double play
+  assert.equal(tuning.scalePrice("breakout", "entry", 25), 10);       // 25 x 0.4
+  assert.equal(tuning.scalePrice("pet", "capsule", 150), 75);         // items untouched
+  assert.equal(tuning.clientTuning().itemScale, 0.5);                 // the page gets both scales
+  assert.equal(tuning.clientTuning().scale, 0.4);
 });
 
 test("per-game multipliers and per-item overrides; the browser formula matches the server", () => {
@@ -32,35 +56,44 @@ test("per-game multipliers and per-item overrides; the browser formula matches t
   assert.equal(tuning.scalePrice("breakout", "entry", 25), 10);       // 25 x 0.2 x 2
   assert.equal(tuning.scalePayout("breakout", "win", 1000), 7);       // override wins over the formula
   assert.equal(tuning.scalePrice("pet", "capsule", 150), 3);          // override wins
-  globalThis.LUMI_TUNING = tuning.clientTuning();                     // what the page shell injects
   const client = require("../../public/lumi/lumi-tuning.js");        // the browser copy
-  for (const game of ["breakout", "pet", "prism", "snake", "unknown-game"]) {
-    for (const native of [0, 1, 2, 3, 7, 13, 25, 49, 50, 99, 150, 300, 1234, 99999]) {
-      for (const key of ["entry", "capsule", "win"]) {
-        assert.equal(client.LumiPrice(game, key, native), tuning.scalePrice(game, key, native), `price ${game}/${key}/${native}`);   // same charge
-        assert.equal(client.LumiPayout(game, key, native), tuning.scalePayout(game, key, native), `payout ${game}/${key}/${native}`); // same prize
+  const keys = ["entry", "continue", "bet", "capsule", "moon", "cookie", "plot", "potion", "win", "betwin", "visit", "press", "buyback", "movein"]; // both buckets, prices and prizes
+  for (const [play, item] of [[null, null], ["0.35", "0.7"], ["1.3", "0.15"]]) {   // defaults, then two uneven pairs
+    tuning.set("lumi.scale", play, "test");                           // play scale (null = default 0.2)
+    tuning.set("lumi.itemScale", item, "test");                       // item scale (null = default 1)
+    globalThis.LUMI_TUNING = tuning.clientTuning();                   // what the page shell injects
+    for (const game of ["breakout", "pet", "prism", "snake", "unknown-game"]) {
+      for (const native of [0, 1, 2, 3, 7, 13, 25, 49, 50, 99, 150, 300, 1234, 99999]) {
+        for (const key of keys) {
+          assert.equal(client.LumiPrice(game, key, native), tuning.scalePrice(game, key, native), `price ${game}/${key}/${native} @${play}/${item}`);   // same charge
+          assert.equal(client.LumiPayout(game, key, native), tuning.scalePayout(game, key, native), `payout ${game}/${key}/${native} @${play}/${item}`); // same prize
+        }
       }
     }
   }
+  delete globalThis.LUMI_TUNING;                                      // the client falls back to the defaults
+  assert.equal(client.LumiPrice("pet", "capsule", 150), 150);         // default item scale 1
+  assert.equal(client.LumiPrice("breakout", "entry", 25), 5);         // default play scale 0.2
   const settings = eco.getEconomyDb().prepare("SELECT COUNT(*) AS n FROM lumi_admin_log").get().n; // every change was logged
   assert.ok(settings >= 3);
 });
 
 test("spend moves the scaled price from the player to the category account with the right ledger type", () => {
   resetLumi(eco);
-  setBalance(eco, ME, 100);                                           // the player has 100 SGC
+  setBalance(eco, ME, 200);                                           // the player has 200 SGC
   const charged = db.tx(() => sgc.spend(ME, "Doll", 25, "breakout", "entry")); // an arcade entry
   assert.equal(charged, 5);                                           // 25 x 0.2
-  assert.equal(balance(ME), 95);                                      // taken from the player
+  assert.equal(balance(ME), 195);                                     // taken from the player
   assert.equal(balance("__LUMI_ARCADE__"), 5);                        // landed in Lumi Arcade
   const row = ledger("lumi_breakout_entry").at(-1);                   // the ledger row
   assert.equal(row.from_user_id, ME);
   assert.equal(row.to_user_id, "__LUMI_ARCADE__");
   assert.equal(row.amount, 5);
   db.tx(() => sgc.spend(ME, "Doll", 100, "pet", "snacks"));           // pet snacks -> Snack Stand
-  assert.equal(balance("__LUMI_SNACKS__"), 20);
+  assert.equal(balance("__LUMI_SNACKS__"), 100);                     // an item: 100 x item scale 1
   db.tx(() => sgc.spend(ME, "Doll", 50, "city", "plot"));             // Lumi City -> Realty
-  assert.equal(balance("__LUMI_REALTY__"), 10);
+  assert.equal(balance("__LUMI_REALTY__"), 50);                       // an item: 50 x item scale 1
+  assert.equal(balance(ME), 45);                                      // 200 - 5 - 100 - 50
 });
 
 test("not enough SGC throws a 402 with need/have, and the whole transaction rolls back", () => {

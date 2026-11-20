@@ -1,6 +1,6 @@
 // src/lumi over real HTTP (a throwaway server on a random port, no Discord): the login redirect, static files and
 // their path checks, the coin chip with a faked lumi_sess session, page rendering (script order, CSP-friendly boot),
-// aliases, 404s, the same-origin guard, the per-player money lock, and an SSE stream in erinne's wire format.
+// aliases, 404s, the same-origin guard, the per-player money lock, an SSE stream in erinne's wire format, and Sign out.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -109,7 +109,8 @@ test("pages render with the boot data and erinne's script order; aliases redirec
   const bootData = JSON.parse(bootJson);
   assert.equal(bootData.api, "/lumipet/api/");
   assert.equal(bootData.user.id, ME);
-  assert.equal(bootData.tuning.scale, 0.2);
+  assert.equal(bootData.tuning.scale, 0.2);                           // play scale: entries, continues, bets and prizes
+  assert.equal(bootData.tuning.itemScale, 1);                         // item scale: shop items keep erinne's prices
   assert.deepEqual(bootData.flags, { tvPlay: false, whoPlays: false, retro: false });
   const arcade = await request("/lumipet/breakout", { headers: { cookie: COOKIE } });
   assert.match(arcade.body, /Play solo \(5 SGC\)/);                   // the tuned entry price
@@ -161,4 +162,34 @@ test("SSE streams speak erinne's format: hello, named events, and published even
   assert.match(text, /event: said\ndata: \{"id":"x1","text":"hi <3"\}\n\n/);
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(events.openCount(), 0);                                // the stream cleaned up after the browser left
+});
+
+test("Sign out: POST auth/logout ends the session, and her house asks for login again", async () => {
+  const mine = `lumi_sess=${encodeURIComponent(auth.createSession(ME, "Doll", "", []))}`; // its own session, so the other tests keep theirs
+  const origin = `http://127.0.0.1:${PORT}`;                          // the page's own origin, as the browser's fetch sends it
+  assert.equal((await request("/lumipet/lumi-pet", { headers: { cookie: mine } })).status, 200); // signed in: her house
+  const cross = await request("/lumipet/auth/logout", { method: "POST", headers: { cookie: mine, origin: "https://evil.example" } }); // another site
+  assert.equal(cross.status, 403);                                    // the router's cross-site guard
+  assert.equal((await request("/lumipet/lumi-pet", { headers: { cookie: mine } })).status, 200); // ...and nothing was ended
+  const out = await request("/lumipet/auth/logout", { method: "POST", headers: { cookie: mine, origin } }); // the Sign out row's fetch
+  assert.equal(out.status, 302);                                      // a redirect...
+  assert.equal(out.headers.location, "/lumipet/login");               // ...to the login page
+  const cleared = [].concat(out.headers["set-cookie"] || []).join("\n"); // the cookie it clears
+  assert.match(cleared, /lumi_sess=;/);                               // Lumi's own cookie, emptied
+  assert.match(cleared, /Max-Age=0/);                                 // and expired now
+  assert.match(cleared, /Path=\/lumipet/);                            // on the path it was set with
+  const later = await request("/lumipet/lumi-pet", { headers: { cookie: mine } }); // even an old copy of the cookie...
+  assert.equal(later.status, 302);                                    // ...is no longer a session
+  assert.equal(later.headers.location, "/lumipet/login?next=%2Flumipet%2Flumi-pet"); // login, then back to her house
+  assert.equal((await request("/lumipet/api/coins", { headers: { cookie: mine } })).status, 401); // the API agrees
+});
+
+test("Lumi Pet's settings list ends with a Sign out row that posts to auth/logout, with no inline handlers", async () => {
+  const js = (await request("/lumipet/static/lumi-pet/game.js")).body; // the page's script, as served
+  assert.match(js, /settings\.push\(\{ key: "sign-out", icon: "↪", name: "Sign out", hint: "Log out of Lumi-Town on this device", local: signOut \}\);/); // the row
+  assert.match(js, /\n {4}settings\.push\(\{ key: "sign-out"[^\n]*\n {4}return settings;/); // last in the list
+  assert.match(js, /fetch\(window\.LUMI_PAGES \+ "auth\/logout", \{ method: "POST", credentials: "same-origin", redirect: "manual"/); // a same-origin POST
+  assert.match(js, /location\.href = window\.LUMI_PAGES \+ "login";/); // then the login page
+  const page = await request("/lumipet/lumi-pet", { headers: { cookie: COOKIE } }); // her house
+  assert.doesNotMatch(page.body, /\son[a-z]+=/i);                     // no inline event handlers (CSP script-src 'self')
 });

@@ -122,7 +122,8 @@ const SCHEMA = {
   'touhou.battleIdleTimeoutMs':  { default: 90000, type: 'number', label: 'Battle Idle Timeout (ms)', desc: 'Inactivity timeout for Touhou PvE battles', category: 'Touhou' },
 
   // ── Lumi Games (src/lumi/tuning.js reads these; per-game knobs live under setting.lumi.game.<game>.*) ──
-  'lumi.scale':                     { default: 0.2,    type: 'number', label: 'Economy Scale',            desc: 'Every Lumi price and prize is erinne\'s number x this (0.2 = one fifth)', category: 'Lumi Games' },
+  'lumi.scale':                     { default: 0.2,    type: 'number', label: 'Play scale',               desc: 'Play prices (entry, continue, bet) and every prize are erinne\'s number x this (0.2 = one fifth)', category: 'Lumi Games' }, // play bucket
+  'lumi.itemScale':                 { default: 1,      type: 'number', label: 'Item scale',               desc: 'Item prices (snacks, capsules, plots, potions, seeds ...) and item buybacks / move-in refunds are erinne\'s number x this (1 = erinne\'s own price)', category: 'Lumi Games' }, // item bucket
   'lumi.treasury.bankTarget':       { default: 100000, type: 'number', label: 'Bank Target',              desc: 'Lumi-Town Bank balance that counts as 100% health',                    category: 'Lumi Games' },
   'lumi.treasury.bankCeiling':      { default: 200000, type: 'number', label: 'Bank Ceiling',             desc: 'Bank balance above this overflows into Lumi Holdings',                 category: 'Lumi Games' },
   'lumi.treasury.bands':            { default: '[[0.25,1],[0.5,0.75],[1,0.5],[1.5,0.25],[null,0.1]]', type: 'string', label: 'Sweep Bands (JSON)', desc: '[[health below, tax rate], ...]; null = and above', category: 'Lumi Games' },

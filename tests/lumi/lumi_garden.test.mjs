@@ -5,11 +5,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-require("../../public/lumi/lumi-tuning.js");                     // LumiBot: LumiPrice/LumiPayout on globalThis (default scale 0.2)
+require("../../public/lumi/lumi-tuning.js");                     // LumiBot: LumiPrice/LumiPayout on globalThis (default scales: play 0.2, items 1)
 const UI = require("../../public/lumi/lumi-pet/garden-ui.js");
 const Art = require("../../public/lumi/lumi-pet/garden-art.js");
 const catalog = JSON.parse(readFileSync(new URL("../../src/lumi/data/garden.json", import.meta.url), "utf8"));
 const MIN = 60000;
+const itemSgc = native => Math.max(1, Math.round(native * 1));    // a nursery price by the rule: erinne's price x the default item scale 1
 
 function garden(extra = {}) { // A young garden: a daisy growing, a daisy ready, two empty plots; glowbell is next on the tree.
   const plot = (flower, stage, ready_in, grow) => ({ flower, last: flower, stage, ready_in, grow });
@@ -116,7 +117,7 @@ test("Enter on a plot plants, trims, digs or says how long is left", () => {
   assert.equal(UI.plotChoice(view, 0, null, 0).say, "Moondaisy: ready in 1:00.");
   assert.deepEqual(UI.plotChoice(view, 0, null, 60000), { send: { action: "trim", plot: 0 } }, "Ready by this page's own clock");
   assert.deepEqual(UI.plotChoice(view, 4, null, 0).send, { action: "plot" });
-  assert.match(UI.plotChoice(view, 4, null, 0).confirm, /5 SGC/);                     // LumiBot: 25 native -> 5 SGC
+  assert.equal(UI.plotChoice(view, 4, null, 0).confirm, `Dig a new plot for ${itemSgc(view.plot_price)} SGC?`); // LumiBot: 25 native -> 25 SGC (an item)
   const more = garden();
   more.flowers[1].unlocked = true;
   assert.equal(UI.seedFor(more, more.plots[2], null), "glowbell", "With nothing chosen and nothing grown there, the best flower unlocked");
@@ -167,7 +168,7 @@ test("every plot can be pressed, shows its stage, and has a timer under its flow
   const svg = Art.scene(view, { cursor: 1, focused: true, passed: 0, mini: null, decor: catalog.decor });
   assert.deepEqual(names(svg), ["press", "plot:0", "plot:1", "plot:2", "plot:3", "plot:4"]);
   assert.deepEqual([...svg.matchAll(/data-plot="(\w+)"/g)].map(m => m[1]), ["growing", "ready", "empty", "empty"]);
-  assert.ok(svg.includes('data-cursor="1"') && svg.includes("5 SGC") && svg.includes('data-near="25"'));
+  assert.ok(svg.includes('data-cursor="1"') && svg.includes(`>${itemSgc(view.plot_price)} SGC</text>`) && svg.includes('data-near="25"')); // the plot's whole SGC price
   assert.ok(!Art.scene(view, { cursor: 1, focused: false, passed: 0 }).includes("data-cursor"));
   assert.deepEqual([...svg.matchAll(/data-timer="(\d+)"[^>]*>([^<]+)</g)].map(m => [m[1], m[2]]), [["0", "1:00"], ["1", "ready ✦"]], "A countdown while it grows, and a word once it is ready");
   assert.deepEqual(Art.timers(view, 15000), [[0, "0:45"]], "Only growing flowers tick");

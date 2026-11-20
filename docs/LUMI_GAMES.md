@@ -5,7 +5,7 @@ Lumi-Town is Lumi Pet and the Lumi minigames (ported from erinne) at **`/lumipet
 Developers: the internal API is `src/lumi/CONTRACT.md`; the plan is `docs/plans/lumi-games-port.md`.
 
 Status (2026-11-19): **fully ported, waiting for Doll's test pass** (branch `feat/lumi-town`, from erinne `43a24f4`).
-`npm test` runs 539 tests, including an end-to-end smoke (`tests/lumi/e2e_smoke.test.mjs`) that plays every game
+`npm test` runs 543 tests, including an end-to-end smoke (`tests/lumi/e2e_smoke.test.mjs`) that plays every game
 through the real server with three fake players and checks every SGC move.
 
 ## The games
@@ -24,6 +24,8 @@ and use its buildings: the **Arcade** (Yarn Pop, Lumi Conga, Teacup Tower, Prism
 **Lumi-Soft field**, the **Tavern** (Dungeons), the **Garden gate**, the **Market**, the **Real-estate office**, and
 **Lumi Heights** (flats). The **Casino** (Lumi's Lounge) opens LumiBot's own casino tables on the Lumi Games app
 (`/games/slots`, `blackjack`, `holdem`, `horseracing`: Momiji Casino, its own Discord login). The **Retro café** is closed.
+**Sign out** is the last row of the settings list in Lumi Pet (and in Dungeons and the Garden): choose it twice and it
+POSTs `/lumipet/auth/logout` (ends the session, clears `lumi_sess`) and goes to the Sign in page.
 
 **Not ported:** StickBob Runner and erinne's casino (LumiBot's casino is used instead), erinne's TV, remote and couch modes, web push
 reminders (planned as Discord DMs later), and the live AI storyteller (the tales library tells the stories).
@@ -41,7 +43,9 @@ Open the web panel (admins only) and click **Lumi-Town**. Everything there is lo
   - live stats: spends, SGC in/out, **player return %**, house net
   - A badge says **not profitable to play** (players get back < 100%), **printing** (> 200%), or **ok**.
 - **Overrides**: an exact SGC price or prize for one item (JSON per game).
-- **Scale**: preview what every price becomes at a new global scale, then save.
+- **Scales**: the **play scale** (entries, continues, bets and every prize) and the **item scale** (every shop item,
+  and capsule buybacks / move-in refunds). Preview both (items and play rows are grouped), then save; each change is
+  logged. Each game row also shows its keys as `native→SGC` with `(play)`, `(item)`, `(prize)` or `(item value)`.
 - **Policy**: bank target and ceiling, sweep bands, sweep interval, refill buffer, reserve floor, LUMI dividend rate.
 - **Actions**:
   - Sweep now, Pay owed now, and **Pause all payouts** (games keep running; prizes are owed until resumed).
@@ -95,13 +99,39 @@ floor, weekly.
 
 ## Prices and prizes
 
-Game code uses erinne's own numbers; Lumi-Town scales them: price = max(1, round(erinne price x scale x the
-game's price multiplier)), prize = floor(erinne prize x scale x the game's payout multiplier), default scale 0.2
-(arcade entry 25 -> 5 SGC). Free things stay free. Each game also has an on/off switch and a daily prize cap per
-player, which is **0 = uncapped by default**; an admin sets a cap above 0 on `/lumi` for a game that gets farmed.
-Pages show prices with the same formula, so shown = charged.
+Game code uses erinne's own numbers; Lumi-Town scales them with **two scales**:
 
-Global knobs are on the web panel's **Economy** settings page under **Lumi Games**: `lumi.scale`,
+| Scale | Setting (default) | Prices it sets | Payouts it sets |
+|---|---|---|---|
+| **Play scale** | `lumi.scale` (0.2) | a go at a game: the tuning keys `entry`, `continue`, `bet` | every prize: `win`, `betwin`, `press`, `token`, `visit`, `housewarm` ... |
+| **Item scale** | `lumi.itemScale` (1) | every other price key: pet snacks, toys, decor, wear, both capsules, city plots, styles, yard pieces, the Keepsake Capsule, battle respec, potions, heals, stat resets, mods, kit, garden plots and seeds | `buyback` and `movein` (they give an item's value back) |
+
+price = max(1, round(erinne price x bucket scale x the game's price multiplier)), prize = floor(erinne prize x
+bucket scale x the game's payout multiplier). The bucket comes from the tuning **key** the game passes (an item's
+own id for shop items), so the page's `LumiPrice` / `LumiPayout` pick the same scale as the server. Free things
+stay free; an exact per-item override on `/lumi` still beats the formula. Lumi City's office sale is already exact
+SGC and is not scaled at all.
+
+Why two (Doll, 2026-11-19): players already earn 15 SGC an hour in voice chat, so **items keep erinne's prices**;
+play costs and prizes stay scaled together so the minigames stay profitable to play.
+
+Examples at the defaults:
+
+| Thing | erinne price | SGC |
+|---|---|---|
+| a cookie (snack) | 8 | 8 |
+| Star Capsule / Moon Capsule | 150 / 300 | 150 / 300 |
+| a battle potion | 20 | 20 |
+| a Lumi City plot (LefTown block 1, lot 1) | 6,000 | 6,000 |
+| arcade entry / Lumi-Soft first continue | 25 / 50 | 5 / 10 |
+| daily visit prize | 25 | 5 |
+
+Each game also has an on/off switch and a daily prize cap per player, which is **0 = uncapped by default**; an
+admin sets a cap above 0 on `/lumi` for a game that gets farmed. Pages show prices with the same formula, so
+shown = charged.
+
+Global knobs are on the web panel's **Economy** settings page under **Lumi Games**: `lumi.scale` (Play scale),
+`lumi.itemScale` (Item scale),
 `lumi.treasury.*` (target, ceiling, bands JSON, sweep interval, refill buffer, reserve floor, LUMI dividend rate,
 pause all payouts `true`/`false`) and the seed split. Per-game knobs (`setting.lumi.game.<game>.*`) and the
 treasury dashboard are on the `/lumi` admin page (above).

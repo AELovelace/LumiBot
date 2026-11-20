@@ -5,13 +5,18 @@
  *
  * THE NATIVE-AMOUNT RULE: game code always passes erinne's own ("native") numbers to sgc.js; this file turns them
  * into SadGirlCoin:
- *   scaledPrice  = max(1, round(native * globalScale * game.priceMult))   (native 0 stays 0: free stays free)
- *   scaledPayout = floor(native * globalScale * game.payoutMult)          (0 is allowed)
+ *   scaledPrice  = max(1, round(native * bucketScale * game.priceMult))   (native 0 stays 0: free stays free)
+ *   scaledPayout = floor(native * bucketScale * game.payoutMult)          (0 is allowed)
  *   a per-item override for that key (an exact SGC amount) wins over the formula.
+ * TWO BUCKETS (Doll, 2026-11-19: players already earn 15 SGC/hour in voice chat, so items keep erinne's prices;
+ * play costs and prizes stay scaled together so minigames stay profitable). The bucket comes from the tuning KEY:
+ *   play scale (lumi.scale, 0.2): price keys entry / continue / bet, and every payout key except the two below
+ *   item scale (lumi.itemScale, 1): every other price key (shop items, capsules, plots ...) and the payout keys
+ *                                   buyback / movein (they give back an item's value)
  * public/lumi/lumi-tuning.js has the SAME formula, fed by clientTuning(), so prices shown == prices charged.
  *
  * Storage: system_state rows 'setting.lumi.*' (the web panel's settings store):
- *   setting.lumi.scale, setting.lumi.treasury.*, setting.lumi.seed.*     -> listed in panelSettings.js SCHEMA ('Lumi Games')
+ *   setting.lumi.scale, setting.lumi.itemScale, setting.lumi.treasury.*, setting.lumi.seed.* -> listed in panelSettings.js SCHEMA ('Lumi Games')
  *   setting.lumi.game.<game>.enabled|priceMult|payoutMult|dailyCap        -> per game, made by setGame()
  *   setting.lumi.game.<game>.priceOverrides|payoutOverrides               -> JSON {key: exact SGC}
  * Values are cached and re-read every CACHE_MS (so web-panel edits apply within seconds) or at once with reload().
@@ -27,6 +32,8 @@ const GAME_ID = /^[a-z0-9-]{1,32}$/u;            // game ids: lowercase words wi
 const KNOB_KEY = /^[A-Za-z0-9_.:-]{1,64}$/u;     // item keys used in overrides (entry, continue-2, snack:cookie ...)
 const GAME_KNOBS = ['enabled', 'priceMult', 'payoutMult', 'dailyCap', 'priceOverrides', 'payoutOverrides']; // what setGame accepts
 const GAME_DEFAULTS = Object.freeze({ enabled: true, priceMult: 1, payoutMult: 1, dailyCap: 0 }); // per-game defaults (dailyCap 0 = uncapped; admins can set one per game)
+const PLAY_PRICE_KEYS = new Set(['entry', 'continue', 'bet']); // price keys that are a go at a game (play scale); every other price key is an item
+const ITEM_PAYOUT_KEYS = new Set(['buyback', 'movein']);       // payout keys that give back an item's value (item scale); every other payout key is a prize
 const DEFAULT_BANDS = Object.freeze([[0.25, 1], [0.5, 0.75], [1, 0.5], [1.5, 0.25], [Infinity, 0.1]]); // health below -> tax rate
 
 const registry = new Map();                      // game id -> { label, priceKeys, payoutKeys, defaults } from define()
@@ -168,7 +175,8 @@ function reload() {
     payoutsPaused: truthy(readGlobal(rows, 'lumi.treasury.payoutsPaused')),         // true: every prize is owed
   };
   cache = {
-    scale: readGlobal(rows, 'lumi.scale'),                                          // global economy scale (0.2)
+    scale: readGlobal(rows, 'lumi.scale'),                                          // play scale: play prices + prizes (0.2)
+    itemScale: readGlobal(rows, 'lumi.itemScale'),                                  // item scale: item prices + item-value payouts (1)
     treasury,                                                                       // policy above
     seed: { toBank: Math.floor(readGlobal(rows, 'lumi.seed.toBank')), toHoldings: Math.floor(readGlobal(rows, 'lumi.seed.toHoldings')) }, // seed split
     games: Object.fromEntries([...games].map((g) => [g, readGame(rows, g)])),       // per-game knobs
@@ -190,9 +198,29 @@ function gameSettings(game) {
   return s.games[game];                                                             // the knobs
 }
 
-/** The global scale (default 0.2). */
+/** The play scale (default 0.2): play prices (entry/continue/bet) and prizes. */
 function scale() {
   return snap().scale;                                                              // e.g. 0.2
+}
+
+/** The item scale (default 1): item prices and item-value payouts (buyback/movein). */
+function itemScale() {
+  return snap().itemScale;                                                          // e.g. 1
+}
+
+/** Which scale a PRICE key uses: 'play' for entry/continue/bet, else 'item'. */
+function priceBucket(key) {
+  return PLAY_PRICE_KEYS.has(String(key)) ? 'play' : 'item';                        // key-based, same as lumi-tuning.js
+}
+
+/** Which scale a PAYOUT key uses: 'item' for buyback/movein, else 'play'. */
+function payoutBucket(key) {
+  return ITEM_PAYOUT_KEYS.has(String(key)) ? 'item' : 'play';                       // key-based, same as lumi-tuning.js
+}
+
+// The scale number for a bucket name.
+function bucketScale(bucket) {
+  return bucket === 'item' ? itemScale() : scale();                                 // item or play
 }
 
 /** Treasury policy: { bankTarget, bankCeiling, bands, sweepIntervalMs, refillBufferPct, reserveFloor, lumiDividendRate, payoutsPaused }. */
@@ -220,7 +248,7 @@ function scalePrice(game, key, native) {
   const g = gameSettings(game);                                                     // this game's knobs
   if (key !== undefined && key !== null && Object.prototype.hasOwnProperty.call(g.priceOverrides, key)) return g.priceOverrides[key]; // exact override wins
   if (native === 0) return 0;                                                       // free stays free
-  return Math.max(1, Math.round(native * scale() * g.priceMult));                   // never below 1 SGC
+  return Math.max(1, Math.round(native * bucketScale(priceBucket(key)) * g.priceMult)); // never below 1 SGC (play or item scale by key)
 }
 
 /** The SGC to PAY for a prize worth `native` erinne coins (may be 0). key: the override key (default: none). */
@@ -228,7 +256,7 @@ function scalePayout(game, key, native) {
   checkNative(native, 'scalePayout');                                               // guard the input
   const g = gameSettings(game);                                                     // this game's knobs
   if (key !== undefined && key !== null && Object.prototype.hasOwnProperty.call(g.payoutOverrides, key)) return g.payoutOverrides[key]; // exact override wins
-  return Math.max(0, Math.floor(native * scale() * g.payoutMult));                  // rounded down
+  return Math.max(0, Math.floor(native * bucketScale(payoutBucket(key)) * g.payoutMult)); // rounded down (play or item scale by key)
 }
 
 /** This game's daily prize cap in SGC per player per LA day (0 = no cap). */
@@ -248,7 +276,7 @@ function clientTuning() {
   for (const [g, v] of Object.entries(s.games)) {
     games[g] = { enabled: v.enabled, priceMult: v.priceMult, payoutMult: v.payoutMult, dailyCap: v.dailyCap, priceOverrides: v.priceOverrides, payoutOverrides: v.payoutOverrides };
   }
-  return { scale: s.scale, games };                                                 // { scale, games: {...} }
+  return { scale: s.scale, itemScale: s.itemScale, games };                         // { scale, itemScale, games: {...} }
 }
 
 // ---------------------------------------------------------------------------------------------- writing
@@ -307,7 +335,12 @@ module.exports = {
   definedGames,    // list registered games
   reload,          // re-read every setting now
   gameSettings,    // one game's knobs
-  scale,           // global scale
+  scale,           // play scale
+  itemScale,       // item scale
+  priceBucket,     // 'play' | 'item' for a price key
+  payoutBucket,    // 'play' | 'item' for a payout key
+  PLAY_PRICE_KEYS, // entry / continue / bet
+  ITEM_PAYOUT_KEYS, // buyback / movein
   treasuryPolicy,  // treasury knobs
   seedSplit,       // seed split
   scalePrice,      // native price -> SGC charged

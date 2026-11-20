@@ -176,6 +176,11 @@ sgc.inGame(fn)                                                              // =
 * `game` and `kind` are lowercase `[a-z0-9-]`. Ledger type = `lumi_${game}_${kind}` (refunds: `lumi_${game}_refund`).
 * `key` = the tuning override key (default: `kind`). Use the item id for shop items (`{ key: item.id }`) so admins
   can override single prices; use `'entry'`, `'continue'`, `'win'` etc. for minigames.
+* **The key also picks the scale** (section 6, Doll 2026-11-19): spend keys `entry`, `continue`, `bet` use the
+  **play scale** (`lumi.scale`, 0.2); every other spend key is an **item** and uses the **item scale**
+  (`lumi.itemScale`, 1 = erinne's own price). Pay keys `buyback`, `movein` give an item's value back and use the
+  item scale; every other pay key is a **prize** on the play scale. So never pass `'entry'`/`'continue'`/`'bet'` as
+  the key of a shop item, and never pay a prize under `buyback`/`movein` (or the other way round).
 * **spend**: `native` 0 -> returns 0, nothing moves (free stays free). Moves player -> the category account
   (`treasury.categoryAccount(game, kind)`). Throws `LumiError 402 not_enough_sgc {need, have}` (so your tx rolls
   back) or `403 game_off` when an admin switched the game off.
@@ -234,12 +239,15 @@ no fraction of an SGC is ever lost to rounding (src/lumi/garden/lumigarden.js `_
 ```js
 const tuning = require('../tuning');
 tuning.define(game, { label, priceKeys, payoutKeys, defaults })  // register for the admin page (call at module load)
-tuning.scalePrice(game, key, native)    // max(1, round(native * scale * priceMult)); native 0 -> 0; override wins
-tuning.scalePayout(game, key, native)   // floor(native * scale * payoutMult) (may be 0); override wins
+tuning.scalePrice(game, key, native)    // max(1, round(native * bucketScale(key) * priceMult)); native 0 -> 0; override wins
+tuning.scalePayout(game, key, native)   // floor(native * bucketScale(key) * payoutMult) (may be 0); override wins
+tuning.priceBucket(key)                 // 'play' for entry/continue/bet, else 'item'
+tuning.payoutBucket(key)                // 'item' for buyback/movein, else 'play'
 tuning.cap(game)                        // daily prize cap in SGC (default 0 = uncapped; admins can set a cap per game)
 tuning.enabled(game)                    // admin on/off (spends refused while off)
 tuning.gameSettings(game)               // { enabled, priceMult, payoutMult, dailyCap, priceOverrides, payoutOverrides }
-tuning.scale()                          // global scale (default 0.2)
+tuning.scale()                          // play scale (default 0.2): play prices + prizes
+tuning.itemScale()                      // item scale (default 1): item prices + buyback/movein
 tuning.treasuryPolicy()                 // { bankTarget, bankCeiling, bands, sweepIntervalMs, refillBufferPct,
                                         //   reserveFloor, lumiDividendRate, payoutsPaused }
 tuning.clientTuning()                   // what the page shell injects as window.LUMI_TUNING
@@ -256,10 +264,21 @@ tuning.define('soft', { label: 'Lumi-Soft', priceKeys: { entry: 25, continue: 50
   defaults: { dailyCap: 0 } });                                                         // per-game default (0 = uncapped)
 ```
 
+**Two scales, chosen by the key** (Doll, 2026-11-19: players already earn 15 SGC/hour in voice chat, so items keep
+erinne's prices; play costs and prizes stay scaled together so minigames stay profitable):
+
+| Bucket | Scale (default) | Price keys | Payout keys |
+|---|---|---|---|
+| play | `lumi.scale` "Play scale" (0.2) | exactly `entry`, `continue`, `bet` | every key except the two below (`win`, `betwin`, `press`, `token`, `visit`, `housewarm` ...) |
+| item | `lumi.itemScale` "Item scale" (1) | every other key (pet item ids, `capsule`, `moon`, city `plot` / style / yard ids / `capsule`, battle `respec` / `potion` / `heal` / `reset` / mod and kit ids, garden `plot` / flower ids) | exactly `buyback`, `movein` |
+
+`pay({ exact: true })` (city `sale`) is never scaled. The rule is key-only on purpose: the page's `LumiPrice` /
+`LumiPayout` know just game + key, and `clientTuning()` sends both scales (`{ scale, itemScale, games }`).
+
 `games.js` already defines every id in section 1; redefining replaces the entry. Storage: system_state rows
-`setting.lumi.scale`, `setting.lumi.treasury.*`, `setting.lumi.seed.*` (shown on the web panel's Economy settings
-page, category "Lumi Games") and `setting.lumi.game.<game>.<knob>` (the `/lumi` admin page). Defaults: scale 0.2,
-priceMult 1, payoutMult 1, **dailyCap 0 = uncapped** (Doll, 2026-11-19: every game is uncapped by default; an admin
+`setting.lumi.scale`, `setting.lumi.itemScale`, `setting.lumi.treasury.*`, `setting.lumi.seed.*` (shown on the web
+panel's Economy settings page, category "Lumi Games") and `setting.lumi.game.<game>.<knob>` (the `/lumi` admin
+page, which also edits both scales with a preview). Defaults: play scale 0.2, item scale 1, priceMult 1, payoutMult 1, **dailyCap 0 = uncapped** (Doll, 2026-11-19: every game is uncapped by default; an admin
 sets a cap above 0 per game on `/lumi` when abuse shows up), enabled true. erinne's own once-a-day rules are not caps
 and stay (the daily visit prize, house-warming gifts from at most 3 homes a day).
 
