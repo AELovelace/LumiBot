@@ -124,19 +124,28 @@ function onVoiceLeave(userId, username) {
 // Periodic sweep — awards coins and resets timers for users still in VC
 // ---------------------------------------------------------------------------
 
+let sweepInFlight = false; // true while a sweep is running, so a re-entrant call can't pay anyone twice
+
 function sweep() {
   if (stopped) return;
+  if (sweepInFlight) { // another sweep is already running
+    logger.warn('VC rewards: sweep already running, skipping overlapping call.'); // don't double-pay
+    return;
+  }
+  sweepInFlight = true; // claim the sweep
 
+  try { // audit #24: whatever happens below, the finally block reschedules the next sweep
   const now = Date.now();
   let totalPaid = 0;
   let usersPaid = 0;
 
   for (const [userId, entry] of activeVoiceUsers) {
+    try { // one user's DB error (e.g. SQLITE_BUSY) must not stop everyone else's payout
     const progress = getVcRewardProgress(entry, now);
     if (progress.fullHours <= 0) continue;
 
     const coins = progress.pendingCoins;
-    awardVoiceCoins(userId, entry.username, coins);
+    awardVoiceCoins(userId, entry.username, coins); // if this throws we skip the checkpoint, so they get paid next sweep
 
     // Record cumulative VC time accrued since the last checkpoint
     try { addVcTime(userId, entry.username, progress.liveSeconds); } catch (e) {
@@ -152,14 +161,22 @@ function sweep() {
 
     totalPaid += coins;
     usersPaid++;
-    void matchPayout(entry.username, coins, 'vc', entry.guildId);
+    matchPayout(entry.username, coins, 'vc', entry.guildId)
+      .catch((e) => logger.warn('VC rewards: Big Business match failed for', userId, e.message)); // async match; log instead of an unhandled rejection
+    } catch (error) {
+      logger.error(`VC rewards: sweep failed for ${userId}; will retry next sweep.`, error.message); // keep going with the next user
+    }
   }
 
   if (usersPaid > 0) {
     logger.info(`VC rewards sweep: paid ${totalPaid} SGC to ${usersPaid} user(s).`);
   }
-
-  scheduleSweep();
+  } catch (error) {
+    logger.error('VC rewards: sweep crashed.', error.message); // something outside the per-user loop failed
+  } finally {
+    sweepInFlight = false; // release the sweep
+    scheduleSweep(); // audit #24: ALWAYS schedule the next sweep
+  }
 }
 
 function scheduleSweep() {
@@ -203,8 +220,13 @@ function scheduleCleanupSweep() {
   if (stopped) return;
 
   cleanupTimer = setTimeout(() => {
-    runCleanupSweep();
-    scheduleCleanupSweep();
+    try {
+      runCleanupSweep();
+    } catch (error) {
+      logger.error('VC rewards: cleanup sweep failed.', error.message); // log and keep the loop alive
+    } finally {
+      scheduleCleanupSweep(); // audit #24: ALWAYS schedule the next cleanup
+    }
   }, CLEANUP_INTERVAL_MS);
   cleanupTimer.unref?.();
 }
@@ -272,7 +294,7 @@ function getVcRewardProgress(entry, now = Date.now()) {
     rewardSeconds,
     fullHours,
     remainderSeconds,
-    pendingCoins: fullHours * VC_COINS_PER_HOUR,
+    pendingCoins: Math.floor(fullHours * VC_COINS_PER_HOUR), // whole SGC only (a fractional coinsPerHour setting rounds down)
   };
 }
 

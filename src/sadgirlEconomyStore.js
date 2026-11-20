@@ -21,6 +21,15 @@ let ADMIN_AUTO_STARS = 3; // stars credited when admin auto-activates a market
 
 let db = null;
 
+/**
+ * True only for a whole, positive SGC amount that SQLite can store exactly.
+ * Rejects fractions (1.5), NaN, Infinity, strings ('5'), negatives, zero and
+ * numbers too big to be exact (2**60). Every coin-moving export checks this.
+ */
+function isPositiveCoinAmount(amount) {
+  return Number.isSafeInteger(amount) && amount > 0; // whole number, exact in a double, and above zero
+}
+
 // ---------------------------------------------------------------------------
 // Internal settings helper — reads overrides from system_state without
 // importing panelSettings (avoids circular dependency).
@@ -449,16 +458,22 @@ function getBigBusinessBalance(bigBusinessUserId) {
  * @param {string} [bigBusinessUserId] - per-guild ID, falls back to legacy
  */
 function depositBigBusiness(amount, note = 'matched payout', bigBusinessUserId) {
-  if (amount <= 0) return 0;
+  if (amount === 0) return 0; // nothing to deposit, quietly do nothing
+  if (!isPositiveCoinAmount(amount)) { // fractions / NaN / negatives would corrupt the INTEGER balance
+    throw new Error(`depositBigBusiness: amount must be a positive whole number of SGC (got ${amount}).`); // throw so any enclosing transaction rolls back
+  }
 
   const uid = bigBusinessUserId || BIG_BUSINESS_USER_ID;
 
   const txn = db.transaction(() => {
-    db.prepare(`
+    const info = db.prepare(`
       UPDATE accounts
       SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime('now')
       WHERE user_id = ?
-    `).run(amount, amount, uid);
+    `).run(amount, amount, uid); // credit the Big Business account and keep the result so we can see how many rows changed
+    if (info.changes === 0) { // no row was updated, so the account does not exist and the coins would vanish
+      throw new Error(`depositBigBusiness: account ${uid} does not exist; deposit of ${amount} SGC refused.`); // throw so the buyer's debit (outer transaction) rolls back too
+    }
 
     db.prepare(`
       INSERT INTO transactions (from_user_id, to_user_id, amount, type, note)
@@ -504,7 +519,7 @@ function getAccountInfo(userId) {
 
 function awardMessageCoins(userId, username, charCount) {
   const coins = Math.floor(charCount / COINS_PER_CHARS);
-  if (coins <= 0) return 0;
+  if (!isPositiveCoinAmount(coins)) return 0; // skip zero, NaN or Infinity (e.g. a bad coinsPerChars setting of 0)
 
   ensureAccount(userId, username);
 
@@ -530,7 +545,7 @@ function awardMessageCoins(userId, username, charCount) {
 // ---------------------------------------------------------------------------
 
 function awardVoiceCoins(userId, username, coins) {
-  if (coins <= 0) return 0;
+  if (!isPositiveCoinAmount(coins)) return 0; // only whole, positive SGC can be awarded
 
   ensureAccount(userId, username);
 
@@ -556,7 +571,7 @@ function awardVoiceCoins(userId, username, coins) {
 // ---------------------------------------------------------------------------
 
 function awardStarboardCoins(userId, username, coins) {
-  if (coins <= 0) return 0;
+  if (!isPositiveCoinAmount(coins)) return 0; // only whole, positive SGC can be awarded
 
   ensureAccount(userId, username);
 
@@ -606,7 +621,7 @@ function getTransferFeeRate() {
  * Fee goes to central bank. Returns { success, fee, error? }.
  */
 function transferCoins(fromUserId, toUserId, amount, note = '') {
-  if (amount <= 0) return { success: false, error: 'Amount must be positive.' };
+  if (!isPositiveCoinAmount(amount)) return { success: false, error: 'Amount must be a positive whole number of SGC.' }; // blocks 1.5, NaN, '5', 2**60 etc.
   if (fromUserId === toUserId) return { success: false, error: 'Cannot send coins to yourself.' };
 
   const feeRate = getTransferFeeRate();
@@ -657,7 +672,7 @@ function withdrawCentralBank(requesterId, toUserId, amount, note = '') {
   if (requesterId !== BANK_OWNER_ID) {
     return { success: false, error: 'Only the bank owner can withdraw from the central bank.' };
   }
-  if (amount <= 0) return { success: false, error: 'Amount must be positive.' };
+  if (!isPositiveCoinAmount(amount)) return { success: false, error: 'Amount must be a positive whole number of SGC.' }; // whole SGC only
 
   const result = db.transaction(() => {
     const bank = db.prepare('SELECT balance FROM accounts WHERE user_id = ?').get(CENTRAL_BANK_USER_ID);
@@ -752,7 +767,8 @@ function runWeeklyLottery() {
   if (winners.length === 0) return null;
 
   const winner = winners[0];
-  const prize = _loadSetting('economy.weeklyLotteryPrize', 50);
+  const prize = Math.floor(_loadSetting('economy.weeklyLotteryPrize', 50)); // panel setting may be fractional, balances are whole SGC
+  if (!isPositiveCoinAmount(prize)) return null; // a zero/broken prize setting means no draw
 
   db.transaction(() => {
     db.prepare('UPDATE accounts SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime(\'now\') WHERE user_id = ?')
@@ -772,7 +788,8 @@ function runWeeklyLottery() {
 // ---------------------------------------------------------------------------
 
 function buyYearlyRaffleTicket(userId, username) {
-  const cost = _loadSetting('economy.yearlyRaffleCost', 50);
+  const cost = Math.floor(_loadSetting('economy.yearlyRaffleCost', 50)); // whole SGC ticket price even if the panel value is fractional
+  if (!isPositiveCoinAmount(cost)) return { success: false, error: 'Raffle tickets are not on sale right now.' }; // bad setting, refuse instead of writing junk
   const currentYear = new Date().getFullYear();
 
   ensureAccount(userId, username);
@@ -1000,7 +1017,7 @@ function getMarket(marketId) {
 }
 
 function buyStockPosition(userId, username, marketId, side, amount) {
-  if (amount <= 0) return { success: false, error: 'Amount must be positive.' };
+  if (!isPositiveCoinAmount(amount)) return { success: false, error: 'Amount must be a positive whole number of SGC.' }; // whole SGC only
 
   ensureAccount(userId, username);
 
@@ -1154,7 +1171,7 @@ function resolveMarket(requesterId, marketId, outcome, { isAuthorized = false } 
  * Returns { success, error? }.
  */
 function placeCasinoBet(userId, username, amount, gameType = 'casino') {
-  if (amount <= 0) return { success: false, error: 'Bet must be positive.' };
+  if (!isPositiveCoinAmount(amount)) return { success: false, error: 'Bet must be a positive whole number of SGC.' }; // whole SGC bets only
 
   ensureAccount(userId, username);
 
@@ -1185,11 +1202,20 @@ function placeCasinoBet(userId, username, amount, gameType = 'casino') {
  * @param {string} gameType - e.g. 'pachinko', 'blackjack'
  */
 function payCasinoPayout(userId, amount, gameType = 'casino') {
-  if (amount <= 0) return;
+  if (amount === 0) return; // a losing hand pays nothing, nothing to do
+  if (!isPositiveCoinAmount(amount)) { // fractional / NaN / negative payouts would corrupt balances
+    logger.warn(`payCasinoPayout: refused non-integer or invalid ${gameType} payout of ${amount} SGC to ${userId}.`); // log it so a buggy game is noticed
+    return; // keep the old "returns nothing" contract so game code doesn't crash
+  }
 
   db.transaction(() => {
     db.prepare('UPDATE accounts SET balance = balance - ?, updated_at = datetime(\'now\') WHERE user_id = ?')
       .run(amount, MOMIJI_CASINO_USER_ID);
+    // Audit #21: payouts are allowed to push the casino into debt (we never fail a win mid-game), but say so loudly
+    const casino = db.prepare('SELECT balance FROM accounts WHERE user_id = ?').get(MOMIJI_CASINO_USER_ID); // read the casino balance after paying
+    if (casino && casino.balance < 0) { // the house is now in the red, so this payout created SGC out of nothing
+      logger.warn(`Momiji Casino balance is negative (${casino.balance} SGC) after a ${amount} SGC ${gameType} payout to ${userId}.`); // warn the admins
+    }
     db.prepare('UPDATE accounts SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime(\'now\') WHERE user_id = ?')
       .run(amount, amount, userId);
 
@@ -1220,6 +1246,7 @@ function payPachinkoPayout(userId, amount) {
  * Returns { success, newBalance, error? }.
  */
 function adjustBalance(userId, amount, note = '') {
+  if (!Number.isSafeInteger(amount)) return { success: false, error: 'Amount must be a whole number of SGC.' }; // blocks 1.5, NaN, Infinity, '5', 2**60
   if (amount === 0) return { success: false, error: 'Amount cannot be zero.' };
 
   const result = db.transaction(() => {
@@ -1249,6 +1276,64 @@ function adjustBalance(userId, amount, note = '') {
   })();
 
   return result;
+}
+
+/**
+ * Apply several signed balance changes as ONE all-or-nothing transaction.
+ * Use this for "debit the buyer, credit the seller and the house" so a failed
+ * debit can never leave the credits behind (audit #12, which minted coins).
+ * @param {{ userId: string, amount: number, note?: string }[]} moves
+ * @returns {{ success: boolean, results?: object[], error?: string }}
+ */
+function adjustBalancesAtomic(moves) {
+  if (!Array.isArray(moves) || moves.length === 0) { // nothing to do is treated as a caller bug
+    return { success: false, error: 'No balance changes were given.' };
+  }
+  try { // any failed step throws, which rolls back every earlier step
+    const results = db.transaction(() => moves.map((move) => { // run each move inside the same transaction
+      const r = adjustBalance(move.userId, move.amount, move.note || ''); // signed change for one account
+      if (!r.success) throw new Error(r.error); // e.g. "User only has 3 SGC" -> undo everything
+      return r; // keep the new balance for the caller
+    }))();
+    return { success: true, results }; // all moves committed together
+  } catch (error) {
+    return { success: false, error: error.message }; // nothing was committed
+  }
+}
+
+/**
+ * Take payment first (atomically), then run a SYNCHRONOUS action that lives in
+ * another database (Touhou / cigarette DB files). If the action fails or
+ * throws, the payment is reversed. Because there is no `await` in between, no
+ * other bot code can run between the payment, the action and the refund.
+ * @param {{ userId: string, amount: number, note?: string }[]} moves - signed balance changes
+ * @param {() => { success: boolean, error?: string }} action - the item move to perform
+ * @returns {object} the action's result, or { success:false, error, refunded }
+ */
+function payThenRun(moves, action) {
+  const payment = adjustBalancesAtomic(moves); // debit + credits all-or-nothing
+  if (!payment.success) return { success: false, error: payment.error, paid: false }; // couldn't pay: nothing happened
+
+  let outcome; // whatever the action returns
+  try {
+    outcome = action(); // move the item in the other DB
+  } catch (error) {
+    logger.error('payThenRun: action threw after payment; refunding.', error.message); // keep the real reason for admins
+    outcome = { success: false, error: 'Something went wrong, please try again.' }; // friendly message for players
+  }
+
+  if (!outcome || !outcome.success) { // the item didn't move, so undo the payment
+    const reversal = moves.slice().reverse().map((move) => ({ // undo in reverse order (take back credits first)
+      userId: move.userId, // same account
+      amount: -move.amount, // opposite sign
+      note: `Refund: ${move.note || ''}`, // mark it as a refund in the ledger
+    }));
+    const refund = adjustBalancesAtomic(reversal); // all-or-nothing refund
+    if (!refund.success) logger.error(`payThenRun: REFUND FAILED (${refund.error}); moves=${JSON.stringify(moves)}`); // needs an admin to fix by hand
+    return { ...(outcome || {}), success: false, refunded: refund.success }; // report failure + whether we refunded
+  }
+
+  return outcome; // success: payment kept and item moved
 }
 
 // ---------------------------------------------------------------------------
@@ -1498,6 +1583,8 @@ module.exports = {
   placeCasinoBet,
   payCasinoPayout,
   adjustBalance,
+  adjustBalancesAtomic, // all-or-nothing group of adjustBalance calls
+  payThenRun, // pay atomically, run an item move in another DB, refund if it fails
   collectMonthlyTaxes,
   casinoDailyReserveDeposit,
   reloadSettings,

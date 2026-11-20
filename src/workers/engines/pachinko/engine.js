@@ -5,6 +5,8 @@
  * No Discord, no DB.
  */
 
+const { randomInt } = require('../secureRandom'); // crypto-backed integer picks for the ball path (audit #36)
+
 const DEFAULTS = {
   gridWidth: 10,
   gridRows: 9,
@@ -15,10 +17,10 @@ const START_POSITIONS = [3, 4, 5, 6];
 
 function simulateDrop(settings) {
   const path = [];
-  let pos = START_POSITIONS[Math.floor(Math.random() * START_POSITIONS.length)];
+  let pos = START_POSITIONS[randomInt(START_POSITIONS.length)]; // crypto pick of one of the 4 start columns, each equally likely
   for (let row = 0; row < settings.gridRows; row++) {
     path.push(pos);
-    const drift = Math.random() < 0.5 ? -1 : 1;
+    const drift = randomInt(2) === 0 ? -1 : 1; // crypto coin flip: exactly 50% left, 50% right
     pos = Math.max(0, Math.min(settings.gridWidth - 1, pos + drift));
   }
   return path;

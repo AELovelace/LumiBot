@@ -25,6 +25,7 @@ const E = require('./engine');
 const tables = new Map();
 const idleTimers = new Map();
 const betweenHandsTimers = new Map();
+const pendingJoins = new Map(); // channelId -> Set of userIds whose `play` is mid-await (audit #17 join guard)
 const WEB_PRESENCE_TIMEOUT_MS = 45 * 1000;
 
 let settings = { ...E.DEFAULTS };
@@ -168,6 +169,26 @@ async function payPayouts(channelId, payouts) {
   }
 }
 
+/**
+ * Give a bet back after we debited it but could not seat/deal the player.
+ * Uses the brokered payCasinoPayout op (the only "credit" op workers are allowed).
+ * Returns true when the refund landed, false (and emits payoutFailed) when it didn't.
+ */
+async function refundBet(channelId, userId, amount) {
+  try {
+    await dbCall('payCasinoPayout', { userId, amount, gameType: 'blackjack_refund' }); // credit the coins back; ledger type becomes 'blackjack_refund_win'
+    return true; // refund succeeded
+  } catch (err) {
+    emitEvent('payoutFailed', { // same alert path as a failed payout so the main process logs it
+      channelId,
+      userId,
+      amount,
+      error: err && err.message ? err.message : String(err),
+    });
+    return false; // refund failed; caller reports it
+  }
+}
+
 async function resolveAndPause(channelId) {
   const table = tables.get(channelId);
   if (!table || table.resolving) return;
@@ -191,8 +212,11 @@ async function dealNewHand(channelId) {
   if (!tables.has(channelId)) return;
 
   const kicked = [];
+  const fundedThisDeal = []; // who we debited in this loop, so we can refund them if the table vanishes mid-deal
   for (const [uid, player] of [...table.players]) {
-    const bet = player.nextBet ?? player.bet;
+    if (tables.get(channelId) !== table) break; // table was reset/closed during an earlier await: stop debiting anyone
+    if (table.players.get(uid) !== player) continue; // this player left while we were awaiting someone else: skip them
+    const bet = player.nextBet ?? player.bet; // freeze this player's wager before the awaits below
     let funded = false;
     try {
       await dbCall('ensureAccount', { userId: uid, username: player.username });
@@ -216,11 +240,23 @@ async function dealNewHand(channelId) {
       continue;
     }
 
+    // Re-check after the awaits: they may have left (or the table closed) while their bet was in flight.
+    if (tables.get(channelId) !== table || table.players.get(uid) !== player) { // seat is gone
+      await refundBet(channelId, uid, bet); // give back the ante we just took for a hand they won't play
+      continue; // don't deal cards to a ghost
+    }
+    fundedThisDeal.push({ uid, bet }); // remember the debit in case we have to unwind the whole deal
+
     player.hand = [E.drawCard(table, settings), E.drawCard(table, settings)];
     player.bet = bet;
     player.status = E.isNaturalBlackjack(player.hand) ? 'blackjack' : 'playing';
     player.result = null;
     player.surrendered = false;
+  }
+
+  if (tables.get(channelId) !== table) { // the table was reset/closed while we were funding the new hand
+    for (const f of fundedThisDeal) await refundBet(channelId, f.uid, f.bet); // nobody will play this hand: refund every ante we took
+    return; // the closing code already told the adapter the table is gone
   }
 
   if (table.players.size === 0) {
@@ -280,20 +316,43 @@ registerCommand('play', async ({ channelId, userId, username, bet } = {}) => {
   if (table && table.players.has(userId)) {
     return { ok: false, reason: 'already_playing' };
   }
-  if (table && table.players.size >= settings.maxPlayers) {
+  const joining = pendingJoins.get(channelId) || new Set(); // audit #17: who is mid-join at this channel right now
+  if (joining.has(userId)) { // this user already has a join in flight (double click)
+    return { ok: false, reason: 'already_playing' }; // bounce the second click before it can debit
+  }
+  if ((table ? table.players.size : 0) + joining.size >= settings.maxPlayers) { // count in-flight joiners as taken seats (even before the table exists)
     return { ok: false, reason: 'full', max: settings.maxPlayers };
   }
+  joining.add(userId); // reserve: set SYNCHRONOUSLY before the first await
+  pendingJoins.set(channelId, joining); // store the set so parallel joiners see the reservation
 
-  await dbCall('ensureAccount', { userId, username });
-  const balance = await dbCall('getBalance', { userId });
-  if (balance < bet) {
-    return { ok: false, reason: 'insufficient', balance, bet };
+  let placed; // debit result
+  try {
+    await dbCall('ensureAccount', { userId, username });
+    const balance = await dbCall('getBalance', { userId });
+    if (balance < bet) {
+      return { ok: false, reason: 'insufficient', balance, bet };
+    }
+    placed = await dbCall('placeCasinoBet', {
+      userId, username, amount: bet, gameType: 'blackjack',
+    });
+  } finally {
+    joining.delete(userId); // release the reservation whatever happened (the seat check below is synchronous)
+    if (joining.size === 0 && pendingJoins.get(channelId) === joining) pendingJoins.delete(channelId); // tidy up empty sets
   }
-  const placed = await dbCall('placeCasinoBet', {
-    userId, username, amount: bet, gameType: 'blackjack',
-  });
   if (!placed || !placed.success) {
     return { ok: false, reason: 'bet_failed', error: placed && placed.error };
+  }
+
+  // Audit #17: the table may have changed during the three awaits. Re-check everything with fresh state.
+  table = tables.get(channelId); // re-read: another joiner may have created the table, or it may have been closed
+  let refusal = null; // why we can't seat them after all (null = we can)
+  if (table && table.resolving) refusal = { ok: false, reason: 'between_hands' }; // hand ended while we waited
+  else if (table && table.players.has(userId)) refusal = { ok: false, reason: 'already_playing' }; // seated by a parallel request
+  else if (table && table.players.size >= settings.maxPlayers) refusal = { ok: false, reason: 'full', max: settings.maxPlayers }; // seats filled up
+  if (refusal) {
+    const refunded = await refundBet(channelId, userId, bet); // give back the coins we just took
+    return { ...refusal, refunded }; // tell the caller we refused and whether the refund landed
   }
 
   const isNew = !table;

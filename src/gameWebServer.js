@@ -12,6 +12,7 @@ const {
   ensureAccount,
   getBalance,
   adjustBalance,
+  getEconomyDb,   // the economy SQLite handle, used to wrap debit+credit pairs in one transaction
   TAYS_TOBACCO_USER_ID,
   TOUHOU_MGMT_USER_ID,
 } = require('./sadgirlEconomyStore');
@@ -72,8 +73,11 @@ const {
   handleCallbackRoute,
   handleLogoutRoute,
   requireUserAuth,
-  validateSameOrigin,
-  validateWebSocketOrigin,
+  validateSameOrigin: validateSameOriginShared,             // shared check; wrapped below with Lumi Games' own trust list
+  validateWebSocketOrigin: validateWebSocketOriginShared,   // same, for websockets
+  getTrustedHosts,                                          // reads one app's trusted-origins env var
+  buildFrameAncestorsDirective,                             // builds the CSP frame-ancestors list
+  scriptJson,                                               // JSON that is safe inside a <script> block
 } = require('./webPanelAuth');
 
 let GAME_WEB_PORT = Number(process.env.GAME_WEB_PORT) || 7172;
@@ -97,9 +101,59 @@ const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
-  'content-security-policy': "base-uri 'self'; form-action 'self'; object-src 'none'",
+  // frame-ancestors: only this app and the sites in GAME_WEB_FRAME_ANCESTORS may put it in an iframe (anti-clickjacking).
+  // script-src is not set yet because the pages still use inline <script> blocks (deferred: needs nonces).
+  'content-security-policy': `base-uri 'self'; form-action 'self'; object-src 'none'; ${buildFrameAncestorsDirective('GAME_WEB_FRAME_ANCESTORS')}`,
   'cache-control': 'no-store',
 };
+
+// Lumi Games' same-origin check: its own host plus GAME_WEB_TRUSTED_ORIGINS only (not the admin panel's list).
+function validateSameOrigin(req) {
+  return validateSameOriginShared(req, getTrustedHosts('GAME_WEB_TRUSTED_ORIGINS'));   // POST origin check
+}
+
+// Lumi Games' websocket origin check, with the same trust list.
+function validateWebSocketOrigin(req) {
+  return validateWebSocketOriginShared(req, getTrustedHosts('GAME_WEB_TRUSTED_ORIGINS'));   // websocket upgrade origin check
+}
+
+// Lobby and battle ids are "<game>-" plus 12 lowercase hex characters (see generateLobbyId and the battle start route).
+const WEB_ID_PATTERN = /^[a-z]+-[0-9a-f]{12}$/u;                              // e.g. "slots-1a2b3c4d5e6f", "battle-0123456789ab"
+const WEB_LOBBY_GAMES = ['slots', 'blackjack', 'holdem', 'horseracing'];      // games whose lobbies live at /<game>/<id>
+const PACHINKO_SESSION_ID_PATTERN = /^pachinko-[0-9a-f]{4,20}$/u;             // the pachinko page makes "pachinko-" + random hex
+const WS_MAX_FRAME_BYTES = 4 * 1024;                                          // biggest websocket message a browser may send us (4 KB)
+const WS_MAX_BUFFER_BYTES = 16 * 1024;                                        // most unread bytes kept per websocket connection
+const WS_MAX_CHANNELS_PER_CLIENT = 32;                                        // most channels one connection may subscribe to
+const PACHINKO_OWNER_TTL_MS = 2 * 60 * 60 * 1000;                             // how long a pachinko session stays tied to its player
+const TOUHOU_BATTLE_IDLE_TIMEOUT_MS = 90 * 1000;                              // a live battle with no move for this long is forfeited
+const TOUHOU_BATTLE_KEEP_FINISHED_MS = 10 * 60 * 1000;                        // finished battles stay viewable this long, then are deleted
+const TOUHOU_BATTLE_SWEEP_INTERVAL_MS = 60 * 1000;                            // how often the battle sweeper runs
+
+// Is this a well-formed id for that kind of thing ("slots", "battle"...)? Only ids we could have made pass.
+function isWebId(id, prefix) {
+  return typeof id === 'string' && WEB_ID_PATTERN.test(id) && id.startsWith(`${prefix}-`);   // right shape and right game
+}
+
+// Undo %XX escapes without throwing on broken ones (a broken escape gives null).
+function safeDecode(raw) {
+  try { return decodeURIComponent(String(raw || '')); } catch { return null; }   // null = not decodable
+}
+
+/**
+ * For URLs that carry a lobby or battle id, true when the id has the exact shape we generate; false when it doesn't
+ * (the caller answers 404 before any page or worker sees it); null for URLs that carry no id at all.
+ */
+function checkIdInPath(pathname) {
+  let m = pathname.match(/^\/api\/([a-z]+)\/lobbies\/([^/]+)(?:\/[^/]+)?$/u);           // /api/<game>/lobbies/<id>[/action]
+  if (m && WEB_LOBBY_GAMES.includes(m[1])) return isWebId(safeDecode(m[2]), m[1]);      // must be "<game>-<12 hex>"
+  m = pathname.match(/^\/([a-z]+)\/([^/]+)$/u);                                          // /<game>/<id> lobby pages
+  if (m && WEB_LOBBY_GAMES.includes(m[1])) return isWebId(safeDecode(m[2]), m[1]);      // must be "<game>-<12 hex>"
+  m = pathname.match(/^\/api\/touhou\/battle\/([^/]+)(\/action)?$/u);                   // battle state / battle action API
+  if (m && !(m[1] === 'start' && !m[2])) return isWebId(safeDecode(m[1]), 'battle');    // "start" is the create route, not an id
+  m = pathname.match(/^\/touhou\/battle\/([^/]+)$/u);                                    // battle page
+  if (m) return isWebId(safeDecode(m[1]), 'battle');                                    // must be "battle-<12 hex>"
+  return null;                                                                           // this URL has no id in it
+}
 
 const WEB_GUILD_ID = config.discordPanelGuildId || DEFAULT_TOUHOU_MIGRATION_GUILD_ID;
 const TOUHOU_TRADER_LIQUIDITY_FLOOR = 1000;
@@ -137,13 +191,51 @@ function formatRemaining(ms) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-function payTouhouTraderPayout(userId, amount, note) {
-  if (!Number.isFinite(amount) || amount <= 0) return;
-  const traderBalance = getBalance(TOUHOU_MGMT_USER_ID);
-  adjustBalance(userId, amount, note);
-  if (traderBalance >= TOUHOU_TRADER_LIQUIDITY_FLOOR + amount) {
-    adjustBalance(TOUHOU_MGMT_USER_ID, -amount, note);
+// An expected money failure (not enough SGC, item unavailable...). Routes turn it into a 4xx reply for the player.
+class EconomyError extends Error {
+  constructor(message, code = 'economy_failed', status = 400) {
+    super(message);              // the text shown to the player
+    this.code = code;            // short machine-readable reason
+    this.status = status;        // HTTP status to answer with
   }
+}
+
+// adjustBalance that throws instead of quietly returning {success:false}, so a transaction around it rolls back.
+function mustAdjustBalance(userId, amount, note, code = 'insufficient_funds') {
+  const result = adjustBalance(userId, amount, note);                               // try the balance change
+  if (!result || !result.success) throw new EconomyError(result?.error || 'Balance update failed.', code);   // stop and undo everything
+  return result;                                                                    // { success: true, newBalance }
+}
+
+// Run fn inside one economy-DB transaction: if anything in it throws, every balance change in it is undone.
+function runEconomyTransaction(fn) {
+  return getEconomyDb().transaction(fn)();   // better-sqlite3: commit on return, roll back on throw
+}
+
+// Send an EconomyError to the player as a 4xx; anything else is a real bug and is re-thrown (-> 500).
+function sendEconomyError(res, error) {
+  if (error instanceof EconomyError) return sendError(res, error.status, error.code, error.message);   // expected failure
+  throw error;                                                                                          // unexpected: let the 500 handler log it
+}
+
+// SGC Touhou Management can spend on payouts while keeping its liquidity floor in reserve.
+function getTouhouTraderSpendable() {
+  return Math.max(0, getBalance(TOUHOU_MGMT_USER_ID) - TOUHOU_TRADER_LIQUIDITY_FLOOR);   // never negative
+}
+
+/**
+ * Pay a player from Touhou Management. Unlike the old version this never mints coins: it pays at most what the
+ * trader can spend above its liquidity floor, debit and credit in one transaction. Returns the SGC actually paid.
+ */
+function payTouhouTraderPayout(userId, amount, note) {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;                       // nothing to pay
+  return runEconomyTransaction(() => {
+    const paid = Math.min(Math.floor(amount), getTouhouTraderSpendable());    // pay in full only if the trader can cover it
+    if (paid <= 0) return 0;                                                   // trader is broke: pay nothing rather than mint
+    mustAdjustBalance(TOUHOU_MGMT_USER_ID, -paid, note);                       // take it from the trader first (throws if short)
+    mustAdjustBalance(userId, paid, note, 'payout_failed');                    // then give it to the player
+    return paid;                                                               // tell the caller how much really moved
+  });
 }
 
 function applySecurityHeaders(res) {
@@ -267,8 +359,8 @@ function renderLoginPage(nextPath = p('/')) {
     <button class="btn" id="popup-login" type="button">Sign In With Discord</button>
   </main>
 <script>
-  const loginUrl = ${JSON.stringify(loginHref)};
-  const appRoot = ${JSON.stringify(p('/'))};
+  const loginUrl = ${scriptJson(loginHref)};  // scriptJson = JSON made safe inside a script tag
+  const appRoot = ${scriptJson(p('/'))};  // scriptJson = JSON made safe inside a script tag
 
   function breakOutToBrowser(url) {
     try {
@@ -288,7 +380,7 @@ function renderLoginPage(nextPath = p('/')) {
     }
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+        const res = await fetch(${scriptJson(p('/api/me'))}, { credentials: 'include' });  // scriptJson = JSON made safe inside a script tag
         if (res.ok) {
           clearInterval(timer);
           window.location.href = appRoot;
@@ -301,7 +393,7 @@ function renderLoginPage(nextPath = p('/')) {
     if (event.origin !== window.location.origin) return;   // the login popup runs on this page's own origin only
     if (event.data?.type !== 'lumigames-auth-complete') return;
     try {
-      const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+      const res = await fetch(${scriptJson(p('/api/me'))}, { credentials: 'include' });  // scriptJson = JSON made safe inside a script tag
       if (res.ok) window.location.href = appRoot;
     } catch {}
   });
@@ -455,7 +547,7 @@ function renderPage(title, session, body, { active = '', pageScripts = '' } = {}
       const refreshBalanceTimers = new Set();
       async function refreshGamesBalance() {
         try {
-          const res = await originalFetch(${JSON.stringify(p('/api/me'))}, { credentials: 'same-origin' });
+          const res = await originalFetch(${scriptJson(p('/api/me'))}, { credentials: 'same-origin' });  // scriptJson = JSON made safe inside a script tag
           if (!res.ok) return;
           const data = await res.json();
           if (!data || !data.viewer) return;
@@ -559,10 +651,12 @@ function parseWebLobbyId(channelId, game) {
   return raw.slice(prefix.length);
 }
 
+// Only called for lobbies we created (POST create) or that the worker reports as live, never for ids from a URL.
 function rememberWebLobby(game, lobbyId) {
   const registry = getWebLobbyRegistry(game);
   const normalizedLobbyId = String(lobbyId || '').trim();
   if (!registry || !normalizedLobbyId) return;
+  if (!isWebId(normalizedLobbyId, game)) return;   // never list an id we couldn't have generated
   const now = Date.now();
   const existing = registry.get(normalizedLobbyId);
   registry.set(normalizedLobbyId, {
@@ -792,9 +886,63 @@ function finishTouhouBattleTimeout(sessionId) {
   session.over = true;
   session.victory = false;
   session.outcome = 'timeout';
+  session.endedAt = Date.now();   // when it ended, so the sweeper knows when to delete it
   const until = Date.now() + TOUHOU_BATTLE_FAINT_MS;
   setFainted(session.guildId, session.player.name, session.userId, until);
 }
+
+// Has this live battle gone without a move for too long?
+function isTouhouBattleIdle(session) {
+  const lastMove = session.updatedAt || session.startedAt || 0;          // last time anything happened
+  return !session.over && Date.now() - lastMove > TOUHOU_BATTLE_IDLE_TIMEOUT_MS;   // live and quiet for over 90 s
+}
+
+// The player's battle that is still being fought, if any (a quiet one is forfeited first, freeing the slot).
+function findActiveTouhouBattle(userId) {
+  for (const [battleId, session] of touhouBattleSessions) {             // every battle in memory
+    if (session.userId !== userId || session.over) continue;            // someone else's, or already finished
+    if (isTouhouBattleIdle(session)) {                                  // abandoned
+      finishTouhouBattleTimeout(battleId);                              // forfeit it like the page would
+      continue;                                                         // it no longer blocks a new battle
+    }
+    return battleId;                                                    // a battle still in progress
+  }
+  return null;                                                          // no live battle
+}
+
+// Every minute: forfeit abandoned battles, and delete finished ones once nobody needs to view them any more.
+function sweepTouhouBattleSessions() {
+  const now = Date.now();                                               // one clock reading
+  for (const [battleId, session] of touhouBattleSessions) {             // every battle in memory
+    try {
+      if (isTouhouBattleIdle(session)) finishTouhouBattleTimeout(battleId);   // abandoned: forfeit (and faint) it
+      const endedAt = session.endedAt || session.updatedAt || session.startedAt || 0;   // when it finished
+      if (session.over && now - endedAt > TOUHOU_BATTLE_KEEP_FINISHED_MS) touhouBattleSessions.delete(battleId);   // old: delete
+    } catch (error) {
+      logger.error(`Touhou battle sweep failed for ${battleId}: ${error.message}`);   // log and keep sweeping the rest
+      touhouBattleSessions.delete(battleId);                            // a broken session is dropped rather than retried forever
+    }
+  }
+}
+setInterval(sweepTouhouBattleSessions, TOUHOU_BATTLE_SWEEP_INTERVAL_MS).unref();   // unref: never keeps the process alive on its own
+
+// Pachinko session id -> { userId, seenAt }: who owns each pachinko board, so nobody can watch or drop on another's.
+const pachinkoSessionOwners = new Map();
+
+// Claim a pachinko session for this player; false if someone else already owns it.
+function claimPachinkoSession(sessionId, userId) {
+  const now = Date.now();                                               // one clock reading
+  const owner = pachinkoSessionOwners.get(sessionId);                   // current owner, if any
+  if (owner && owner.userId !== userId && now - owner.seenAt < PACHINKO_OWNER_TTL_MS) return false;   // another player's live board
+  pachinkoSessionOwners.set(sessionId, { userId, seenAt: now });        // it's ours now (or still)
+  return true;                                                          // claimed
+}
+setInterval(() => {
+  const cutoff = Date.now() - PACHINKO_OWNER_TTL_MS;                    // anything not used since then is stale
+  for (const [sessionId, owner] of pachinkoSessionOwners) {             // every claimed board
+    if (owner.seenAt < cutoff) pachinkoSessionOwners.delete(sessionId); // forget stale claims
+  }
+}, TOUHOU_BATTLE_SWEEP_INTERVAL_MS).unref();                            // same 1-minute cadence, never keeps the process alive
 
 function buildWsFrame(data) {
   const payload = Buffer.from(data, 'utf8');
@@ -831,6 +979,11 @@ function parseWsFrames(buffer) {
       payloadLength = buffer.readUInt32BE(offset + 6);
       headerLength = 10;
     }
+    if (payloadLength > WS_MAX_FRAME_BYTES) {                  // bigger than any message our pages send
+      const tooBig = new Error('websocket frame too large');   // stop before buffering the rest of it
+      tooBig.code = 'WS_FRAME_TOO_LARGE';                      // lets the caller close with 1009 "message too big"
+      throw tooBig;
+    }
     const maskLength = masked ? 4 : 0;
     const frameLength = headerLength + maskLength + payloadLength;
     if (offset + frameLength > buffer.length) break;
@@ -852,6 +1005,22 @@ function parseWsFrames(buffer) {
 function sendWsJson(client, payload) {
   if (!client || client.socket.destroyed) return;
   try { client.socket.write(buildWsFrame(JSON.stringify(payload))); } catch {}
+}
+
+/**
+ * May this client listen on this channel? Only channels the server really broadcasts on are allowed:
+ * slots/blackjack/holdem/horseracing lobbies (shared tables, valid ids only) and pachinko boards (owner only).
+ * Returns an error message, or null when the subscription is fine.
+ */
+function checkWsChannel(client, channel) {
+  const lobby = channel.match(/^(slots|blackjack|holdem|horseracing):lobby:(.+)$/u);   // "<game>:lobby:<id>"
+  if (lobby) return isWebId(lobby[2], lobby[1]) ? null : 'Unknown lobby id';            // shared table: just needs a real id
+  const pachinko = channel.match(/^pachinko:session:(.+)$/u);                          // "pachinko:session:<id>"
+  if (pachinko) {
+    if (!PACHINKO_SESSION_ID_PATTERN.test(pachinko[1])) return 'Unknown pachinko session';   // not an id the page makes
+    return claimPachinkoSession(pachinko[1], client.session.discordId) ? null : 'That pachinko board belongs to someone else';   // owner only
+  }
+  return 'Unknown channel';                                                            // nothing is ever broadcast there
 }
 
 function subscribeClient(client, channel) {
@@ -889,8 +1058,14 @@ function handleWsMessage(client, raw) {
   }
   if (message.type === 'ping') return sendWsJson(client, { type: 'pong', ts: Date.now() });
   if (message.type === 'subscribe') {
-    subscribeClient(client, String(message.channel || ''));
-    return sendWsJson(client, { type: 'subscribed', channel: String(message.channel || '') });
+    const channel = String(message.channel || '');                                     // the channel asked for
+    const problem = checkWsChannel(client, channel);                                     // allowed prefix, real id, right owner?
+    if (problem) return sendWsJson(client, { type: 'error', message: problem });         // refuse it
+    if (!client.channels.has(channel) && client.channels.size >= WS_MAX_CHANNELS_PER_CLIENT) {   // already at the channel cap
+      return sendWsJson(client, { type: 'error', message: 'Too many subscriptions' });  // refuse a new one
+    }
+    subscribeClient(client, channel);                                                    // start sending it this channel
+    return sendWsJson(client, { type: 'subscribed', channel });                          // confirm
   }
   if (message.type === 'unsubscribe') {
     unsubscribeClient(client, String(message.channel || ''));
@@ -963,6 +1138,12 @@ function installWsBridge() {
   });
 }
 
+// Send a websocket close frame with code 1009 ("message too big"), then hang up.
+function closeWsTooBig(socket) {
+  try { socket.end(Buffer.from([0x88, 0x02, 0x03, 0xf1])); } catch { /* already gone */ }   // 0x88 = close, 2-byte payload 0x03F1 = 1009
+  setTimeout(() => { try { socket.destroy(); } catch { /* already gone */ } }, 1000).unref();   // don't wait forever for the client
+}
+
 function handleWsUpgrade(req, socket) {
   const parsedUrl = parseUrl(req);
   const pathname = routePath(parsedUrl.pathname);
@@ -990,6 +1171,9 @@ function handleWsUpgrade(req, socket) {
   socket.on('data', (chunk) => {
     try {
       client.buffer = Buffer.concat([client.buffer, chunk]);
+      if (client.buffer.length > WS_MAX_BUFFER_BYTES) {                 // more unread data than any honest page sends
+        return closeWsTooBig(socket);                                    // close with 1009 instead of buffering it
+      }
       const { messages, remaining } = parseWsFrames(client.buffer);
       client.buffer = remaining;
       for (const message of messages) {
@@ -997,7 +1181,8 @@ function handleWsUpgrade(req, socket) {
         if (message.opcode === 0x9) { socket.write(Buffer.from([0x8a, 0x00])); continue; }
         if (message.opcode === 0x1) handleWsMessage(client, message.payload);
       }
-    } catch {
+    } catch (error) {
+      if (error?.code === 'WS_FRAME_TOO_LARGE') return closeWsTooBig(socket);   // oversized frame: polite 1009 close
       socket.destroy();
     }
   });
@@ -1040,8 +1225,8 @@ function renderHomePage(session) {
 }
 
 function renderSlotsIndexPage(session) {
-  const slotsApiPath = JSON.stringify(p('/api/slots/lobbies'));
-  const slotsPageBase = JSON.stringify(p('/slots/'));
+  const slotsApiPath = scriptJson(p('/api/slots/lobbies'));  // scriptJson = JSON made safe inside a script tag
+  const slotsPageBase = scriptJson(p('/slots/'));  // scriptJson = JSON made safe inside a script tag
   return renderPage('Slots', session, `
     <div class="card">
       <h2>Slots Lobbies</h2>
@@ -1160,7 +1345,7 @@ function renderSlotsLobbyPage(session, lobbyId) {
   `, {
     active: '/slots',
     pageScripts: `<script>
-const lobbyId = ${JSON.stringify(lobbyId)};
+const lobbyId = ${scriptJson(lobbyId)};  // scriptJson = JSON made safe inside a script tag
 const stateEl = document.getElementById('slots-lobby-state');
 const resultEl = document.getElementById('slots-action-result');
 let socket;
@@ -1206,7 +1391,7 @@ async function postAction(path, payload) {
   return data;
 }
 async function refreshLobby() {
-  const res = await fetch(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId);
+  const res = await fetch(${scriptJson(p('/api/slots/lobbies/'))} + lobbyId);  // scriptJson = JSON made safe inside a script tag
   const data = await res.json();
   if (!res.ok) {
     stateEl.innerHTML = '<div class="item">Lobby unavailable.</div>';
@@ -1216,7 +1401,7 @@ async function refreshLobby() {
 }
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket = new WebSocket(proto + '//' + window.location.host + ${scriptJson(p('/ws'))});  // scriptJson = JSON made safe inside a script tag
   socket.addEventListener('open', () => {
     socket.send(JSON.stringify({ type: 'subscribe', channel: 'slots:lobby:' + lobbyId }));
   });
@@ -1232,7 +1417,7 @@ let leaving = false;
 function leaveLobbyOnExit() {
   if (leaving) return;
   leaving = true;
-  const url = ${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/leave';
+  const url = ${scriptJson(p('/api/slots/lobbies/'))} + lobbyId + '/leave';  // scriptJson = JSON made safe inside a script tag
   try {
     navigator.sendBeacon(url, new Blob(['{}'], { type: 'application/json' }));
   } catch {
@@ -1240,12 +1425,12 @@ function leaveLobbyOnExit() {
   }
 }
 window.addEventListener('pagehide', leaveLobbyOnExit);
-document.getElementById('slots-join').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/join'));
+document.getElementById('slots-join').addEventListener('click', () => postAction(${scriptJson(p('/api/slots/lobbies/'))} + lobbyId + '/join'));  // scriptJson = JSON made safe inside a script tag
 document.querySelectorAll('.slots-bet-button').forEach((button) => {
-  button.addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/bet', { amount: Number(button.dataset.amount) }));
+  button.addEventListener('click', () => postAction(${scriptJson(p('/api/slots/lobbies/'))} + lobbyId + '/bet', { amount: Number(button.dataset.amount) }));  // scriptJson = JSON made safe inside a script tag
 });
-document.getElementById('slots-spin').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/spin'));
-document.getElementById('slots-leave').addEventListener('click', () => postAction(${JSON.stringify(p('/api/slots/lobbies/'))} + lobbyId + '/leave'));
+document.getElementById('slots-spin').addEventListener('click', () => postAction(${scriptJson(p('/api/slots/lobbies/'))} + lobbyId + '/spin'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('slots-leave').addEventListener('click', () => postAction(${scriptJson(p('/api/slots/lobbies/'))} + lobbyId + '/leave'));  // scriptJson = JSON made safe inside a script tag
 connectWs();
 refreshLobby();
 </script>`,
@@ -1270,8 +1455,8 @@ function renderTextLobbyList(lobbies, emptyMessage, pageBase) {
 }
 
 function renderBlackjackIndexPage(session) {
-  const apiPath = JSON.stringify(p('/api/blackjack/lobbies'));
-  const pageBase = JSON.stringify(p('/blackjack/'));
+  const apiPath = scriptJson(p('/api/blackjack/lobbies'));  // scriptJson = JSON made safe inside a script tag
+  const pageBase = scriptJson(p('/blackjack/'));  // scriptJson = JSON made safe inside a script tag
   return renderPage('Blackjack', session, `
     <div class="card">
       <h2>Blackjack Tables</h2>
@@ -1304,7 +1489,7 @@ function setFlash(target, type, message) {
   target.appendChild(box);
 }
 function renderList(lobbies) {
-  listEl.innerHTML = ${JSON.stringify('')} + (Array.isArray(lobbies) && lobbies.length
+  listEl.innerHTML = ${scriptJson('')} + (Array.isArray(lobbies) && lobbies.length  // scriptJson = JSON made safe inside a script tag
     ? lobbies.map((lobby) => {
         const joinUrl = pageBase + encodeURIComponent(lobby.lobbyId);
         return '<div class="item"><strong>Lobby ' + escapeHtml(lobby.lobbyId) + '</strong><pre class="board">' + escapeHtml(lobby.content || 'Waiting for first hand...') + '</pre><a class="pill" href="' + escapeHtml(joinUrl) + '">Open Table</a></div>';
@@ -1342,9 +1527,9 @@ setInterval(refreshList, 5000);
 }
 
 function renderBlackjackLobbyPage(session, lobbyId) {
-  const baseApi = JSON.stringify(p('/api/blackjack/lobbies/'));
-  const viewerName = JSON.stringify(session.username || '');
-  const dingUrl = JSON.stringify(gamesMediaPath('ding.wav'));
+  const baseApi = scriptJson(p('/api/blackjack/lobbies/'));  // scriptJson = JSON made safe inside a script tag
+  const viewerName = scriptJson(session.username || '');  // scriptJson = JSON made safe inside a script tag
+  const dingUrl = scriptJson(gamesMediaPath('ding.wav'));  // scriptJson = JSON made safe inside a script tag
   return renderPage(`Blackjack ${lobbyId}`, session, `
     <div class="card"><h2>Blackjack ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Table</h2><pre id="blackjack-state" class="board">Connecting...</pre></div>
@@ -1361,7 +1546,7 @@ function renderBlackjackLobbyPage(session, lobbyId) {
   `, {
     active: '/blackjack',
     pageScripts: `<script>
-const lobbyId = ${JSON.stringify(lobbyId)};
+const lobbyId = ${scriptJson(lobbyId)};  // scriptJson = JSON made safe inside a script tag
 const viewerName = ${viewerName}.toLowerCase();
 const stateEl = document.getElementById('blackjack-state');
 const resultEl = document.getElementById('blackjack-result');
@@ -1422,7 +1607,7 @@ async function refreshState() {
 }
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket = new WebSocket(proto + '//' + window.location.host + ${scriptJson(p('/ws'))});  // scriptJson = JSON made safe inside a script tag
   socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'blackjack:lobby:' + lobbyId })));
   socket.addEventListener('message', (event) => {
     const msg = JSON.parse(event.data);
@@ -1471,8 +1656,8 @@ refreshState();
 }
 
 function renderHoldemIndexPage(session) {
-  const apiPath = JSON.stringify(p('/api/holdem/lobbies'));
-  const pageBase = JSON.stringify(p('/holdem/'));
+  const apiPath = scriptJson(p('/api/holdem/lobbies'));  // scriptJson = JSON made safe inside a script tag
+  const pageBase = scriptJson(p('/holdem/'));  // scriptJson = JSON made safe inside a script tag
   return renderPage('Holdem', session, `
     <div class="card"><h2>Holdem Tables</h2><p class="muted">Create a hold'em table or join an existing one.</p><button class="primary" id="create-holdem-lobby" type="button">Create Holdem Table</button><div id="holdem-create-result" style="margin-top:12px;"></div></div>
     <div class="card"><h2>Open Tables</h2><div id="holdem-lobby-list"><div class="item">Loading hold'em tables...</div></div></div>
@@ -1523,9 +1708,9 @@ setInterval(refreshList, 5000);
 }
 
 function renderHoldemLobbyPage(session, lobbyId) {
-  const baseApi = JSON.stringify(p('/api/holdem/lobbies/'));
-  const viewerName = JSON.stringify(session.username || '');
-  const dingUrl = JSON.stringify(gamesMediaPath('ding.wav'));
+  const baseApi = scriptJson(p('/api/holdem/lobbies/'));  // scriptJson = JSON made safe inside a script tag
+  const viewerName = scriptJson(session.username || '');  // scriptJson = JSON made safe inside a script tag
+  const dingUrl = scriptJson(gamesMediaPath('ding.wav'));  // scriptJson = JSON made safe inside a script tag
   return renderPage(`Holdem ${lobbyId}`, session, `
     <div class="card"><h2>Holdem ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Table</h2><pre id="holdem-state" class="board">Connecting...</pre></div>
@@ -1544,7 +1729,7 @@ function renderHoldemLobbyPage(session, lobbyId) {
   `, {
     active: '/holdem',
     pageScripts: `<script>
-const lobbyId = ${JSON.stringify(lobbyId)};
+const lobbyId = ${scriptJson(lobbyId)};  // scriptJson = JSON made safe inside a script tag
 const viewerName = ${viewerName}.toLowerCase();
 const stateEl = document.getElementById('holdem-state');
 const peekEl = document.getElementById('holdem-peek');
@@ -1566,7 +1751,7 @@ function setFlash(target, type, message) {
 }
 function viewerTurnActive(state) {
   if (!state || !state.content || !viewerName) return false;
-  return state.content.includes('Turn: <@${escapeHtml(session.discordId || '')}>');
+  return state.content.includes('Turn: <@' + ${scriptJson(String(session.discordId || ''))} + '>');  // scriptJson = JSON made safe inside a script tag
 }
 function playTurnDing() {
   try {
@@ -1606,7 +1791,7 @@ async function refreshState() {
 }
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket = new WebSocket(proto + '//' + window.location.host + ${scriptJson(p('/ws'))});  // scriptJson = JSON made safe inside a script tag
   socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'holdem:lobby:' + lobbyId })));
   socket.addEventListener('message', (event) => {
     const msg = JSON.parse(event.data);
@@ -1656,8 +1841,8 @@ refreshState();
 }
 
 function renderHorseracingIndexPage(session) {
-  const apiPath = JSON.stringify(p('/api/horseracing/lobbies'));
-  const pageBase = JSON.stringify(p('/horseracing/'));
+  const apiPath = scriptJson(p('/api/horseracing/lobbies'));  // scriptJson = JSON made safe inside a script tag
+  const pageBase = scriptJson(p('/horseracing/'));  // scriptJson = JSON made safe inside a script tag
   return renderPage('Horse Racing', session, `
     <div class="card"><h2>Horse Racing Lobbies</h2><p class="muted">Create a race lobby or join one already taking bets.</p><button class="primary" id="create-race-lobby" type="button">Create Race Lobby</button><div id="race-create-result" style="margin-top:12px;"></div></div>
     <div class="card"><h2>Open Races</h2><div id="race-lobby-list"><div class="item">Loading races...</div></div></div>
@@ -1708,7 +1893,7 @@ setInterval(refreshList, 5000);
 }
 
 function renderHorseracingLobbyPage(session, lobbyId) {
-  const baseApi = JSON.stringify(p('/api/horseracing/lobbies/'));
+  const baseApi = scriptJson(p('/api/horseracing/lobbies/'));  // scriptJson = JSON made safe inside a script tag
   return renderPage(`Horse Racing ${lobbyId}`, session, `
     <div class="card"><h2>Horse Racing ${escapeHtml(lobbyId)}</h2></div>
     <div class="card"><h2>Race Feed</h2><pre id="race-state" class="board">Connecting...</pre></div>
@@ -1730,7 +1915,7 @@ function renderHorseracingLobbyPage(session, lobbyId) {
   `, {
     active: '/horseracing',
     pageScripts: `<script>
-const lobbyId = ${JSON.stringify(lobbyId)};
+const lobbyId = ${scriptJson(lobbyId)};  // scriptJson = JSON made safe inside a script tag
 const stateEl = document.getElementById('race-state');
 const resultEl = document.getElementById('race-result');
 const baseApi = ${baseApi};
@@ -1757,7 +1942,7 @@ async function refreshState() {
 }
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket = new WebSocket(proto + '//' + window.location.host + ${scriptJson(p('/ws'))});  // scriptJson = JSON made safe inside a script tag
   socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'horseracing:lobby:' + lobbyId })));
   socket.addEventListener('message', (event) => {
     const msg = JSON.parse(event.data);
@@ -1830,7 +2015,7 @@ function setFlash(target, type, message) {
 }
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket = new WebSocket(proto + '//' + window.location.host + ${scriptJson(p('/ws'))});  // scriptJson = JSON made safe inside a script tag
   socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'subscribe', channel: 'pachinko:session:' + sessionId })));
   socket.addEventListener('message', (event) => {
     const msg = JSON.parse(event.data);
@@ -1844,7 +2029,7 @@ function connectWs() {
 }
 document.getElementById('pachinko-drop').addEventListener('click', async () => {
   setFlash(resultEl, '', 'Dropping...');
-  const res = await fetch(${JSON.stringify(p('/api/pachinko/drop'))}, {
+  const res = await fetch(${scriptJson(p('/api/pachinko/drop'))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -1921,9 +2106,9 @@ function renderLeaderboard(rows) {
 }
 async function refreshAll() {
   const [caseResp, buffResp, leaderboardResp] = await Promise.all([
-    fetchJson(${JSON.stringify(p('/api/cigarettes/case'))}),
-    fetchJson(${JSON.stringify(p('/api/cigarettes/buff'))}),
-    fetchJson(${JSON.stringify(p('/api/cigarettes/leaderboard'))}),
+    fetchJson(${scriptJson(p('/api/cigarettes/case'))}),  // scriptJson = JSON made safe inside a script tag
+    fetchJson(${scriptJson(p('/api/cigarettes/buff'))}),  // scriptJson = JSON made safe inside a script tag
+    fetchJson(${scriptJson(p('/api/cigarettes/leaderboard'))}),  // scriptJson = JSON made safe inside a script tag
   ]);
   renderCase(caseResp.data.items || []);
   renderBuff(caseResp.res.ok && buffResp.res.ok ? buffResp.data.buff : null);
@@ -1931,7 +2116,7 @@ async function refreshAll() {
 }
 document.getElementById('cig-gacha').addEventListener('click', async () => {
   setFlash(resultEl, '', 'Pulling...');
-  const { res, data } = await fetchJson(${JSON.stringify(p('/api/cigarettes/gacha'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+  const { res, data } = await fetchJson(${scriptJson(p('/api/cigarettes/gacha'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });  // scriptJson = JSON made safe inside a script tag
   if (!res.ok) {
     setFlash(resultEl, 'error', data.error?.message || 'Pull failed.');
     return;
@@ -1942,7 +2127,7 @@ document.getElementById('cig-gacha').addEventListener('click', async () => {
 document.getElementById('cig-smoke').addEventListener('click', async () => {
   setFlash(resultEl, '', 'Lighting up...');
   const slot = Number(document.getElementById('cig-smoke-slot').value);
-  const { res, data } = await fetchJson(${JSON.stringify(p('/api/cigarettes/smoke'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slot }) });
+  const { res, data } = await fetchJson(${scriptJson(p('/api/cigarettes/smoke'))}, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slot }) });  // scriptJson = JSON made safe inside a script tag
   if (!res.ok) {
     setFlash(resultEl, 'error', data.error?.message || 'Smoke failed.');
     return;
@@ -2039,10 +2224,10 @@ function renderStats(data) {
 }
 async function refreshAll() {
   const [collectionResp, marketResp, listingsResp, statsResp] = await Promise.all([
-    fetchJson(${JSON.stringify(p('/api/touhou/collection'))}),
-    fetchJson(${JSON.stringify(p('/api/touhou/market'))}),
-    fetchJson(${JSON.stringify(p('/api/touhou/listings'))}),
-    fetchJson(${JSON.stringify(p('/api/touhou/stats'))}),
+    fetchJson(${scriptJson(p('/api/touhou/collection'))}),  // scriptJson = JSON made safe inside a script tag
+    fetchJson(${scriptJson(p('/api/touhou/market'))}),  // scriptJson = JSON made safe inside a script tag
+    fetchJson(${scriptJson(p('/api/touhou/listings'))}),  // scriptJson = JSON made safe inside a script tag
+    fetchJson(${scriptJson(p('/api/touhou/stats'))}),  // scriptJson = JSON made safe inside a script tag
   ]);
   renderCollection(collectionResp.data);
   renderMarket(marketResp.data);
@@ -2059,15 +2244,15 @@ async function doPost(path, payload, fallback) {
   setFlash(resultEl, 'success', data.message || 'Done.');
   refreshAll();
 }
-document.getElementById('touhou-adopt').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/adopt'))}, {}, 'Adopt failed.'));
-document.getElementById('touhou-buy').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/buy'))}, { name: document.getElementById('touhou-buy-name').value }, 'Buy failed.'));
-document.getElementById('touhou-sell').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/sell'))}, { name: document.getElementById('touhou-sell-name').value, price: Number(document.getElementById('touhou-sell-price').value) }, 'Sell failed.'));
-document.getElementById('touhou-delist').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/delist'))}, { name: document.getElementById('touhou-delist-name').value }, 'Delist failed.'));
-document.getElementById('touhou-buyback').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/buyback'))}, { name: document.getElementById('touhou-buyback-name').value }, 'Buyback failed.'));
-document.getElementById('touhou-send').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/send'))}, { name: document.getElementById('touhou-send-name').value, recipientUserId: document.getElementById('touhou-send-user').value.trim() }, 'Send failed.'));
-document.getElementById('touhou-potion').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/potions'))}, { amount: Number(document.getElementById('touhou-potion-amount').value) }, 'Potion purchase failed.'));
-document.getElementById('touhou-heal-free').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/heal'))}, { name: document.getElementById('touhou-heal-name').value, pay: false }, 'Heal failed.'));
-document.getElementById('touhou-heal-pay').addEventListener('click', () => doPost(${JSON.stringify(p('/api/touhou/heal'))}, { name: document.getElementById('touhou-heal-name').value, pay: true }, 'Heal failed.'));
+document.getElementById('touhou-adopt').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/adopt'))}, {}, 'Adopt failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-buy').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/buy'))}, { name: document.getElementById('touhou-buy-name').value }, 'Buy failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-sell').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/sell'))}, { name: document.getElementById('touhou-sell-name').value, price: Number(document.getElementById('touhou-sell-price').value) }, 'Sell failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-delist').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/delist'))}, { name: document.getElementById('touhou-delist-name').value }, 'Delist failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-buyback').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/buyback'))}, { name: document.getElementById('touhou-buyback-name').value }, 'Buyback failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-send').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/send'))}, { name: document.getElementById('touhou-send-name').value, recipientUserId: document.getElementById('touhou-send-user').value.trim() }, 'Send failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-potion').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/potions'))}, { amount: Number(document.getElementById('touhou-potion-amount').value) }, 'Potion purchase failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-heal-free').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/heal'))}, { name: document.getElementById('touhou-heal-name').value, pay: false }, 'Heal failed.'));  // scriptJson = JSON made safe inside a script tag
+document.getElementById('touhou-heal-pay').addEventListener('click', () => doPost(${scriptJson(p('/api/touhou/heal'))}, { name: document.getElementById('touhou-heal-name').value, pay: true }, 'Heal failed.'));  // scriptJson = JSON made safe inside a script tag
 refreshAll();
 </script>`,
   });
@@ -2084,6 +2269,7 @@ function renderTouhouBattleIndexPage(session) {
     pageScripts: `<script>
 const resultEl = document.getElementById('touhou-battle-result');
 const partyEl = document.getElementById('touhou-party');
+function escHtml(value) { return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }  // make text safe to put into innerHTML
 function setFlash(target, type, message) {
   target.textContent = '';
   const box = document.createElement('div');
@@ -2102,15 +2288,15 @@ function renderParty(items) {
     return;
   }
   partyEl.innerHTML = items.map((item) => '<div class="item party-card">'
-    + '<img src="' + item.imageUrl + '" alt="' + item.name.replace(/"/g, '&quot;') + '" loading="lazy">'
+    + '<img src="' + escHtml(item.imageUrl) + '" alt="' + escHtml(item.name) + '" loading="lazy">'  // escaped image URL and name
     + '<pre class="portrait-meta">'
-    + item.rarity.emoji + ' ' + item.name + ' - Lv ' + item.level + ' - ' + item.exp + '/' + item.expToNext + ' EXP - ' + item.wins + 'W/' + item.losses + 'L'
-    + (item.faintedUntil ? ' - fainted ' + item.faintedFor : '')
+    + escHtml(item.rarity.emoji) + ' ' + escHtml(item.name) + ' - Lv ' + escHtml(item.level) + ' - ' + escHtml(item.exp) + '/' + escHtml(item.expToNext) + ' EXP - ' + escHtml(item.wins) + 'W/' + escHtml(item.losses) + 'L'  // every value escaped
+    + (item.faintedUntil ? ' - fainted ' + escHtml(item.faintedFor) : '')  // escaped faint timer
     + '\\n'
-    + (item.attacks.length ? item.attacks.join(' / ') : 'no attacks')
+    + (item.attacks.length ? escHtml(item.attacks.join(' / ')) : 'no attacks')  // escaped attack names
     + '</pre>'
     + '<div class="party-actions">'
-    + '<select data-rarity-for="' + item.name.replace(/"/g, '&quot;') + '">'
+    + '<select data-rarity-for="' + escHtml(item.name) + '">'  // escaped name
     + '<option value="Common">Common</option>'
     + '<option value="Uncommon">Uncommon</option>'
     + '<option value="Rare">Rare</option>'
@@ -2118,7 +2304,7 @@ function renderParty(items) {
     + '<option value="Legendary">Legendary</option>'
     + '<option value="gamble">Gamble</option>'
     + '</select>'
-    + '<button class="primary touhou-battle-start-button" type="button" data-name="' + item.name.replace(/"/g, '&quot;') + '">Start Battle</button>'
+    + '<button class="primary touhou-battle-start-button" type="button" data-name="' + escHtml(item.name) + '">Start Battle</button>'  // escaped name
     + '</div></div>').join('');
   for (const button of document.querySelectorAll('.touhou-battle-start-button')) {
     button.addEventListener('click', async () => {
@@ -2130,7 +2316,7 @@ function renderParty(items) {
   }
 }
 async function refreshParty() {
-  const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/party'))});
+  const { res, data } = await fetchJson(${scriptJson(p('/api/touhou/party'))});  // scriptJson = JSON made safe inside a script tag
   if (!res.ok) {
     partyEl.textContent = 'Could not load party.';
     return;
@@ -2139,7 +2325,7 @@ async function refreshParty() {
 }
 async function startBattle(name, rarity) {
   setFlash(resultEl, '', 'Starting battle...');
-  const { res, data } = await fetchJson(${JSON.stringify(p('/api/touhou/battle/start'))}, {
+  const { res, data } = await fetchJson(${scriptJson(p('/api/touhou/battle/start'))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -2151,7 +2337,7 @@ async function startBattle(name, rarity) {
     setFlash(resultEl, 'error', data.error?.message || 'Could not start battle.');
     return;
   }
-  window.location.href = ${JSON.stringify(p('/touhou/battle/'))} + data.battleId;
+  window.location.href = ${scriptJson(p('/touhou/battle/'))} + data.battleId;  // scriptJson = JSON made safe inside a script tag
 }
 refreshParty();
 </script>`,
@@ -2159,8 +2345,8 @@ refreshParty();
 }
 
 function renderTouhouBattlePage(session, battleId) {
-  const baseApi = JSON.stringify(p('/api/touhou/battle/'));
-  const touhouImageBase = JSON.stringify(p('/media/touhou/'));
+  const baseApi = scriptJson(p('/api/touhou/battle/'));  // scriptJson = JSON made safe inside a script tag
+  const touhouImageBase = scriptJson(p('/media/touhou/'));  // scriptJson = JSON made safe inside a script tag
   return renderPage(`Touhou Battle ${battleId}`, session, `
     <div class="card"><h2>Touhou Battle</h2><div class="muted">Battle ID: ${escapeHtml(battleId)}</div></div>
     <div class="card"><div class="item inline-action"><a class="pill" href="${p('/touhou')}">Return To Main Menu</a><a class="pill" href="${p('/touhou/battle')}">Back To Battle Arena</a></div></div>
@@ -2177,11 +2363,12 @@ function renderTouhouBattlePage(session, battleId) {
   `, {
     active: '/touhou',
     pageScripts: `<script>
-const battleId = ${JSON.stringify(battleId)};
+const battleId = ${scriptJson(battleId)};  // scriptJson = JSON made safe inside a script tag
 const stateEl = document.getElementById('touhou-battle-state');
 const resultEl = document.getElementById('touhou-battle-action-result');
 const attackButtonsEl = document.getElementById('touhou-battle-attack-buttons');
 const portraitsEl = document.getElementById('touhou-battle-portraits');
+function escHtml(value) { return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }  // make text safe to put into innerHTML
 const baseApi = ${baseApi};
 const touhouImageBase = ${touhouImageBase};
 let returnTimer = null;
@@ -2199,8 +2386,8 @@ function renderState(state) {
     return;
   }
   portraitsEl.innerHTML = [
-    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.player.name) + '" alt="' + state.player.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.player.rarity.emoji + ' ' + state.player.name + '\\nLv ' + state.player.level + ' • ' + state.player.type + '</pre><div class="hp-wrap"><div class="hp-bar"><div class="hp-fill" style="width:' + Math.max(0, Math.min(100, (state.player.hp / Math.max(1, state.player.hpMax)) * 100)) + '%"></div></div><div class="hp-text">' + state.player.hp + '/' + state.player.hpMax + ' HP</div></div></div>',
-    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.evil.name) + '" alt="Evil ' + state.evil.name.replace(/"/g, '&quot;') + '" loading="lazy"><pre class="portrait-meta">' + state.evil.rarity.emoji + ' Evil ' + state.evil.name + '\\nLv ' + state.evil.level + ' • ' + state.evil.type + '</pre><div class="hp-wrap"><div class="hp-bar"><div class="hp-fill" style="width:' + Math.max(0, Math.min(100, (state.evil.hp / Math.max(1, state.evil.hpMax)) * 100)) + '%"></div></div><div class="hp-text">' + state.evil.hp + '/' + state.evil.hpMax + ' HP</div></div></div>',
+    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.player.name) + '" alt="' + escHtml(state.player.name) + '" loading="lazy"><pre class="portrait-meta">' + escHtml(state.player.rarity.emoji) + ' ' + escHtml(state.player.name) + '\\nLv ' + escHtml(state.player.level) + ' • ' + escHtml(state.player.type) + '</pre><div class="hp-wrap"><div class="hp-bar"><div class="hp-fill" style="width:' + Math.max(0, Math.min(100, (state.player.hp / Math.max(1, state.player.hpMax)) * 100)) + '%"></div></div><div class="hp-text">' + state.player.hp + '/' + state.player.hpMax + ' HP</div></div></div>',  // names, rarity, level and type escaped
+    '<div class="item portrait-card"><img src="' + touhouImageBase + encodeURIComponent(state.evil.name) + '" alt="Evil ' + escHtml(state.evil.name) + '" loading="lazy"><pre class="portrait-meta">' + escHtml(state.evil.rarity.emoji) + ' Evil ' + escHtml(state.evil.name) + '\\nLv ' + escHtml(state.evil.level) + ' • ' + escHtml(state.evil.type) + '</pre><div class="hp-wrap"><div class="hp-bar"><div class="hp-fill" style="width:' + Math.max(0, Math.min(100, (state.evil.hp / Math.max(1, state.evil.hpMax)) * 100)) + '%"></div></div><div class="hp-text">' + state.evil.hp + '/' + state.evil.hpMax + ' HP</div></div></div>',  // names, rarity, level and type escaped
   ].join('');
   stateEl.textContent = [
     'Potions: ' + state.potionCount,
@@ -2215,7 +2402,7 @@ function renderState(state) {
     if (!returnTimer) {
       setFlash(resultEl, 'success', state.outcome ? 'Battle ended: ' + state.outcome + '. Returning in 6 seconds.' : 'Battle ended. Returning in 6 seconds.');
       returnTimer = setTimeout(() => {
-        window.location.href = ${JSON.stringify(p('/touhou/battle'))};
+        window.location.href = ${scriptJson(p('/touhou/battle'))};  // scriptJson = JSON made safe inside a script tag
       }, 6000);
     }
   }
@@ -2268,6 +2455,7 @@ async function handleRequest(req, res) {
   const pathname = routePath(parsedUrl.pathname);
   const method = (req.method || 'GET').toUpperCase();
   if (pathname === null) return sendError(res, 404, 'not_found', 'Unknown route');
+  if (checkIdInPath(pathname) === false) return sendError(res, 404, 'not_found', 'Unknown lobby or battle id');   // id isn't one we could have made: stop here
 
   if (pathname === '/auth/discord/login' && method === 'GET') {
     handleLoginRoute(req, res, { authConfig: { redirectUri: GAME_WEB_DISCORD_OAUTH_REDIRECT_URI } });
@@ -2344,10 +2532,18 @@ async function handleRequest(req, res) {
     ensureAccount(session.discordId, session.username);
     const balance = getBalance(session.discordId);
     if (balance < DISPENSE_PRICE) return sendError(res, 400, 'insufficient_funds', `Need ${DISPENSE_PRICE} SGC but only have ${balance}.`);
-    const result = dispenseCigarette(session.discordId);
-    if (!result.success) return sendError(res, 400, 'gacha_failed', result.error || 'Could not pull cigarette');
-    adjustBalance(session.discordId, -DISPENSE_PRICE, `Cigarette gacha: ${result.cigarette.display_name}`);
-    adjustBalance(TAYS_TOBACCO_USER_ID, DISPENSE_PRICE, `Cigarette sale: ${result.cigarette.display_name}`);
+    let result;                                                                        // the pull, once it has been paid for
+    try {
+      result = runEconomyTransaction(() => {                                           // all-or-nothing: money moves only if the pull happens
+        mustAdjustBalance(session.discordId, -DISPENSE_PRICE, 'Cigarette gacha pull');  // charge the player first (throws if short)
+        mustAdjustBalance(TAYS_TOBACCO_USER_ID, DISPENSE_PRICE, 'Cigarette sale (web gacha)', 'payout_failed');   // pay Tay's Tobacco
+        const pull = dispenseCigarette(session.discordId);                             // only now hand out the cigarette
+        if (!pull.success) throw new EconomyError(pull.error || 'Could not pull cigarette', 'gacha_failed');   // no cigarette: refund by rolling back
+        return pull;                                                                   // paid and pulled
+      });
+    } catch (error) {
+      return sendEconomyError(res, error);                                             // 4xx for the player, rethrow real bugs
+    }
     const message = result.action === 'replaced' && result.replacedCigarette
       ? `Pulled ${result.cigarette.display_name} (${result.rarity.tier}) and replaced ${result.replacedCigarette.display_name}.`
       : result.action === 'rejected_full'
@@ -2480,10 +2676,18 @@ async function handleRequest(req, res) {
     ensureAccount(session.discordId, session.username);
     const balance = getBalance(session.discordId);
     if (balance < BASE_ADOPT_PRICE) return sendError(res, 400, 'insufficient_funds', `Need ${BASE_ADOPT_PRICE} SGC but only have ${balance}.`);
-    const result = adoptTouhou(WEB_GUILD_ID, session.discordId);
-    if (!result.success) return sendError(res, 400, result.code || 'adopt_failed', result.error || 'Could not adopt Touhou');
-    adjustBalance(session.discordId, -BASE_ADOPT_PRICE, `Adopted Touhou: ${result.touhou.name}`);
-    adjustBalance(TOUHOU_MGMT_USER_ID, BASE_ADOPT_PRICE, `Touhou adoption fee: ${result.touhou.name}`);
+    let result;                                                                        // the adoption, once it has been paid for
+    try {
+      result = runEconomyTransaction(() => {                                           // all-or-nothing: money moves only if the adoption happens
+        mustAdjustBalance(session.discordId, -BASE_ADOPT_PRICE, 'Adopted Touhou (web)');   // charge the player first (throws if short)
+        mustAdjustBalance(TOUHOU_MGMT_USER_ID, BASE_ADOPT_PRICE, 'Touhou adoption fee (web)', 'payout_failed');   // pay Touhou Management
+        const adoption = adoptTouhou(WEB_GUILD_ID, session.discordId);                 // only now hand out the Touhou
+        if (!adoption.success) throw new EconomyError(adoption.error || 'Could not adopt Touhou', adoption.code || 'adopt_failed');   // none adopted: roll the money back
+        return adoption;                                                               // paid and adopted
+      });
+    } catch (error) {
+      return sendEconomyError(res, error);                                             // 4xx for the player, rethrow real bugs
+    }
     sendJson(res, 200, { ok: true, message: `Adopted ${result.touhou.name}.` });
     return;
   }
@@ -2500,13 +2704,22 @@ async function handleRequest(req, res) {
     if (listingPrice === null) return sendError(res, 400, 'not_listed', `${touhouName} is not listed for sale.`);
     const balance = getBalance(session.discordId);
     if (balance < listingPrice) return sendError(res, 400, 'insufficient_funds', `Need ${listingPrice} SGC but only have ${balance}.`);
-    const result = buyListing(WEB_GUILD_ID, session.discordId, touhouName);
-    if (!result.success) return sendError(res, 400, 'buy_failed', result.error || 'Could not buy Touhou');
-    const tax = Math.max(1, Math.floor(result.price * 0.10));
-    const sellerReceives = result.price - tax;
-    adjustBalance(session.discordId, -result.price, `Bought Touhou: ${touhouName}`);
-    adjustBalance(result.sellerId, sellerReceives, `Sold Touhou: ${touhouName} (after 10% tax)`);
-    adjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
+    let result;                                                                        // the purchase, once it has been paid for
+    try {
+      result = runEconomyTransaction(() => {                                           // all-or-nothing: buyer, seller and tax move together
+        mustAdjustBalance(session.discordId, -listingPrice, `Bought Touhou: ${touhouName}`);   // charge the buyer first (throws if short)
+        const purchase = buyListing(WEB_GUILD_ID, session.discordId, touhouName);     // then move the Touhou
+        if (!purchase.success) throw new EconomyError(purchase.error || 'Could not buy Touhou', 'buy_failed');   // not bought: roll the charge back
+        if (purchase.price !== listingPrice) throw new EconomyError('The listing price changed. Please try again.', 'price_changed', 409);   // charged the wrong amount: undo
+        const tax = Math.max(1, Math.floor(purchase.price * 0.10));                   // 10% trade tax (at least 1 SGC)
+        ensureAccount(purchase.sellerId);                                             // make sure the seller has a wallet to receive into
+        mustAdjustBalance(purchase.sellerId, purchase.price - tax, `Sold Touhou: ${touhouName} (after 10% tax)`, 'payout_failed');   // pay the seller
+        mustAdjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`, 'payout_failed');   // pay the tax to Touhou Management
+        return purchase;                                                              // all three balance changes done
+      });
+    } catch (error) {
+      return sendEconomyError(res, error);                                             // 4xx for the player, rethrow real bugs
+    }
     sendJson(res, 200, { ok: true, message: `Bought ${touhouName} for ${result.price} SGC.` });
     return;
   }
@@ -2549,10 +2762,19 @@ async function handleRequest(req, res) {
     const body = await readJsonBody(req);
     const touhouName = resolveName(body.name);
     if (!touhouName) return sendError(res, 400, 'bad_name', 'Unknown Touhou name.');
+    const owned = getTouhou(WEB_GUILD_ID, touhouName);                                 // look before selling: we need its price
+    if (owned && owned.owner_id === session.discordId) {                               // the player's own Touhou (sellback re-checks this too)
+      const ownedStats = getOrCreateBattleStats(WEB_GUILD_ID, touhouName, session.discordId);   // its level feeds the price
+      const expectedPayout = Math.max(1, Math.floor(getSuggestedPrice(owned.trade_count, owned.base_rarity_score || 0, ownedStats?.level || 0) * (2 / 3)));   // same 2/3 buyback formula as touhouStore
+      if (getTouhouTraderSpendable() < expectedPayout) {                               // the trader can't pay it without minting coins
+        return sendError(res, 503, 'trader_illiquid', 'Touhou Management cannot afford buybacks right now. Your Touhou was not sold; please try again later.');   // refuse before taking the Touhou
+      }
+    }
     const result = sellbackToMarket(WEB_GUILD_ID, session.discordId, touhouName);
     if (!result.success) return sendError(res, 400, 'buyback_failed', result.error || 'Could not buy back Touhou');
-    payTouhouTraderPayout(session.discordId, result.payout, `Touhou buyback: ${touhouName}`);
-    sendJson(res, 200, { ok: true, message: `Sold ${touhouName} back to the market for ${result.payout} SGC.` });
+    const paid = payTouhouTraderPayout(session.discordId, result.payout, `Touhou buyback: ${touhouName}`);   // trader pays; never mints
+    if (paid < result.payout) logger.warn(`Touhou buyback for ${session.discordId} paid ${paid}/${result.payout} SGC: trader ran short between check and payout.`);   // rare race, logged for the admins
+    sendJson(res, 200, { ok: true, message: `Sold ${touhouName} back to the market for ${paid} SGC.` });   // report what was really paid
     return;
   }
 
@@ -2583,10 +2805,22 @@ async function handleRequest(req, res) {
     const totalCost = amount * POTION_PRICE;
     const balance = getBalance(session.discordId);
     if (balance < totalCost) return sendError(res, 400, 'insufficient_funds', `Need ${totalCost} SGC but only have ${balance}.`);
-    const result = addPotions(WEB_GUILD_ID, session.discordId, amount);
-    if (!result.success) return sendError(res, 400, result.code || 'potion_failed', result.code === 'CAP_REACHED' ? `Potion cap reached (${result.newCount}/${POTION_CAP}).` : 'Could not add potions.');
-    adjustBalance(session.discordId, -(result.added * POTION_PRICE), `Bought ${result.added} potion(s)`);
-    adjustBalance(TOUHOU_MGMT_USER_ID, result.added * POTION_PRICE, `Potion purchase x${result.added}`);
+    const currentPotions = getPotionCount(WEB_GUILD_ID, session.discordId);            // how many the player holds now
+    const toAdd = Math.min(amount, POTION_CAP - currentPotions);                        // never more than fits under the cap
+    if (toAdd <= 0) return sendError(res, 400, 'CAP_REACHED', `Potion cap reached (${currentPotions}/${POTION_CAP}).`);   // full already: charge nothing
+    let result;                                                                         // the potion grant, once it has been paid for
+    try {
+      result = runEconomyTransaction(() => {                                            // all-or-nothing: money moves only if potions are added
+        mustAdjustBalance(session.discordId, -(toAdd * POTION_PRICE), `Bought ${toAdd} potion(s)`);   // charge the player first (throws if short)
+        mustAdjustBalance(TOUHOU_MGMT_USER_ID, toAdd * POTION_PRICE, `Potion purchase x${toAdd}`, 'payout_failed');   // pay Touhou Management
+        const grant = addPotions(WEB_GUILD_ID, session.discordId, toAdd);              // only now add the potions
+        if (!grant.success) throw new EconomyError(grant.code === 'CAP_REACHED' ? `Potion cap reached (${grant.newCount}/${POTION_CAP}).` : 'Could not add potions.', grant.code || 'potion_failed');   // none added: roll back
+        if (grant.added !== toAdd) throw new EconomyError('Your potion count changed while buying. Please try again.', 'potion_conflict', 409);   // charged for a different number: roll back
+        return grant;                                                                   // paid and added
+      });
+    } catch (error) {
+      return sendEconomyError(res, error);                                              // 4xx for the player, rethrow real bugs
+    }
     sendJson(res, 200, { ok: true, message: `Bought ${result.added} potion(s) for ${result.added * POTION_PRICE} SGC.` });
     return;
   }
@@ -2612,9 +2846,15 @@ async function handleRequest(req, res) {
     const healCost = 50;
     const balance = getBalance(session.discordId);
     if (balance < healCost) return sendError(res, 400, 'insufficient_funds', `Need ${healCost} SGC but only have ${balance}.`);
-    adjustBalance(session.discordId, -healCost, `Touhou instant-heal: ${touhouName}`);
-    adjustBalance(TOUHOU_MGMT_USER_ID, healCost, `Touhou instant-heal fee: ${touhouName}`);
-    healTouhou(WEB_GUILD_ID, touhouName, session.discordId);
+    try {
+      runEconomyTransaction(() => {                                                     // charge and fee move together or not at all
+        mustAdjustBalance(session.discordId, -healCost, `Touhou instant-heal: ${touhouName}`);   // charge the player (throws if short)
+        mustAdjustBalance(TOUHOU_MGMT_USER_ID, healCost, `Touhou instant-heal fee: ${touhouName}`, 'payout_failed');   // pay Touhou Management
+        healTouhou(WEB_GUILD_ID, touhouName, session.discordId);                       // heal inside, so a throw here refunds the charge
+      });
+    } catch (error) {
+      return sendEconomyError(res, error);                                              // 4xx for the player, rethrow real bugs
+    }
     sendJson(res, 200, { ok: true, message: `Instant-healed ${touhouName} for ${healCost} SGC.` });
     return;
   }
@@ -2637,6 +2877,13 @@ async function handleRequest(req, res) {
     }
     const playerAttacks = getAttacks(touhouName);
     if (!playerAttacks.length) return sendError(res, 400, 'no_attacks', `${touhouName} has no attacks seeded yet.`);
+    const activeBattleId = findActiveTouhouBattle(session.discordId);                  // one battle at a time per player
+    if (activeBattleId) {
+      return sendJson(res, 409, {                                                       // 409 Conflict: finish the other battle first
+        error: { code: 'battle_in_progress', message: 'You already have a battle in progress. Finish it (or wait 90 seconds) first.' },
+        battleId: activeBattleId,                                                       // lets the page link back to it
+      });
+    }
     const battleId = `battle-${crypto.randomBytes(6).toString('hex')}`;
     const result = makeBattleState({
       guildId: WEB_GUILD_ID,
@@ -2681,6 +2928,8 @@ async function handleRequest(req, res) {
     const battleId = decodeURIComponent(touhouBattleActionApiMatch[1]);
     const battle = getTouhouBattleSession(battleId, session.discordId);
     if (!battle) return sendError(res, 404, 'not_found', 'Battle not found.');
+    if (isTouhouBattleIdle(battle)) finishTouhouBattleTimeout(battleId);               // abandoned for 90 s: forfeit before taking a late move
+    if (battle.over) return sendError(res, 409, 'battle_over', 'This battle is already over.');   // no more moves once it has ended
     const body = await readJsonBody(req);
     const kind = String(body.kind || '').trim();
     const action = { kind };
@@ -2693,13 +2942,20 @@ async function handleRequest(req, res) {
     } else if (!['defend', 'potion', 'run'].includes(kind)) {
       return sendError(res, 400, 'bad_action', 'Unknown battle action.');
     }
+    let winShortfall = null;                                                           // set if the trader couldn't pay the full win
     resolveBattleAction(battle, action, {
       consumePotion,
-      payTouhouTraderPayout,
+      payTouhouTraderPayout: (userId, amount, note) => {                               // win payout: trader pays what it can, never mints
+        const paid = payTouhouTraderPayout(userId, amount, note);                      // SGC actually moved
+        if (paid < amount) winShortfall = { promised: amount, paid };                  // remember the gap to tell the player
+        return paid;
+      },
     });
-    if (battle.over) {
-      setTimeout(() => touhouBattleSessions.delete(battleId), 10 * 60 * 1000).unref?.();
+    if (winShortfall) {                                                                // the trader was short on SGC
+      if (battle.reward) battle.reward.sgc = winShortfall.paid;                        // the reward shows what was really paid
+      battle.log.push(`Touhou Management was short on SGC and could only pay ${winShortfall.paid} of the ${winShortfall.promised} SGC prize.`);   // be honest in the log
     }
+    if (battle.over && !battle.endedAt) battle.endedAt = Date.now();                   // the sweeper deletes it 10 minutes after this
     sendJson(res, 200, {
       ok: true,
       message: battle.over ? `Battle ended: ${battle.outcome}.` : 'Turn resolved.',
@@ -2736,7 +2992,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = decodeURIComponent(blackjackLobbyApiMatch[1]);
-    rememberWebLobby('blackjack', lobbyId);
+    // Viewing a lobby no longer adds it to the open-lobby list; only POST create (or the worker) does.
     const channelId = getWebBlackjackChannelId(lobbyId);
     try {
       const result = await manager.sendCommand('blackjack', 'getTable', { channelId }, { channelId });
@@ -3156,6 +3412,8 @@ async function handleRequest(req, res) {
     const peg = Number(body.peg);
     const bet = Number(body.bet);
     if (!sessionId) return sendError(res, 400, 'bad_request', 'sessionId is required');
+    if (!PACHINKO_SESSION_ID_PATTERN.test(sessionId)) return sendError(res, 400, 'bad_request', 'sessionId is not valid');   // only ids the pachinko page makes
+    if (!claimPachinkoSession(sessionId, session.discordId)) return sendError(res, 403, 'forbidden', 'That pachinko board belongs to someone else');   // can't drop on another player's board
     if (!Number.isInteger(peg) || !Number.isInteger(bet)) return sendError(res, 400, 'bad_request', 'peg and bet must be integers');
     const channelId = getWebPachinkoChannelId(sessionId);
     try {
@@ -3196,7 +3454,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { api: true });
     if (!session) return;
     const lobbyId = decodeURIComponent(slotsLobbyApiMatch[1]);
-    rememberWebLobby('slots', lobbyId);
+    // Viewing a lobby no longer adds it to the open-lobby list; only POST create (or the worker) does.
     const channelId = getWebSlotsChannelId(lobbyId);
     try {
       const result = await manager.sendCommand('slots', 'getLobby', { channelId }, { channelId });
@@ -3306,7 +3564,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { nextPath: p(`/blackjack/${blackjackLobbyPageMatch[1]}`) });
     if (!session) return;
     const lobbyId = decodeURIComponent(blackjackLobbyPageMatch[1]);
-    rememberWebLobby('blackjack', lobbyId);
+    // Opening a lobby page no longer adds it to the open-lobby list; only POST create (or the worker) does.
     sendHtml(res, 200, renderBlackjackLobbyPage(session, lobbyId));
     return;
   }
@@ -3378,7 +3636,7 @@ async function handleRequest(req, res) {
     const session = requireMemberSession(req, res, { nextPath: p(`/slots/${slotsLobbyPageMatch[1]}`) });
     if (!session) return;
     const lobbyId = decodeURIComponent(slotsLobbyPageMatch[1]);
-    rememberWebLobby('slots', lobbyId);
+    // Opening a lobby page no longer adds it to the open-lobby list; only POST create (or the worker) does.
     sendHtml(res, 200, renderSlotsLobbyPage(session, lobbyId));
     return;
   }

@@ -43,8 +43,11 @@ const {
   handleCallbackRoute,
   handleLogoutRoute,
   requireUserAuth,
-  validateSameOrigin,
-  validateWebSocketOrigin,
+  validateSameOrigin: validateSameOriginShared,             // shared check; wrapped below with Lumi Web's own trust list
+  validateWebSocketOrigin: validateWebSocketOriginShared,   // same, for websockets
+  getTrustedHosts,                                          // reads one app's trusted-origins env var
+  buildFrameAncestorsDirective,                             // builds the CSP frame-ancestors list
+  scriptJson,                                               // JSON that is safe inside a <script> block
 } = require('./webPanelAuth');
 const {
   initWebAppStore,
@@ -81,9 +84,36 @@ const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'permissions-policy': 'interest-cohort=(), browsing-topics=()',
-  'content-security-policy': "base-uri 'self'; form-action 'self'; object-src 'none'",
+  // frame-ancestors: only this app and the sites in WEB_APP_FRAME_ANCESTORS may put it in an iframe (anti-clickjacking).
+  // script-src is not set yet because the pages still use inline <script> blocks (deferred: needs nonces).
+  'content-security-policy': `base-uri 'self'; form-action 'self'; object-src 'none'; ${buildFrameAncestorsDirective('WEB_APP_FRAME_ANCESTORS')}`,
   'cache-control': 'no-store',
 };
+
+// Lumi Web's same-origin check: its own host plus WEB_APP_TRUSTED_ORIGINS only (not the admin panel's list).
+function validateSameOrigin(req) {
+  return validateSameOriginShared(req, getTrustedHosts('WEB_APP_TRUSTED_ORIGINS'));   // POST/PUT/DELETE origin check
+}
+
+// Lumi Web's websocket origin check, with the same trust list.
+function validateWebSocketOrigin(req) {
+  return validateWebSocketOriginShared(req, getTrustedHosts('WEB_APP_TRUSTED_ORIGINS'));   // websocket upgrade origin check
+}
+
+// Lobby ids are made by generateLobbyId(): "<game>-" plus 12 lowercase hex characters, e.g. "slots-1a2b3c4d5e6f".
+const WEB_LOBBY_ID_PATTERN = /^[a-z]+-[0-9a-f]{12}$/u;   // anything else in a URL is refused before it reaches a page
+const WS_MAX_FRAME_BYTES = 4 * 1024;                     // biggest websocket message a browser may send us (4 KB)
+const WS_MAX_BUFFER_BYTES = 16 * 1024;                   // most unread bytes kept per websocket connection
+const WS_MAX_CHANNELS_PER_CLIENT = 32;                   // most channels one connection may subscribe to
+
+// Decode a lobby id from the URL; null unless it has exactly the shape generateLobbyId() makes.
+function parseLobbyIdParam(raw, prefix = 'slots') {
+  let decoded;                                                          // the id with %XX escapes undone
+  try { decoded = decodeURIComponent(String(raw || '')); } catch { return null; }   // broken escape: not an id
+  if (!WEB_LOBBY_ID_PATTERN.test(decoded)) return null;                 // wrong shape: not an id we made
+  if (!decoded.startsWith(`${prefix}-`)) return null;                   // an id for a different game
+  return decoded;                                                       // a well-formed id
+}
 
 let server = null;
 let wsListenerInstalled = false;
@@ -239,8 +269,8 @@ function renderLoginPage(nextPath = p('/')) {
     <div class="meta">Member login uses the same Discord OAuth session system as the control panel.</div>
   </main>
 <script>
-  const loginUrl = ${JSON.stringify(loginHref)};
-  const appRoot = ${JSON.stringify(p('/'))};
+  const loginUrl = ${scriptJson(loginHref)};  // scriptJson = JSON made safe inside a script tag
+  const appRoot = ${scriptJson(p('/'))};  // scriptJson = JSON made safe inside a script tag
 
   function breakOutToBrowser(url) {
     try {
@@ -266,7 +296,7 @@ function renderLoginPage(nextPath = p('/')) {
 
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+        const res = await fetch(${scriptJson(p('/api/me'))}, { credentials: 'include' });  // scriptJson = JSON made safe inside a script tag
         if (res.ok) {
           clearInterval(timer);
           window.location.href = appRoot;
@@ -283,7 +313,7 @@ function renderLoginPage(nextPath = p('/')) {
     if (event.origin !== window.location.origin) return;
     if (event.data?.type !== 'lumibot-auth-complete') return;
     try {
-      const res = await fetch(${JSON.stringify(p('/api/me'))}, { credentials: 'include' });
+      const res = await fetch(${scriptJson(p('/api/me'))}, { credentials: 'include' });  // scriptJson = JSON made safe inside a script tag
       if (res.ok) {
         window.location.href = appRoot;
       }
@@ -764,7 +794,7 @@ async function searchUsers(query) {
     searchResults.textContent = '';
     return;
   }
-  const res = await fetch(${JSON.stringify(p('/api/users/search?q='))} + encodeURIComponent(query));
+  const res = await fetch(${scriptJson(p('/api/users/search?q='))} + encodeURIComponent(query));  // scriptJson = JSON made safe inside a script tag
   const data = await res.json();
   if (!res.ok) {
     setFlash(searchResults, 'error', 'Search failed.');
@@ -807,7 +837,7 @@ form.addEventListener('submit', async (event) => {
     note: document.getElementById('note').value,
     idempotencyKey: document.getElementById('idempotency-key').value,
   };
-  const res = await fetch(${JSON.stringify(p('/api/wallet/send'))}, {
+  const res = await fetch(${scriptJson(p('/api/wallet/send'))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
@@ -863,7 +893,7 @@ function setFlash(target, type, message) {
 }
 raffleBtn.addEventListener('click', async () => {
   setFlash(raffleResult, '', 'Buying ticket...');
-  const res = await fetch(${JSON.stringify(p('/api/wallet/raffle'))}, {
+  const res = await fetch(${scriptJson(p('/api/wallet/raffle'))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ idempotencyKey: 'raffle:' + new Date().toISOString().slice(0, 10) }),
@@ -953,8 +983,8 @@ async function submitStockAction(path, payload) {
 
 document.getElementById('stock-buy-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  submitStockAction(${JSON.stringify(p('/api/stocks/buy'))}, {
-    stockId: ${JSON.stringify(stock.id)},
+  submitStockAction(${scriptJson(p('/api/stocks/buy'))}, {  // scriptJson = JSON made safe inside a script tag
+    stockId: ${scriptJson(stock.id)},  // scriptJson = JSON made safe inside a script tag
     amountSgc: Number(document.getElementById('buy-amount').value),
     idempotencyKey: document.getElementById('buy-idempotency-key').value,
   });
@@ -962,8 +992,8 @@ document.getElementById('stock-buy-form').addEventListener('submit', (event) => 
 
 document.getElementById('stock-sell-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  submitStockAction(${JSON.stringify(p('/api/stocks/sell'))}, {
-    stockId: ${JSON.stringify(stock.id)},
+  submitStockAction(${scriptJson(p('/api/stocks/sell'))}, {  // scriptJson = JSON made safe inside a script tag
+    stockId: ${scriptJson(stock.id)},  // scriptJson = JSON made safe inside a script tag
     shares: Number(document.getElementById('sell-shares').value),
     idempotencyKey: document.getElementById('sell-idempotency-key').value,
   });
@@ -1077,7 +1107,7 @@ document.getElementById('create-market-form').addEventListener('submit', async (
   event.preventDefault();
   const result = document.getElementById('create-market-result');
   setFlash(result, '', 'Creating...');
-  const res = await fetch(${JSON.stringify(p('/api/bets'))}, {
+  const res = await fetch(${scriptJson(p('/api/bets'))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -1092,7 +1122,7 @@ document.getElementById('create-market-form').addEventListener('submit', async (
     return;
   }
   setFlash(result, 'success', data.message || 'Created.');
-  setTimeout(() => window.location.href = ${JSON.stringify(p('/bets/'))} + data.marketId, 700);
+  setTimeout(() => window.location.href = ${scriptJson(p('/bets/'))} + data.marketId, 700);  // scriptJson = JSON made safe inside a script tag
 });
 </script>`,
   });
@@ -1116,7 +1146,7 @@ document.getElementById('bet-buy-form').addEventListener('submit', async (event)
   event.preventDefault();
   const result = document.getElementById('bet-buy-result');
   setFlash(result, '', 'Buying position...');
-  const res = await fetch(${JSON.stringify(p(`/api/bets/${market.id}/buy`))}, {
+  const res = await fetch(${scriptJson(p(`/api/bets/${market.id}/buy`))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -1210,7 +1240,7 @@ function setFlash(target, type, message) {
 document.getElementById('create-slots-lobby').addEventListener('click', async () => {
   const result = document.getElementById('slots-create-result');
   setFlash(result, '', 'Creating lobby...');
-  const res = await fetch(${JSON.stringify(p('/api/casino/slots/lobbies'))}, {
+  const res = await fetch(${scriptJson(p('/api/casino/slots/lobbies'))}, {  // scriptJson = JSON made safe inside a script tag
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({}),
@@ -1220,7 +1250,7 @@ document.getElementById('create-slots-lobby').addEventListener('click', async ()
     setFlash(result, 'error', data.error?.message || 'Create failed.');
     return;
   }
-  window.location.href = ${JSON.stringify(p('/casino/slots/'))} + data.lobbyId;
+  window.location.href = ${scriptJson(p('/casino/slots/'))} + data.lobbyId;  // scriptJson = JSON made safe inside a script tag
 });
 </script>`,
   });
@@ -1257,7 +1287,7 @@ function renderSlotsLobbyPage(session, lobbyId) {
 	`, {
 		active: '/casino/slots',
 		pageScripts: `<script>
-const lobbyId = ${JSON.stringify(lobbyId)};
+const lobbyId = ${scriptJson(lobbyId)};  // scriptJson = JSON made safe inside a script tag
 const stateEl = document.getElementById('slots-lobby-state');
 const resultEl = document.getElementById('slots-action-result');
 let socket;
@@ -1308,7 +1338,7 @@ async function postAction(path, payload) {
 }
 
 async function refreshLobby() {
-  const res = await fetch(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId);
+  const res = await fetch(${scriptJson(p('/api/casino/slots/lobbies/'))} + lobbyId);  // scriptJson = JSON made safe inside a script tag
   const data = await res.json();
   if (!res.ok) {
     stateEl.innerHTML = '<div class="item">Lobby unavailable.</div>';
@@ -1319,7 +1349,7 @@ async function refreshLobby() {
 
 function connectWs() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  socket = new WebSocket(proto + '//' + window.location.host + ${JSON.stringify(p('/ws'))});
+  socket = new WebSocket(proto + '//' + window.location.host + ${scriptJson(p('/ws'))});  // scriptJson = JSON made safe inside a script tag
   socket.addEventListener('open', () => {
     socket.send(JSON.stringify({ type: 'subscribe', channel: 'slots:lobby:' + lobbyId }));
   });
@@ -1335,20 +1365,20 @@ function connectWs() {
 }
 
 document.getElementById('slots-join').addEventListener('click', () => {
-  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/join');
+  postAction(${scriptJson(p('/api/casino/slots/lobbies/'))} + lobbyId + '/join');  // scriptJson = JSON made safe inside a script tag
 });
 document.querySelectorAll('.slots-bet-button').forEach((button) => {
   button.addEventListener('click', () => {
-    postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/bet', {
+    postAction(${scriptJson(p('/api/casino/slots/lobbies/'))} + lobbyId + '/bet', {  // scriptJson = JSON made safe inside a script tag
       amount: Number(button.dataset.amount),
     });
   });
 });
 document.getElementById('slots-spin').addEventListener('click', () => {
-  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/spin');
+  postAction(${scriptJson(p('/api/casino/slots/lobbies/'))} + lobbyId + '/spin');  // scriptJson = JSON made safe inside a script tag
 });
 document.getElementById('slots-leave').addEventListener('click', () => {
-  postAction(${JSON.stringify(p('/api/casino/slots/lobbies/'))} + lobbyId + '/leave');
+  postAction(${scriptJson(p('/api/casino/slots/lobbies/'))} + lobbyId + '/leave');  // scriptJson = JSON made safe inside a script tag
 });
 
 connectWs();
@@ -1587,6 +1617,12 @@ function parseWsFrames(buffer) {
       headerLength = 10;
     }
 
+    if (payloadLength > WS_MAX_FRAME_BYTES) {                  // bigger than any message our pages send
+      const tooBig = new Error('websocket frame too large');   // stop before buffering the rest of it
+      tooBig.code = 'WS_FRAME_TOO_LARGE';                      // lets the caller close with 1009 "message too big"
+      throw tooBig;
+    }
+
     const maskLength = masked ? 4 : 0;
     const frameLength = headerLength + maskLength + payloadLength;
     if (offset + frameLength > buffer.length) break;
@@ -1666,8 +1702,19 @@ function handleWsMessage(client, raw) {
     return;
   }
   if (message.type === 'subscribe') {
-    subscribeClient(client, String(message.channel || ''));
-    sendWsJson(client, { type: 'subscribed', channel: String(message.channel || '') });
+    const channel = String(message.channel || '');                                     // the channel asked for
+    const lobby = channel.match(/^slots:lobby:(.+)$/u);                                // the only channel pages subscribe to
+    const ownUserChannel = channel === `user:${client.session.discordId}`;             // a player's own notification channel
+    if (!ownUserChannel && !(lobby && parseLobbyIdParam(lobby[1], 'slots'))) {        // anything else (or someone else's user: channel)
+      sendWsJson(client, { type: 'error', message: 'Unknown channel' });             // refuse it
+      return;
+    }
+    if (!client.channels.has(channel) && client.channels.size >= WS_MAX_CHANNELS_PER_CLIENT) {   // already at the channel cap
+      sendWsJson(client, { type: 'error', message: 'Too many subscriptions' });      // refuse a new one
+      return;
+    }
+    subscribeClient(client, channel);                                                  // start sending it this channel
+    sendWsJson(client, { type: 'subscribed', channel });                               // confirm
     return;
   }
   if (message.type === 'unsubscribe') {
@@ -1710,6 +1757,12 @@ function installWsBridge() {
       });
     }
   });
+}
+
+// Send a websocket close frame with code 1009 ("message too big"), then hang up.
+function closeWsTooBig(socket) {
+  try { socket.end(Buffer.from([0x88, 0x02, 0x03, 0xf1])); } catch { /* already gone */ }   // 0x88 = close, 2-byte payload 0x03F1 = 1009
+  setTimeout(() => { try { socket.destroy(); } catch { /* already gone */ } }, 1000).unref();   // don't wait forever for the client
 }
 
 function handleWsUpgrade(req, socket) {
@@ -1776,6 +1829,10 @@ function handleWsUpgrade(req, socket) {
   socket.on('data', (chunk) => {
     try {
       client.buffer = Buffer.concat([client.buffer, chunk]);
+      if (client.buffer.length > WS_MAX_BUFFER_BYTES) {                 // more unread data than any honest page sends
+        closeWsTooBig(socket);                                           // close with 1009 instead of buffering it
+        return;
+      }
       const { messages, remaining } = parseWsFrames(client.buffer);
       client.buffer = remaining;
       for (const message of messages) {
@@ -1791,7 +1848,11 @@ function handleWsUpgrade(req, socket) {
           handleWsMessage(client, message.payload);
         }
       }
-    } catch {
+    } catch (error) {
+      if (error?.code === 'WS_FRAME_TOO_LARGE') {   // oversized frame
+        closeWsTooBig(socket);                      // polite 1009 close
+        return;
+      }
       socket.destroy();
     }
   });
@@ -1807,6 +1868,12 @@ async function handleRequest(req, res) {
 
   if (pathname === null) {
     sendError(res, 404, 'not_found', 'Unknown route');
+    return;
+  }
+
+  const lobbyIdInPath = pathname.match(/^\/(?:api\/casino\/slots\/lobbies|casino\/slots)\/([^/]+)(?:\/[^/]+)?$/u);   // URLs that carry a slots lobby id
+  if (lobbyIdInPath && !parseLobbyIdParam(lobbyIdInPath[1], 'slots')) {                                              // not an id we could have made
+    sendError(res, 404, 'not_found', 'Unknown lobby id');                                                            // stop before any page or worker sees it
     return;
   }
 

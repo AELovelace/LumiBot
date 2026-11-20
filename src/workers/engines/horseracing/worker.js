@@ -170,6 +170,8 @@ function scheduleBettingTimer(channelId) {
 async function runRace(channelId) {
   const lobby = lobbies.get(channelId);
   if (!lobby) return;
+  if (lobby.phase !== 'betting') return; // audit #10: a race is already funding/running for this lobby, don't start a second one
+  lobby.phase = 'funding'; // audit #10: close betting SYNCHRONOUSLY, before any await, so setBet/pickHorse now refuse
   await ensureWinStats();
   pruneStaleWebPlayers(channelId);
   if (!lobbies.has(channelId)) return;
@@ -178,25 +180,30 @@ async function runRace(channelId) {
     return;
   }
 
+  // Audit #10: snapshot every racer's horse + bet right now (no awaits yet), and from here on use
+  // ONLY the snapshot for the debit, the pool and the payout. Live player objects are never re-read.
+  const tickets = [...lobby.players] // copy the seat list so later joins/leaves can't disturb the loop
+    .filter(([, p]) => p.horse) // only players who actually picked a horse are racing
+    .map(([uid, p]) => ({ userId: uid, username: p.username, horse: p.horse, bet: p.bet, player: p })); // frozen copy of the wager
+
   // Collect funded bets
   const racers = [];
   let totalPool = 0;
   const unfunded = [];
-  for (const [uid, p] of [...lobby.players]) {
-    if (!p.horse) continue;
+  for (const t of tickets) { // walk the frozen tickets, not the live lobby
     try {
-      await dbCall('ensureAccount', { userId: uid, username: p.username });
-      const bal = await dbCall('getBalance', { userId: uid });
-      if (bal < p.bet) { unfunded.push(`${p.username} (${bal}/${p.bet} SGC)`); p.horse = null; continue; }
+      await dbCall('ensureAccount', { userId: t.userId, username: t.username });
+      const bal = await dbCall('getBalance', { userId: t.userId });
+      if (bal < t.bet) { unfunded.push(`${t.username} (${bal}/${t.bet} SGC)`); t.player.horse = null; continue; } // can't cover the frozen bet: drop them from this race
       const placed = await dbCall('placeCasinoBet', {
-        userId: uid, username: p.username, amount: p.bet, gameType: 'horserace',
+        userId: t.userId, username: t.username, amount: t.bet, gameType: 'horserace', // debit exactly the frozen bet
       });
-      if (!placed || !placed.success) { unfunded.push(`${p.username} (${bal}/${p.bet} SGC)`); p.horse = null; continue; }
-      racers.push({ userId: uid, username: p.username, horse: p.horse, bet: p.bet });
-      totalPool += p.bet;
+      if (!placed || !placed.success) { unfunded.push(`${t.username} (${bal}/${t.bet} SGC)`); t.player.horse = null; continue; } // debit refused: drop cleanly, nothing was taken
+      racers.push({ userId: t.userId, username: t.username, horse: t.horse, bet: t.bet }); // racer entry built from the snapshot only
+      totalPool += t.bet; // the pool only ever grows by what we actually debited
     } catch {
-      unfunded.push(`${p.username} (db error)`);
-      p.horse = null;
+      unfunded.push(`${t.username} (db error)`); // DB hiccup: list them as unfunded
+      t.player.horse = null; // and drop them from this race
     }
   }
 
@@ -364,6 +371,11 @@ registerCommand('leave', async ({ channelId, userId } = {}) => {
   }
   lobby.players.delete(userId);
   if (lobby.players.size === 0) {
+    if (lobby.phase === 'funding' || lobby.phase === 'racing') { // a race already holds debited bets
+      // Don't tear down now: that would kill the race timer and the debited bets would never be paid.
+      // runRace notices the empty lobby once the race settles and closes it itself.
+      return { ok: true, closed: false }; // lobby closes after payouts
+    }
     tearDown(channelId, 'allLeft');
     return { ok: true, closed: true };
   }

@@ -374,15 +374,22 @@ async function startBattle({
     consumePotion,
   };
 
-  battlesByUser.set(userId, state);
+  battlesByUser.set(userId, state); // claim the slot now so a double-click can't start two battles during the await below
 
   const files = [playerAttachment, evilAttachment].filter(Boolean);
-  await interaction.reply({
-    embeds: [buildEmbed(state)],
-    components: buildComponents(state),
-    files,
-  });
-  state.message = await interaction.fetchReply();
+  try {
+    await interaction.reply({
+      embeds: [buildEmbed(state)],
+      components: buildComponents(state),
+      files,
+    });
+    state.message = await interaction.fetchReply();
+  } catch (err) { // audit #50: if the reply fails the user must not stay locked out until restart
+    if (battlesByUser.get(userId) === state) battlesByUser.delete(userId); // free the "active battle" slot
+    state.over = true; // this battle never really started
+    logger.warn(`Battle start failed for ${userId}: ${err.message}`); // log instead of crashing the handler
+    return;
+  }
 
   setupCollector(state);
 }
@@ -404,22 +411,37 @@ function setupCollector(state) {
       await btn.reply({ content: 'This battle is already over.', ephemeral: true }).catch(() => {});
       return;
     }
+    // Audit #16: only one button press is processed at a time. Without this, spamming the
+    // killing blow ran endBattle (and paid SGC + EXP) once per click.
+    if (state.busy) { // a previous click is still being resolved
+      await btn.deferUpdate().catch(() => {}); // acknowledge the click so Discord doesn't show an error
+      return; // ignore the extra click
+    }
+    state.busy = true; // set synchronously (before any await) so concurrent clicks see it
 
     try {
-      await btn.deferUpdate();
-    } catch {
-      // ignore
-    }
+      try {
+        await btn.deferUpdate();
+      } catch {
+        // ignore
+      }
 
-    if (btn.customId.startsWith('tb_atk_')) {
-      const idx = parseInt(btn.customId.split('_')[2], 10);
-      await resolveTurn(state, { kind: 'attack', attackIndex: idx });
-    } else if (btn.customId.startsWith('tb_def_')) {
-      await resolveTurn(state, { kind: 'defend' });
-    } else if (btn.customId.startsWith('tb_pot_')) {
-      await resolveTurn(state, { kind: 'potion' });
-    } else if (btn.customId.startsWith('tb_run_')) {
-      await resolveTurn(state, { kind: 'run' });
+      if (state.over) return; // the battle may have ended (e.g. idle timeout) while we awaited deferUpdate
+
+      if (btn.customId.startsWith('tb_atk_')) {
+        const idx = parseInt(btn.customId.split('_')[2], 10);
+        await resolveTurn(state, { kind: 'attack', attackIndex: idx });
+      } else if (btn.customId.startsWith('tb_def_')) {
+        await resolveTurn(state, { kind: 'defend' });
+      } else if (btn.customId.startsWith('tb_pot_')) {
+        await resolveTurn(state, { kind: 'potion' });
+      } else if (btn.customId.startsWith('tb_run_')) {
+        await resolveTurn(state, { kind: 'run' });
+      }
+    } catch (err) {
+      logger.warn(`Battle turn failed for ${state.userId}: ${err.message}`); // log instead of an unhandled rejection
+    } finally {
+      state.busy = false; // let the next click through
     }
   });
 
@@ -437,6 +459,7 @@ function setupCollector(state) {
 // ---------------------------------------------------------------------------
 
 async function resolveTurn(state, action) {
+  if (state.over) return; // audit #16: a finished battle never resolves another turn
   const { player, evil } = state;
 
   if (action.kind === 'potion') {
@@ -572,10 +595,12 @@ async function refresh(state) {
 // ---------------------------------------------------------------------------
 
 async function endBattle(state, { outcome }) {
+  if (state.ended) return; // audit #16: rewards/penalties are applied exactly once per battle
+  state.ended = true; // set synchronously, before any await, so a second caller stops above
   state.over = true;
   state.victory = outcome === 'victory';
   if (state.collector) state.collector.stop('done');
-  battlesByUser.delete(state.userId);
+  if (battlesByUser.get(state.userId) === state) battlesByUser.delete(state.userId); // only free the slot if it is still this battle's
 
   if (outcome === 'victory') {
     await applyVictory(state);

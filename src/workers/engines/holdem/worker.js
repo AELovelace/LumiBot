@@ -110,6 +110,44 @@ function syncCpuSeat(table) {
 }
 
 // ---------------------------------------------------------------------------
+// Turn-safety helpers (audit #18)
+// ---------------------------------------------------------------------------
+
+/** Capture "whose turn is it and what does the betting look like" before a money action awaits the DB. */
+function snapshotTurn(table, player) {
+  return {
+    handId: table.handId || 0, // which hand we're in (bumped every startHand)
+    phase: table.phase, // preflop / flop / turn / river
+    currentRoundBet: table.currentRoundBet || 0, // the bet to match right now
+    roundBet: player.roundBet || 0, // what this player has already put in this round
+  };
+}
+
+/** After an await: is it STILL this player's same turn, with the same numbers we priced the action on? */
+function isSameTurn(table, player, snap) {
+  return tables.get(table.channelId) === table // table wasn't closed/replaced
+    && table.players.get(player.userId) === player // player didn't leave
+    && E.isHandActive(table) // hand is still being played
+    && (table.handId || 0) === snap.handId // ...and it's the same hand
+    && table.phase === snap.phase // same betting street
+    && table.currentPlayerId === player.userId // still their turn (turn timer didn't move it on)
+    && player.inHand && player.status === 'active' && player.needsAction // not auto-folded/auto-checked meanwhile
+    && (table.currentRoundBet || 0) === snap.currentRoundBet // nobody changed the bet to match
+    && (player.roundBet || 0) === snap.roundBet; // and their own contribution didn't change
+}
+
+/** Give coins back via the brokered payCasinoPayout op when a debit can't be used. Returns true on success. */
+async function refundHoldem(channelId, userId, amount) {
+  try {
+    await dbCall('payCasinoPayout', { userId, amount, gameType: 'holdem_refund' }); // credit back; ledger type 'holdem_refund_win'
+    return true; // refund landed
+  } catch (err) {
+    emitEvent('payoutFailed', { channelId, userId, amount, error: err && err.message }); // surface the failure like a failed payout
+    return false; // refund failed
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hand lifecycle
 // ---------------------------------------------------------------------------
 
@@ -248,6 +286,18 @@ async function scheduleNextHand(table, notice = null, { keepCurrentMessage = fal
 }
 
 async function startHand(table) {
+  // Guard: two joins (or a join + the next-hand timer) can both call startHand while phase is still
+  // 'waiting'; without this each call would collect antes, charging everyone twice.
+  if (table.startingHand) return; // a startHand is already mid-await for this table
+  table.startingHand = true; // claim it SYNCHRONOUSLY before any await
+  try {
+    await startHandInner(table); // the real work lives below
+  } finally {
+    table.startingHand = false; // always release the claim
+  }
+}
+
+async function startHandInner(table) {
   clearTurnTimer(table.channelId);
   clearNextHandTimer(table.channelId);
   for (const p of E.getSeatedPlayers(table)) {
@@ -293,13 +343,17 @@ async function startHand(table) {
     return;
   }
 
+  table.handId = (table.handId || 0) + 1; // new hand number, so in-flight actions from the last hand can tell it changed
   table.deck = E.createDeck();
   table.community = [];
   table.pot = 0;
   table.currentRoundBet = 0;
   table.notice = kickedNames.length ? `*${kickedNames.join(', ')} removed (insufficient balance).*` : null;
 
+  const anteDebits = []; // humans we actually charged an ante, so we can refund them if the hand can't start
   for (const { player, ante } of eligible) {
+    if (tables.get(table.channelId) !== table) break; // table closed mid-loop: stop charging people
+    if (table.players.get(player.userId) !== player) continue; // they left while we were charging someone else: skip
     if (!E.isCpuPlayer(player)) {
       try {
         const r = await dbCall('placeCasinoBet', {
@@ -309,6 +363,11 @@ async function startHand(table) {
       } catch {
         table.players.delete(player.userId); kickedNames.push(player.username); continue;
       }
+      if (tables.get(table.channelId) !== table || table.players.get(player.userId) !== player) { // they left / table closed during the debit
+        await refundHoldem(table.channelId, player.userId, ante); // give the ante back; they aren't in this hand
+        continue; // don't deal them in
+      }
+      anteDebits.push({ userId: player.userId, ante }); // remember the debit in case we need to unwind
     }
     player.bet = ante;
     player.nextBet = ante;
@@ -320,7 +379,15 @@ async function startHand(table) {
     table.pot += ante;
   }
 
+  if (tables.get(table.channelId) !== table) { // table closed while antes were being collected
+    for (const d of anteDebits) await refundHoldem(table.channelId, d.userId, d.ante); // refund every ante we took
+    return; // nothing left to run
+  }
+
   if (E.getPlayersInHand(table).length < 2) {
+    // Not enough funded players: prepareWaitingState zeroes the pot, so refund the antes first or they vanish.
+    for (const d of anteDebits) await refundHoldem(table.channelId, d.userId, d.ante); // give each charged human their ante back
+    if (tables.get(table.channelId) !== table) return; // table closed during the refunds: nothing to reset
     await prepareWaitingState(table, '*Not enough funded players to start a hand.*');
     return;
   }
@@ -353,6 +420,9 @@ async function advancePhase(table) {
 }
 
 async function resolveLoneWinner(table, winner, reason = '') {
+  // Guard: only a hand that is still being played can be won. Without this, a player leaving while the
+  // pot is already being paid (phase 'showdown') or while antes are still being collected would pay the pot again.
+  if (!E.isHandActive(table)) return; // hand already resolved / not started: never pay the pot twice
   clearTurnTimer(table.channelId);
   table.phase = 'showdown';
   table.currentPlayerId = null;
@@ -577,13 +647,25 @@ registerCommand('check', async ({ channelId, userId } = {}) => {
   if (table.currentPlayerId !== player.userId) {
     return { ok: false, reason: 'not_your_turn', currentRef: E.formatPlayerRefById(table, table.currentPlayerId) };
   }
+  if (table.actionBusy) return { ok: false, reason: 'busy' }; // audit #18: another action on this table is mid-await (e.g. double click)
   const callAmt = (table.currentRoundBet || 0) - (player.roundBet || 0);
   if (callAmt > 0) {
-    await dbCall('ensureAccount', { userId: player.userId, username: player.username });
-    const bal = await dbCall('getBalance', { userId: player.userId });
-    if (bal < callAmt) return { ok: false, reason: 'cannot_call', need: callAmt, balance: bal };
-    const r = await dbCall('placeCasinoBet', { userId: player.userId, username: player.username, amount: callAmt, gameType: 'holdem' });
-    if (!r || !r.success) return { ok: false, reason: 'call_failed' };
+    const turn = snapshotTurn(table, player); // remember exactly whose turn/what bet this is, before awaiting
+    table.actionBusy = true; // lock the table SYNCHRONOUSLY before the first await
+    try {
+      await dbCall('ensureAccount', { userId: player.userId, username: player.username });
+      const bal = await dbCall('getBalance', { userId: player.userId });
+      if (bal < callAmt) return { ok: false, reason: 'cannot_call', need: callAmt, balance: bal };
+      if (!isSameTurn(table, player, turn)) return { ok: false, reason: 'turn_changed' }; // turn timer fired / player left while we checked the balance
+      const r = await dbCall('placeCasinoBet', { userId: player.userId, username: player.username, amount: callAmt, gameType: 'holdem' });
+      if (!r || !r.success) return { ok: false, reason: 'call_failed' };
+      if (!isSameTurn(table, player, turn)) { // the turn moved on while the debit was in flight
+        const refunded = await refundHoldem(table.channelId, player.userId, callAmt); // give the coins back: the call never happened
+        return { ok: false, reason: 'turn_changed', refunded }; // tell the caller it was too late
+      }
+    } finally {
+      table.actionBusy = false; // always unlock, even on early returns or DB errors
+    }
     player.roundBet += callAmt;
     table.pot += callAmt;
     table.notice = `*${player.username} called ${callAmt.toLocaleString()} SGC.*`;
@@ -608,6 +690,7 @@ registerCommand('fold', async ({ channelId, userId } = {}) => {
   if (table.currentPlayerId !== player.userId) {
     return { ok: false, reason: 'not_your_turn', currentRef: E.formatPlayerRefById(table, table.currentPlayerId) };
   }
+  if (table.actionBusy) return { ok: false, reason: 'busy' }; // a call/raise is mid-debit; don't fold underneath it
   player.status = 'folded';
   player.needsAction = false;
   table.notice = `*${player.username} folded.*`;
@@ -629,13 +712,25 @@ registerCommand('raise', async ({ channelId, userId, username, amount } = {}) =>
     return { ok: false, reason: 'not_your_turn', currentRef: E.formatPlayerRefById(table, table.currentPlayerId) };
   }
   if (!Number.isInteger(amount) || amount < 1) return { ok: false, reason: 'bad_amount' };
+  if (table.actionBusy) return { ok: false, reason: 'busy' }; // audit #18: another action on this table is mid-await (e.g. double click)
   const callGap = Math.max(0, (table.currentRoundBet || 0) - (player.roundBet || 0));
   const totalCost = callGap + amount;
-  await dbCall('ensureAccount', { userId: player.userId, username: player.username || username });
-  const bal = await dbCall('getBalance', { userId: player.userId });
-  if (bal < totalCost) return { ok: false, reason: 'insufficient', need: totalCost, balance: bal, callGap, raise: amount };
-  const r = await dbCall('placeCasinoBet', { userId: player.userId, username: player.username, amount: totalCost, gameType: 'holdem' });
-  if (!r || !r.success) return { ok: false, reason: 'raise_failed' };
+  const turn = snapshotTurn(table, player); // remember exactly whose turn/what bet this is, before awaiting
+  table.actionBusy = true; // lock the table SYNCHRONOUSLY before the first await
+  try {
+    await dbCall('ensureAccount', { userId: player.userId, username: player.username || username });
+    const bal = await dbCall('getBalance', { userId: player.userId });
+    if (bal < totalCost) return { ok: false, reason: 'insufficient', need: totalCost, balance: bal, callGap, raise: amount };
+    if (!isSameTurn(table, player, turn)) return { ok: false, reason: 'turn_changed' }; // turn timer fired / player left while we checked the balance
+    const r = await dbCall('placeCasinoBet', { userId: player.userId, username: player.username, amount: totalCost, gameType: 'holdem' });
+    if (!r || !r.success) return { ok: false, reason: 'raise_failed' };
+    if (!isSameTurn(table, player, turn)) { // the turn moved on while the debit was in flight
+      const refunded = await refundHoldem(table.channelId, player.userId, totalCost); // give the coins back: the raise never happened
+      return { ok: false, reason: 'turn_changed', refunded }; // tell the caller it was too late
+    }
+  } finally {
+    table.actionBusy = false; // always unlock, even on early returns or DB errors
+  }
   player.roundBet += totalCost;
   table.pot += totalCost;
   table.currentRoundBet = player.roundBet;

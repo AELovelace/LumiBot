@@ -11,7 +11,7 @@ const DUPLICATE_SENTENCE_THRESHOLD = 0.8;
 const DUPLICATE_MESSAGE_THRESHOLD = 0.88;
 const MAX_FINAL_SENTENCES = 10;
 const REASONING_LEAK_SIGNAL_PATTERN = /(\bi\s+(?:need|should|can|could|must|will|want|have\s+to)\b|\bthe\s+user\s+is\s+probably\b|\bmaybe\s+something\s+like\b|\bkeep\s+it\s+short\b|\bin\s+line\s+with\s+(?:my|the)\s+vibe\b)/giu;
-const REASONING_QUOTE_PATTERN = /"([^"\n]{8,700})"|â€œ([^â€\n]{8,700})â€/gu;
+const REASONING_QUOTE_PATTERN = /"([^"\n]{8,700})"|“([^”\n]{8,700})”/gu; // straight "..." or curly “...” quotes (was mojibake)
 const REASONING_CONTEXT_PATTERN = /\b(?:user|reply|response|message|tone|vibe|concise|short|assistant|lumi)\b/iu;
 const REASONING_LABEL_PATTERN = /^(?:thinking\s*process|analysis|internal\s*note|chain\s*of\s*thought|cot|reasoning|scratchpad|plan)\s*[:\-]\s*/iu;
 const FINAL_REPLY_MARKERS = [
@@ -157,8 +157,15 @@ function countReasoningLeakSignals(value) {
   return (value.match(REASONING_LEAK_SIGNAL_PATTERN) || []).length;
 }
 
-function isReasoningLeak(value) {
-  return countReasoningLeakSignals(value) >= 2;
+function hasReasoningMarkers(value) { // true only if the raw output shows real signs of reasoning (think tags or "Analysis:"-style labels)
+  if (typeof value !== 'string' || !value.trim()) return false; // nothing to inspect
+  if (/<\/?think>/iu.test(value)) return true; // <think> or </think> anywhere
+  return value.split('\n').some((line) => REASONING_LABEL_PATTERN.test(line.trim())); // a line starting "Thinking process:", "Analysis:", etc.
+}
+
+function isReasoningLeak(value, rawForMarkers = value) { // rawForMarkers = original output (before tags were stripped) for the marker check
+  if (!hasReasoningMarkers(rawForMarkers)) return false; // plain replies that just say "i need... i want..." are never treated as leaks
+  return countReasoningLeakSignals(value) >= 2; // 2+ "i need / i should / i will..." phrases = looks like leaked reasoning
 }
 
 function looksLikeReasoningParagraph(value) {
@@ -192,16 +199,19 @@ function selectPlausibleReplyParagraphs(text) {
 }
 
 function extractReplyFromReasoningLeak(text) {
-  if (typeof text !== 'string' || !text.trim() || !isReasoningLeak(text)) {
+  if (typeof text !== 'string' || !text.trim()) {
     return '';
   }
 
-  const quoted = extractQuotedCandidates(text);
+  const withoutThinkingTags = stripThinkingTags(text); // look only at what's OUTSIDE the think block (reasoning inside it is never a reply)
+  if (!withoutThinkingTags || !isReasoningLeak(withoutThinkingTags, text)) { // no visible text, or no markers/labels, or not leaky
+    return '';
+  }
+
+  const quoted = extractQuotedCandidates(withoutThinkingTags); // a quoted draft in the visible text, e.g. maybe something like "hey doll"
   if (quoted.length > 0) {
     return quoted[quoted.length - 1];
   }
-
-  const withoutThinkingTags = stripThinkingTags(text);
 
   for (const marker of FINAL_REPLY_MARKERS) {
     const matches = [...withoutThinkingTags.matchAll(marker)];
@@ -269,7 +279,15 @@ function extractThoughtSegments(text) {
     }
   }
 
-  const withoutClosed = text.replace(closedPattern, '');
+  let withoutClosed = text.replace(closedPattern, '');
+  const bareCloseIndex = withoutClosed.toLowerCase().lastIndexOf('</think>'); // a </think> with no opener (Qwen3 / llama.cpp templates)
+  if (bareCloseIndex !== -1 && !/<think>/iu.test(withoutClosed.slice(0, bareCloseIndex))) { // nothing opened it, so everything before it was thought
+    const segment = withoutClosed.slice(0, bareCloseIndex).trim(); // the reasoning text
+    if (segment) {
+      segments.push(segment); // relay it like any other thought
+    }
+    withoutClosed = withoutClosed.slice(bareCloseIndex + '</think>'.length); // keep checking only the part after it
+  }
   const unclosedMatch = withoutClosed.match(/<think>([\s\S]*)/iu);
   if (unclosedMatch && typeof unclosedMatch[1] === 'string') {
     const segment = unclosedMatch[1].replace(/<\/think>/giu, '').trim();
@@ -278,7 +296,7 @@ function extractThoughtSegments(text) {
     }
   }
 
-  if (segments.length === 0 && isReasoningLeak(text)) {
+  if (segments.length === 0 && hasReasoningMarkers(text) && isReasoningLeak(text)) { // only when labels exist; normal replies are never relayed as thoughts
     const candidates = extractQuotedCandidates(text);
     const selectedCandidate = candidates.length > 0 ? candidates[candidates.length - 1] : '';
     const thoughtText = selectedCandidate
@@ -300,7 +318,7 @@ function extractQuotedReplyFromReasoningLeak(text) {
 
   const leakSignalPattern = /(\bi\s+(?:need|should|can|could|must|will|want|have\s+to)\b|\bthe\s+user\s+is\s+probably\b|\bmaybe\s+something\s+like\b|\bkeep\s+it\s+short\b|\bin\s+line\s+with\s+(?:my|the)\s+vibe\b)/giu;
   const matches = text.match(leakSignalPattern) || [];
-  if (matches.length < 2) {
+  if (matches.length < 2 || !hasReasoningMarkers(text)) { // same gate as isReasoningLeak: no markers/labels = not a leak
     return '';
   }
 
@@ -325,14 +343,18 @@ function stripThinkingTags(text) {
     return text;
   }
 
-  let result = text.replace(/<think>[\s\S]*?<\/think>/giu, '');
-  let guard = 0;
+  let result = text.replace(/<think>[\s\S]*?<\/think>/giu, ''); // 1) drop every complete <think>...</think> block
 
-  while (/<think>/iu.test(result) && guard < 6) {
-    const openIndex = result.search(/<think>/iu);
-    const beforeThink = result.slice(0, openIndex).trim();
-    const thinkBody = result.slice(openIndex).replace(/^<think>/iu, '');
-    let recovered = '';
+  const bareCloseIndex = result.toLowerCase().lastIndexOf('</think>'); // 2) a leftover </think> with no opener (Qwen3 / llama.cpp templates)
+  if (bareCloseIndex !== -1 && !/<think>/iu.test(result.slice(0, bareCloseIndex))) { // nothing before it opened a block
+    result = result.slice(bareCloseIndex + '</think>'.length); // everything before it was thought; keep only what follows
+  }
+
+  const openIndex = result.search(/<think>/iu); // 3) an opener that never closed (output was cut off mid-thought)
+  if (openIndex !== -1) {
+    const beforeThink = result.slice(0, openIndex).trim(); // any real reply written before the reasoning started
+    const thinkBody = result.slice(openIndex).replace(/^<think>/iu, ''); // the unfinished reasoning
+    let recovered = ''; // stays empty unless the model clearly marked a final answer
 
     const finalMarkers = [
       /(?:^|\n)\s*(?:final answer|answer|response)\s*[:\-]\s*/iu,
@@ -342,35 +364,16 @@ function stripThinkingTags(text) {
     for (const marker of finalMarkers) {
       const match = marker.exec(thinkBody);
       if (match && Number.isFinite(match.index)) {
-        const candidate = thinkBody.slice(match.index + match[0].length).trim();
+        const candidate = thinkBody.slice(match.index + match[0].length).replace(/<\/?think>/giu, '').trim(); // text after "Final answer:" etc.
         if (candidate) {
           recovered = candidate;
           break;
         }
       }
     }
+    // No "last paragraph" guessing any more: with no final-answer marker, unfinished reasoning is discarded so the caller falls back.
 
-    if (!recovered) {
-      const paragraphs = thinkBody
-        .split(/\n\s*\n/u)
-        .map((segment) => segment.trim())
-        .filter(Boolean);
-
-      for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
-        const candidate = paragraphs[index];
-        if (
-          candidate.length <= 600
-          && !/^\d+[.)]/u.test(candidate)
-          && !/^(thinking process|analysis|step\s*\d+)/iu.test(candidate)
-        ) {
-          recovered = candidate;
-          break;
-        }
-      }
-    }
-
-    result = [beforeThink, recovered].filter(Boolean).join('\n').trim();
-    guard += 1;
+    result = [beforeThink, recovered].filter(Boolean).join('\n').trim(); // reply-before-think + marked answer (either may be empty)
   }
 
   return result
@@ -448,6 +451,10 @@ function stripPromptEchoAndTranscriptArtifacts(text) {
   const filteredLines = lines.filter((line) => {
     if (/^(?:lumi|assistant)\s*[:\-]/iu.test(line)) {
       return true;
+    }
+
+    if (line.includes('://')) { // links like https://... start with "word:" but are real content, never a transcript speaker
+      return true; // keep the line
     }
 
     if (/^[a-z0-9_.-]{2,32}\s*[:\-]/iu.test(line)) {
@@ -864,9 +871,7 @@ function recoverFallbackResponse(text, maxChars) {
     }
   }
 
-  const withoutOpenThinkTag = text
-    .replace(/<think>/giu, '')
-    .replace(/<\/think>/giu, '');
+  const withoutOpenThinkTag = stripThinkingTags(text); // remove reasoning properly (was: delete the tags and keep the reasoning text)
   const paragraphs = withoutOpenThinkTag
     .split(/\n\s*\n/u)
     .map((segment) => segment.replace(/\s+/gu, ' ').trim())

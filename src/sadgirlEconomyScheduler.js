@@ -19,6 +19,7 @@ const {
   getDollStreetBalance,
   collectMonthlyTaxes,
   casinoDailyReserveDeposit,
+  getEconomyDb, // used to run a payout + its "already done" marker in one transaction
 } = require('./sadgirlEconomyStore');
 const { getSetting } = require('./panelSettings');
 
@@ -83,8 +84,11 @@ async function checkWeeklyLottery() {
 
   if (dayOfWeek !== 0 || lastRun === thisWeek) return; // Run on Sunday
 
-  const winner = runWeeklyLottery();
-  setSystemState('last_weekly_lottery', thisWeek);
+  const winner = getEconomyDb().transaction(() => { // payout and "done this week" marker commit together, so a crash can't pay twice
+    const w = runWeeklyLottery(); // pay the winner
+    setSystemState('last_weekly_lottery', thisWeek); // remember we ran this week
+    return w; // hand the winner back out of the transaction
+  })();
 
   if (winner && discordClient) {
     try {
@@ -113,8 +117,11 @@ async function checkMonthlyTaxes() {
   // Run on the 1st of each month (collecting for the prior month)
   if (day !== 1 || lastRun === thisMonth) return;
 
-  const result = collectMonthlyTaxes();
-  setSystemState('last_monthly_tax', thisMonth);
+  const result = getEconomyDb().transaction(() => { // taxes and "done this month" marker commit together
+    const r = collectMonthlyTaxes(); // collect the taxes
+    setSystemState('last_monthly_tax', thisMonth); // remember we ran this month
+    return r; // hand the result back out
+  })();
 
   logger.info(`Economy scheduler: monthly taxes collected — ${result.totalTaxed} SGC from ${result.userCount} users.`);
 
@@ -149,8 +156,11 @@ async function checkDailyCasinoDeposit() {
 
   if (lastRun === today) return;
 
-  const result = casinoDailyReserveDeposit();
-  setSystemState('last_casino_reserve_deposit', today);
+  const result = getEconomyDb().transaction(() => { // deposit and "done today" marker commit together
+    const r = casinoDailyReserveDeposit(); // move the casino reserve
+    setSystemState('last_casino_reserve_deposit', today); // remember we ran today
+    return r; // hand the result back out
+  })();
 
   if (result) {
     logger.info(`Economy scheduler: casino deposited ${result.deposited} SGC to central reserve.`);
@@ -190,8 +200,11 @@ async function checkYearlyRaffle() {
   const today = now.toISOString().slice(0, 10);
   setLottoDay(today);
 
-  const result = runYearlyRaffle();
-  setSystemState('last_yearly_raffle', thisYear);
+  const result = getEconomyDb().transaction(() => { // raffle payout and "done this year" marker commit together
+    const r = runYearlyRaffle(); // pay the raffle winner
+    setSystemState('last_yearly_raffle', thisYear); // remember we ran this year
+    return r; // hand the result back out
+  })();
 
   if (result && discordClient) {
     try {
@@ -229,21 +242,53 @@ function scheduleLeaderboard() {
   logger.info(`Economy scheduler: next leaderboard post in ${Math.round(delay / 60000)}m.`);
 
   leaderboardTimer = setTimeout(async () => {
-    await postLeaderboard();
-    scheduleLeaderboard();
+    try {
+      await postLeaderboard();
+    } catch (error) {
+      logger.error('Economy scheduler: leaderboard post failed.', error.message); // log and keep going
+    } finally {
+      scheduleLeaderboard(); // audit #24: ALWAYS schedule the next run, even after an error
+    }
   }, delay);
   leaderboardTimer.unref?.();
+}
+
+let lotteryChecksInFlight = false; // true while an hourly money check is running (stops overlapping runs)
+
+/** Run one named check, logging (not throwing) any error so the other checks still run. */
+async function runCheckSafely(label, fn) {
+  try {
+    await fn(); // run the check
+  } catch (error) {
+    logger.error(`Economy scheduler: ${label} failed; will retry next hour.`, error.message); // e.g. SQLITE_BUSY
+  }
+}
+
+async function runLotteryChecks() {
+  if (lotteryChecksInFlight) { // a slow previous run is still going
+    logger.warn('Economy scheduler: previous hourly checks still running, skipping this tick.'); // don't run twice at once
+    return;
+  }
+  lotteryChecksInFlight = true; // claim the run
+  try {
+    await runCheckSafely('weekly lottery', checkWeeklyLottery); // each check isolated so one failure doesn't skip the rest
+    await runCheckSafely('yearly raffle', checkYearlyRaffle);
+    await runCheckSafely('monthly taxes', checkMonthlyTaxes);
+    await runCheckSafely('casino reserve deposit', checkDailyCasinoDeposit);
+  } finally {
+    lotteryChecksInFlight = false; // release the run even if something unexpected threw
+  }
 }
 
 function scheduleLotteryChecks() {
   if (stopped) return;
 
   lotteryTimer = setTimeout(async () => {
-    await checkWeeklyLottery();
-    await checkYearlyRaffle();
-    await checkMonthlyTaxes();
-    await checkDailyCasinoDeposit();
-    scheduleLotteryChecks();
+    try {
+      await runLotteryChecks(); // all four hourly money checks
+    } finally {
+      scheduleLotteryChecks(); // audit #24: ALWAYS schedule the next hour, even after an error
+    }
   }, ONE_HOUR_MS);
   lotteryTimer.unref?.();
 }

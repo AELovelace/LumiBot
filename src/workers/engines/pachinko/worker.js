@@ -49,19 +49,27 @@ registerCommand('drop', async ({ channelId, userId, username, peg, bet } = {}) =
   if (activeChannels.has(channelId)) {
     return { ok: false, reason: 'busy' };
   }
+  activeChannels.add(channelId); // claim the channel BEFORE any await so a double click can't start two drops
 
-  await dbCall('ensureAccount', { userId, username });
-  const balance = await dbCall('getBalance', { userId });
-  if (balance < bet) {
-    return { ok: false, reason: 'insufficient', balance, bet };
+  let placed; // debit result, filled in below
+  try {
+    await dbCall('ensureAccount', { userId, username });
+    const balance = await dbCall('getBalance', { userId });
+    if (balance < bet) {
+      activeChannels.delete(channelId); // early return: free the channel again
+      return { ok: false, reason: 'insufficient', balance, bet };
+    }
+
+    placed = await dbCall('placePachinkoBet', { userId, username, amount: bet });
+  } catch (err) {
+    activeChannels.delete(channelId); // DB error: free the channel so it isn't stuck 'busy' forever
+    throw err; // report the error to the caller as before
   }
-
-  const placed = await dbCall('placePachinkoBet', { userId, username, amount: bet });
   if (!placed || !placed.success) {
+    activeChannels.delete(channelId); // debit refused: free the channel
     return { ok: false, reason: 'bet_failed', error: placed && placed.error };
   }
-
-  activeChannels.add(channelId);
+  // The channel stays claimed from here; runAnimation's finally{} releases it when the drop is done.
 
   // Run animation asynchronously; reply immediately so adapter can post the
   // initial message and listen for events.

@@ -5,6 +5,7 @@ const { logger } = require('./logger');
 const { awardStarboardCoins } = require('./sadgirlEconomyStore');
 const { matchPayout } = require('./bigBusiness');
 const { getGuildConfig } = require('./guildConfig');
+const { evaluateOutgoingMessage } = require('./moderation'); // same outgoing filter chatbot replies use
 
 const STARBOARD_SOURCE_PREFIX = 'source:';
 const STARBOARD_SCAN_LIMIT = 100;
@@ -16,8 +17,8 @@ const MISSING_ACCESS_ERROR_CODE = 50_001;
 const MISSING_PERMISSIONS_ERROR_CODE = 50_013;
 const PERMISSION_WARNING_COOLDOWN_MS = 60_000;
 
-const STARBOARD_LLM_ENDPOINT = 'http://100.83.3.32:11434';
-const STARBOARD_LLM_MODEL = 'server-2';
+const STARBOARD_LLM_ENDPOINT = config.starboardLlmEndpoint || 'http://100.83.3.32:11434'; // from STARBOARD_LLM_ENDPOINT; old value only if config is missing/invalid
+const STARBOARD_LLM_MODEL = config.starboardLlmModel || 'server-2'; // from STARBOARD_LLM_MODEL; old value only if unset
 const STARBOARD_LLM_TIMEOUT_MS = 20_000;
 
 const sourceToStarboardMessageId = new Map();
@@ -34,9 +35,12 @@ const commentaryPosted = new Set();
 
 function stripThinkingTags(text) {
   if (typeof text !== 'string') return '';
-  return text
-    .replace(/<think>[\s\S]*?<\/think>/giu, '')
-    .replace(/<\/?think>/giu, '')
+  let body = text.replace(/<think>[\s\S]*?<\/think>/giu, ''); // drop complete <think>...</think> blocks
+  const bareClose = body.search(/<\/think>/iu); // a closing tag with no opener (Qwen3 / llama.cpp templates)
+  if (bareClose !== -1) body = body.slice(bareClose + '</think>'.length); // everything before it was reasoning
+  const unclosed = body.search(/<think>/iu); // an opener that never closed (output got cut off mid-thought)
+  if (unclosed !== -1) body = body.slice(0, unclosed); // keep only what came before the reasoning
+  return body
     .replace(/\n{3,}/gu, '\n\n')
     .trim();
 }
@@ -237,6 +241,7 @@ function buildStarboardPayload(message, starCount, sourceKey) {
   return {
     content: `⭐ **${starCount}** in <#${message.channelId}>`,
     embeds: [embed],
+    allowedMentions: { parse: [] }, // reposted user content must never ping anyone
   };
 }
 
@@ -390,10 +395,14 @@ async function processStarboardReaction(reaction) {
               starCount,
               guildName,
             );
-            if (commentary) {
+            const moderated = commentary ? evaluateOutgoingMessage(commentary, { maxChars: 1500 }) : null; // filter LLM text (one line, fits the "> " quote)
+            if (moderated?.allowed && moderated.text) { // only post when the filter is happy
               const bizChannel = await reaction.client.channels.fetch(guildCfg.bigBusinessChannelId).catch(() => null);
               if (bizChannel) {
-                await bizChannel.send(`⭐ **Starboard Hit** — ${message.author?.username || 'someone'} just got ${starCount} star(s)\n> ${commentary}`);
+                await bizChannel.send({
+                  content: `⭐ **Starboard Hit** — ${message.author?.username || 'someone'} just got ${starCount} star(s)\n> ${moderated.text}`, // same message as before, with filtered text
+                  allowedMentions: { parse: [] }, // commentary never pings anyone
+                });
                 logger.info(`Starboard commentary posted to business channel for ${sourceKey}.`);
               }
             }

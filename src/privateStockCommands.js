@@ -268,6 +268,7 @@ async function handleStockSell(interaction) {
     `> **${stock.business_name}** (${stock.ticker})${stock.entity_type === 'synthetic' ? ' • Synthetic' : ''}`,
     `> Shares sold: **${shares.toFixed(4)}**`,
     `> Proceeds: **${result.proceeds.toLocaleString()} SGC**`,
+    result.priceLocked ? `> 🔒 Sold at your recent buy price (**${result.pricePerShare.toFixed(2)} SGC**/share): sells within 24h of buying can't beat the price you paid. Lock ends <t:${Math.floor(result.sellLockUntil / 1000)}:R>.` : '', // explain why the price was capped
     `> Remaining shares: **${result.remainingShares.toFixed(4)}**`,
     result.newPrice ? `> New market price: **${result.newPrice.toFixed(2)} SGC**` : '',
   ];

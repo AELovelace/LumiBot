@@ -19,6 +19,7 @@
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder } = require('discord.js');
 const { logger } = require('./logger');
+const { randomInt } = require('./workers/engines/secureRandom'); // crypto-backed randomness for money outcomes (audit #36)
 const {
   ensureAccount,
   getBalance,
@@ -315,7 +316,7 @@ function animateRace(positions, raceMsg, lobby, betsLine) {
 
       for (let i = 0; i < 4; i++) {
         // Random advance: 0-4 spaces per tick
-        positions[i] += Math.floor(Math.random() * 5);
+        positions[i] += randomInt(5); // crypto roll: 0-4 spaces, all equally likely
         if (positions[i] >= TRACK_WIDTH) {
           positions[i] = TRACK_WIDTH;
           if (!winner) winner = HORSES[i]; // first horse past the line wins

@@ -20,9 +20,10 @@ const {
 const {
   ensureAccount,
   getBalance,
-  adjustBalance,
+  adjustBalancesAtomic, // debit + credit in one all-or-nothing transaction
   TAYS_TOBACCO_USER_ID,
 } = require('./sadgirlEconomyStore');
+const { logger } = require('./logger'); // for logging failed refunds
 const { activateSmokeBoost, getSmokeBoost } = require('./smokeBoost');
 
 function buildCigaretteCommand() {
@@ -90,14 +91,33 @@ async function handleGacha(interaction) {
     return;
   }
 
-  const result = dispenseCigarette(userId);
-  if (!result.success) {
-    await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+  // Audit #12: take the money FIRST, as one transaction (player debit + Tay's Tobacco credit),
+  // so a failed debit can never hand out a free cigarette or mint coins for Tay's.
+  const payment = adjustBalancesAtomic([
+    { userId, amount: -DISPENSE_PRICE, note: 'Cigarette gacha pull' }, // player pays
+    { userId: TAYS_TOBACCO_USER_ID, amount: DISPENSE_PRICE, note: 'Cigarette gacha sale' }, // Tay's Tobacco gets paid
+  ]);
+  if (!payment.success) { // e.g. balance changed since the check above
+    await interaction.reply({ content: `❌ Payment failed: ${payment.error}`, ephemeral: true }); // friendly reply, nothing was charged
     return;
   }
 
-  adjustBalance(userId, -DISPENSE_PRICE, `Cigarette gacha: ${result.cigarette.display_name}`);
-  adjustBalance(TAYS_TOBACCO_USER_ID, DISPENSE_PRICE, `Cigarette sale: ${result.cigarette.display_name}`);
+  let result; // the pull result from the cigarette DB
+  try {
+    result = dispenseCigarette(userId); // cigarettes live in a separate DB file, so this runs after the payment
+  } catch (error) {
+    result = { success: false, error: 'The dispenser jammed. Please try again.' }; // treat a crash like a normal failure
+    logger.error('Cigarette gacha: dispense threw.', error.message); // keep the real reason for admins
+  }
+  if (!result.success) { // no cigarette was given, so give the money back
+    const refund = adjustBalancesAtomic([
+      { userId: TAYS_TOBACCO_USER_ID, amount: -DISPENSE_PRICE, note: 'Cigarette gacha refund' }, // take it back from Tay's
+      { userId, amount: DISPENSE_PRICE, note: 'Cigarette gacha refund' }, // return it to the player
+    ]);
+    if (!refund.success) logger.error(`Cigarette gacha: refund to ${userId} failed: ${refund.error}`); // admins must fix by hand
+    await interaction.reply({ content: `❌ ${result.error}${refund.success ? ' (you were refunded)' : ''}`, ephemeral: true }); // tell the player
+    return;
+  }
 
   const rarityText = `${result.rarity.emoji} ${result.rarity.tier} (Rank #${result.cigarette.rank})`;
   if (result.action === 'replaced' && result.replacedCigarette) {
@@ -350,15 +370,36 @@ async function handleTrade(interaction) {
         return;
       }
 
-      const sale = tradeCigaretteForMoney(userId, yours, other.id, money);
-      if (!sale.success) {
-        await btn.update({ content: `❌ Trade failed: ${sale.error}`, components: [] });
+      // Audit #12: move the money FIRST in one transaction (buyer debit + seller credit),
+      // then move the cigarette; if the cigarette can't move, reverse the money.
+      const price = Number.parseInt(money, 10); // same whole-SGC parsing the cigarette store uses
+      const payment = adjustBalancesAtomic([
+        { userId: other.id, amount: -price, note: `Bought cigarette: ${yours}` }, // buyer pays
+        { userId, amount: price, note: `Sold cigarette: ${yours}` }, // seller receives
+      ]);
+      if (!payment.success) { // buyer can't pay (or a bad amount): nothing moved
+        await btn.update({ content: `❌ Trade failed: ${payment.error}`, components: [] }); // friendly reply
         collector.stop('failed');
         return;
       }
 
-      adjustBalance(other.id, -sale.price, `Bought cigarette: ${sale.cigarette.display_name}`);
-      adjustBalance(userId, sale.price, `Sold cigarette: ${sale.cigarette.display_name}`);
+      let sale; // the cigarette movement result
+      try {
+        sale = tradeCigaretteForMoney(userId, yours, other.id, price); // separate cigarette DB file
+      } catch (error) {
+        sale = { success: false, error: 'The cigarette could not be moved. Please try again.' }; // treat a crash like a failure
+        logger.error('Cigarette trade: item move threw.', error.message); // keep the real reason for admins
+      }
+      if (!sale.success) { // cigarette didn't move, so undo the payment
+        const refund = adjustBalancesAtomic([
+          { userId, amount: -price, note: `Refund cigarette sale: ${yours}` }, // take it back from the seller
+          { userId: other.id, amount: price, note: `Refund cigarette purchase: ${yours}` }, // return it to the buyer
+        ]);
+        if (!refund.success) logger.error(`Cigarette trade: refund ${userId} -> ${other.id} failed: ${refund.error}`); // admins must fix by hand
+        await btn.update({ content: `❌ Trade failed: ${sale.error}${refund.success ? ' (payment reversed)' : ''}`, components: [] }); // tell both players
+        collector.stop('failed');
+        return;
+      }
 
       await btn.update({
         content:

@@ -16,6 +16,7 @@
 
 const { SlashCommandBuilder } = require('discord.js');
 const { logger } = require('./logger');
+const { randomInt } = require('./workers/engines/secureRandom'); // crypto-backed randomness for money outcomes (audit #36)
 const {
   ensureAccount,
   getBalance,
@@ -40,12 +41,12 @@ const START_POSITIONS = [3, 4, 5, 6];
  */
 function simulateDrop() {
   const path = [];
-  let pos = START_POSITIONS[Math.floor(Math.random() * START_POSITIONS.length)];
+  let pos = START_POSITIONS[randomInt(START_POSITIONS.length)]; // crypto pick of a start column, each equally likely
 
   for (let row = 0; row < GRID_ROWS; row++) {
     path.push(pos);
     // Drift left or right randomly, clamped to edges
-    const drift = Math.random() < 0.5 ? -1 : 1;
+    const drift = randomInt(2) === 0 ? -1 : 1; // crypto coin flip: exactly 50% left, 50% right
     pos = Math.max(0, Math.min(GRID_WIDTH - 1, pos + drift));
   }
 

@@ -2,7 +2,13 @@
  * Private Stock Store — SQLite-backed exchange for Big Business shares.
  *
  * Key rules:
- *  - Market cap = current Big Business value + current user investment capital.
+ *  - Market cap = current Big Business treasury only. (Buyers' coins already land
+ *    in the treasury, so adding "invested capital" on top counted them twice.)
+ *  - Every SGC amount that moves is a whole number (fee rounds up, sale proceeds
+ *    round down). Shares themselves may stay fractional.
+ *  - Right after you buy, your sells for the next 24h are capped at the lowest
+ *    price you paid in that window, so you can't profit from your own buy pushing
+ *    the price up (instant buy-then-sell round trips always lose the 5% fee).
  *  - Price is supply/demand driven with a performance-weighted intrinsic floor.
  *  - Synthetic companies fill the exchange up to 10 listings when fewer than
  *    10 real guild businesses exist.
@@ -17,6 +23,7 @@ const {
   ensureAccount,
   getBigBusinessBalance,
   depositBigBusiness,
+  ensureGuildBigBusiness, // creates the per-guild __BIG_BUSINESS_<gid>__ account if it is missing
   DOLL_STREET_USER_ID,
 } = require('./sadgirlEconomyStore');
 const { getBigBusinessUserId, getAllGuildConfigs } = require('./guildConfig');
@@ -33,6 +40,9 @@ const MIN_PERFORMANCE_SCORE = 0.55;
 const MAX_PERFORMANCE_SCORE = 1.85;
 const SYNTHETIC_DEVIATIONS = [-0.36, -0.28, -0.21, -0.15, -0.1, -0.05, 0.02, 0.08, 0.14, 0.2, 0.27, 0.34, 0.44, 0.56, 0.68, 0.82, 0.96, 1.1];
 const COMPANY_STOP_WORDS = new Set(['inc', 'llc', 'ltd', 'co', 'corp', 'corporation', 'group', 'holdings']);
+const DOLL_STREET_FEE_PERCENT = 5; // Doll Street takes 5% of every buy (rounded UP to a whole SGC)
+const SELL_PRICE_LOCK_MS = 24 * 60 * 60 * 1000; // for 24h after a buy, that holder can't sell above the price they paid
+const FRIENDLY_TRADE_ERROR = 'The trade could not be completed, so no coins or shares were moved. Please try again in a moment.'; // shown when a transaction rolls back
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -171,6 +181,8 @@ function createPrivateStockSchema() {
   ensureColumn('bb_stocks', 'base_performance', 'REAL NOT NULL DEFAULT 1');
   ensureColumn('bb_stocks', 'display_order', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('bb_stocks', 'metadata_json', "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn('bb_shareholders', 'sell_lock_price', 'REAL DEFAULT NULL'); // lowest price this holder paid during their current 24h sell lock
+  ensureColumn('bb_shareholders', 'sell_lock_until', 'INTEGER NOT NULL DEFAULT 0'); // epoch ms when that sell lock ends (0 = no lock)
 
   db.exec(`
     UPDATE bb_stocks
@@ -300,9 +312,9 @@ function getOutstandingShares(stockId) {
 
 function getMarketCapValue(stock) {
   if (!stock) return 0;
-  const treasuryBalance = getCorporateTreasuryBalance(stock);
-  const investedCapital = getCurrentInvestmentCapital(stock.id);
-  return treasuryBalance + investedCapital;
+  // Audit #13: only the treasury is real backing. 95% of every buy is already IN the treasury,
+  // so adding invested capital on top counted each buy ~1.95x and let buy-then-sell drain it.
+  return getCorporateTreasuryBalance(stock); // market cap = coins actually held by the company
 }
 
 function getRealGuildStocksRaw() {
@@ -463,11 +475,9 @@ function snapshotPriceFallback(stock) {
 }
 
 function calculateDynamicPrice(stock) {
-  const treasuryBalance = getCorporateTreasuryBalance(stock);
-  const investedCapital = getCurrentInvestmentCapital(stock.id);
   const outstandingShares = Math.max(getOutstandingShares(stock.id), Number(stock.total_outstanding) || 0, 0);
   const referenceFloat = Math.max(outstandingShares, BASE_REFERENCE_FLOAT);
-  const marketCap = treasuryBalance + investedCapital;
+  const marketCap = getMarketCapValue(stock); // treasury only (audit #13: no more double-counted invested capital)
   const intrinsicPerShare = marketCap > 0
     ? marketCap / referenceFloat
     : Math.max(MIN_SHARE_PRICE, snapshotPriceFallback(stock));
@@ -543,6 +553,9 @@ function applyTradeImpact(stockId, direction, notionalAmount) {
 
 function ensureStockForGuild(guildId, businessName) {
   const existing = db.prepare('SELECT * FROM bb_stocks WHERE guild_id = ?').get(guildId);
+  // Audit #11: make sure the guild's Big Business account exists, so share purchases
+  // for a guild enabled after boot have somewhere real to land (otherwise coins vanished).
+  ensureGuildBigBusiness(getBigBusinessUserId(guildId), businessName); // creates __BIG_BUSINESS_<gid>__ if missing
 
   if (existing) {
     db.prepare(`
@@ -835,8 +848,8 @@ function renameTicker(stockId, newTicker, options = {}) {
 // ---------------------------------------------------------------------------
 
 function buyShares(userId, username, stockId, investmentAmount) {
-  if (investmentAmount <= 0) {
-    return { success: false, error: 'Investment amount must be positive.' };
+  if (!Number.isSafeInteger(investmentAmount) || investmentAmount <= 0) { // whole SGC only (no 1.5, NaN, '5')
+    return { success: false, error: 'Investment amount must be a positive whole number of SGC.' };
   }
 
   syncStockUniverse();
@@ -849,30 +862,38 @@ function buyShares(userId, username, stockId, investmentAmount) {
   }
 
   ensureAccount(userId, username);
-  const balance = getBalance(userId);
-  if (balance < investmentAmount) {
-    return { success: false, error: `Insufficient funds. You have ${balance} SGC but need ${investmentAmount} SGC.` };
-  }
 
   const pricePerShare = Number(stock.share_price) || 0;
   if (pricePerShare <= 0) {
     return { success: false, error: 'This stock has an invalid price right now. Try again in a moment.' };
   }
 
-  const dollStreetCut = roundCurrency(investmentAmount * 0.05);
-  const netInvestment  = roundCurrency(investmentAmount - dollStreetCut);
-  const sharesBought   = netInvestment / pricePerShare;
+  const dollStreetCut = Math.ceil((investmentAmount * DOLL_STREET_FEE_PERCENT) / 100); // 5% fee rounded UP to whole SGC (integer maths avoids 300*0.05=15.0000001)
+  const netInvestment  = investmentAmount - dollStreetCut; // whole SGC that actually reaches the company treasury
+  if (netInvestment < 1) { // e.g. 1 SGC: the 1 SGC fee eats everything
+    return { success: false, error: 'Minimum investment is 2 SGC (the 5% Doll Street fee rounds up).' };
+  }
+  const sharesBought   = netInvestment / pricePerShare; // shares can stay fractional
 
-  const result = db.transaction(() => {
-    adjustBalance(userId, -investmentAmount, `Bought ${sharesBought.toFixed(4)} shares of ${stock.ticker}`);
+  let result; // filled in by the transaction below
+  try { // any throw inside the transaction rolls back every coin and share movement
+  result = db.transaction(() => {
+    const balance = getBalance(userId); // re-read the balance INSIDE the transaction so nothing can change it between check and debit
+    if (balance < investmentAmount) { // not enough coins: nothing has been written yet, so just return
+      return { success: false, error: `Insufficient funds. You have ${balance} SGC but need ${investmentAmount} SGC.` };
+    }
+
+    const debit = adjustBalance(userId, -investmentAmount, `Bought ${sharesBought.toFixed(4)} shares of ${stock.ticker}`); // take the buyer's coins
+    if (!debit.success) throw new Error(debit.error); // debit failed, so throw and roll back (never credit without a debit)
 
     // 5% Doll Street exchange fee
     if (dollStreetCut > 0) {
-      db.prepare(`
+      const feeInfo = db.prepare(`
         UPDATE accounts
         SET balance = balance + ?, total_earned = total_earned + ?, updated_at = datetime('now')
         WHERE user_id = ?
-      `).run(dollStreetCut, dollStreetCut, DOLL_STREET_USER_ID);
+      `).run(dollStreetCut, dollStreetCut, DOLL_STREET_USER_ID); // pay the whole-SGC fee to Doll Street
+      if (feeInfo.changes === 0) throw new Error('Doll Street account is missing.'); // fee would vanish, so roll back
     }
 
     if (isSyntheticStock(stock)) {
@@ -890,6 +911,13 @@ function buyShares(userId, username, stockId, investmentAmount) {
       'SELECT * FROM bb_shareholders WHERE stock_id = ? AND user_id = ?'
     ).get(stockId, userId);
 
+    // Sell lock (audit #13): for 24h this holder can't sell above the LOWEST price they paid in
+    // that window, so pumping the price with your own buy and selling straight back can't profit.
+    const now = Date.now(); // current time in ms
+    const lockStillActive = Boolean(existing) && Number(existing.sell_lock_until) > now && Number(existing.sell_lock_price) > 0; // already inside a lock window?
+    const sellLockPrice = lockStillActive ? Math.min(Number(existing.sell_lock_price), pricePerShare) : pricePerShare; // keep the lowest buy price (stops "buy big, then buy 1 SGC at the pumped price")
+    const sellLockUntil = now + SELL_PRICE_LOCK_MS; // every buy restarts the 24h window
+
     if (existing) {
       const newTotalInvested = existing.total_invested + investmentAmount;
       const newShares = existing.shares + sharesBought;
@@ -897,14 +925,15 @@ function buyShares(userId, username, stockId, investmentAmount) {
 
       db.prepare(`
         UPDATE bb_shareholders
-        SET shares = ?, avg_cost_basis = ?, total_invested = ?, username = ?, updated_at = datetime('now')
+        SET shares = ?, avg_cost_basis = ?, total_invested = ?, username = ?,
+            sell_lock_price = ?, sell_lock_until = ?, updated_at = datetime('now')
         WHERE stock_id = ? AND user_id = ?
-      `).run(newShares, newAvgCost, newTotalInvested, username, stockId, userId);
+      `).run(newShares, newAvgCost, newTotalInvested, username, sellLockPrice, sellLockUntil, stockId, userId); // add the shares and refresh the sell lock
     } else {
       db.prepare(`
-        INSERT INTO bb_shareholders (stock_id, user_id, username, shares, avg_cost_basis, total_invested)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(stockId, userId, username, sharesBought, pricePerShare, investmentAmount);
+        INSERT INTO bb_shareholders (stock_id, user_id, username, shares, avg_cost_basis, total_invested, sell_lock_price, sell_lock_until)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(stockId, userId, username, sharesBought, pricePerShare, investmentAmount, sellLockPrice, sellLockUntil); // new holder starts with a sell lock at the price they paid
     }
 
     db.prepare(`
@@ -924,7 +953,7 @@ function buyShares(userId, username, stockId, investmentAmount) {
       sharesBought,
       pricePerShare,
       investmentAmount,
-      `Bought ${sharesBought.toFixed(4)} shares @ ${pricePerShare.toFixed(2)} SGC (${dollStreetCut.toFixed(2)} fee)`,
+      `Bought ${sharesBought.toFixed(4)} shares @ ${pricePerShare.toFixed(2)} SGC (${dollStreetCut} SGC fee)`, // fee is now a whole number
     );
 
     const repriced = applyTradeImpact(stockId, 'buy', netInvestment);
@@ -936,44 +965,58 @@ function buyShares(userId, username, stockId, investmentAmount) {
       success: true,
       shares: sharesBought,
       pricePerShare,
+      fee: dollStreetCut, // whole-SGC Doll Street fee that was charged
       totalShares: updatedHolder.shares,
       totalInvested: updatedHolder.total_invested,
       newPrice: repriced ?? pricePerShare,
+      sellLockPrice, // the most this holder can sell for per share until the lock ends
+      sellLockUntil, // epoch ms when the sell lock ends
     };
   })();
+  } catch (error) { // the transaction threw and rolled back: nothing moved
+    logger.error(`Private Stock: buy of ${investmentAmount} SGC of stock ${stockId} by ${userId} rolled back.`, error.message); // log the real reason for admins
+    return { success: false, error: FRIENDLY_TRADE_ERROR }; // friendly message for the player
+  }
 
   return result;
 }
 
 function sellShares(userId, username, stockId, sharesToSell) {
-  if (sharesToSell <= 0) {
+  if (!Number.isFinite(sharesToSell) || sharesToSell <= 0) { // shares may be fractional, but never NaN/Infinity/negative
     return { success: false, error: 'Must sell a positive number of shares.' };
   }
 
-  const stock = getStockById(stockId);
-  if (!stock) return { success: false, error: 'Stock not found.' };
+  let result; // filled in by the transaction below
+  try { // any throw inside the transaction rolls back every coin and share movement
+  result = db.transaction(() => {
+    const stock = getStockById(stockId); // read the stock INSIDE the transaction so the price can't shift under us
+    if (!stock) return { success: false, error: 'Stock not found.' };
 
-  const holding = db.prepare(
-    'SELECT * FROM bb_shareholders WHERE stock_id = ? AND user_id = ?'
-  ).get(stockId, userId);
+    const holding = db.prepare(
+      'SELECT * FROM bb_shareholders WHERE stock_id = ? AND user_id = ?'
+    ).get(stockId, userId); // the seller's current holding
 
-  if (!holding || holding.shares < sharesToSell) {
-    const owned = holding ? holding.shares.toFixed(4) : '0';
-    return { success: false, error: `You only own ${owned} shares.` };
-  }
+    if (!holding || holding.shares < sharesToSell) {
+      const owned = holding ? holding.shares.toFixed(4) : '0';
+      return { success: false, error: `You only own ${owned} shares.` };
+    }
 
-  const pricePerShare = Number(stock.share_price) || 0;
-  const proceeds = roundCurrency(sharesToSell * pricePerShare);
+    const marketPrice = Number(stock.share_price) || 0; // the listed price right now
+    const lockActive = Number(holding.sell_lock_until) > Date.now() && Number(holding.sell_lock_price) > 0; // did this holder buy in the last 24h?
+    const pricePerShare = lockActive ? Math.min(marketPrice, Number(holding.sell_lock_price)) : marketPrice; // inside the lock you can't sell above what you paid
+    const proceeds = Math.floor(sharesToSell * pricePerShare); // round DOWN to whole SGC (the company never pays out a fraction)
+    if (proceeds < 1) { // a tiny sale would pay 0 SGC
+      return { success: false, error: 'That sale would be worth less than 1 SGC. Try selling more shares.' };
+    }
 
-  const treasuryBalance = getCorporateTreasuryBalance(stock);
-  if (treasuryBalance < proceeds) {
-    return {
-      success: false,
-      error: `${stock.business_name} treasury is too illiquid right now (${treasuryBalance.toFixed(0)} SGC).`,
-    };
-  }
+    const treasuryBalance = getCorporateTreasuryBalance(stock); // checked inside the transaction so two sells can't both pass
+    if (treasuryBalance < proceeds) {
+      return {
+        success: false,
+        error: `${stock.business_name} treasury is too illiquid right now (${treasuryBalance.toFixed(0)} SGC).`,
+      };
+    }
 
-  const result = db.transaction(() => {
     if (isSyntheticStock(stock)) {
       db.prepare(`
         UPDATE bb_stocks
@@ -982,10 +1025,12 @@ function sellShares(userId, username, stockId, sharesToSell) {
       `).run(proceeds, stockId);
     } else {
       const bbUserId = getBigBusinessUserId(stock.guild_id);
-      adjustBalance(bbUserId, -proceeds, `Share sale by ${username}`);
+      const debit = adjustBalance(bbUserId, -proceeds, `Share sale by ${username}`); // take the payout from the company treasury
+      if (!debit.success) throw new Error(debit.error); // treasury debit failed: throw so the seller is NOT paid from nothing
     }
 
-    adjustBalance(userId, proceeds, `Sold ${sharesToSell.toFixed(4)} shares of ${stock.ticker}`);
+    const credit = adjustBalance(userId, proceeds, `Sold ${sharesToSell.toFixed(4)} shares of ${stock.ticker}`); // pay the seller
+    if (!credit.success) throw new Error(credit.error); // credit failed: throw so the treasury debit is undone too
 
     const costBasisRemoved = holding.avg_cost_basis * sharesToSell;
     const newShares = holding.shares - sharesToSell;
@@ -1024,10 +1069,17 @@ function sellShares(userId, username, stockId, sharesToSell) {
     return {
       success: true,
       proceeds,
+      pricePerShare, // the per-share price actually paid
+      priceLocked: lockActive && pricePerShare < marketPrice, // true when the 24h sell lock lowered the price
+      sellLockUntil: lockActive ? Number(holding.sell_lock_until) : 0, // when the lock ends (0 = no lock)
       remainingShares: newShares < 0.0001 ? 0 : newShares,
       newPrice: repriced ?? pricePerShare,
     };
   })();
+  } catch (error) { // the transaction threw and rolled back: nothing moved
+    logger.error(`Private Stock: sell of ${sharesToSell} shares of stock ${stockId} by ${userId} rolled back.`, error.message); // log the real reason for admins
+    return { success: false, error: FRIENDLY_TRADE_ERROR }; // friendly message for the player
+  }
 
   return result;
 }
@@ -1093,7 +1145,7 @@ function distributeDividend(stockId, overridePool = null) {
   }
 
   const dividendPool = overridePool != null
-    ? Math.min(overridePool, treasuryBalance)
+    ? Math.floor(Math.min(Number(overridePool) || 0, treasuryBalance)) // whole SGC, never more than the treasury holds
     : Math.floor(treasuryBalance * stock.dividend_rate);
 
   if (dividendPool <= 0) {
@@ -1112,17 +1164,19 @@ function distributeDividend(stockId, overridePool = null) {
 
   const dividendPerShare = dividendPool / totalShares;
 
-  const result = db.transaction(() => {
+  let result; // filled in by the transaction below
+  try { // any throw inside the transaction rolls back the whole dividend run for this stock
+  result = db.transaction(() => {
     const details = [];
     let totalDistributed = 0;
 
     for (const holder of shareholders) {
-      const payout = Math.floor(holder.shares * dividendPerShare);
+      const payout = Math.floor(holder.shares * dividendPerShare); // already whole SGC (rounded down)
       if (payout <= 0) continue;
 
       ensureAccount(holder.user_id, holder.username);
-      adjustBalance(holder.user_id, payout, `Dividend from ${stock.ticker}: ${payout} SGC`);
 
+      // Take the coins from the company FIRST, then pay the holder, and stop everything if either step fails
       if (isSyntheticStock(stock)) {
         db.prepare(`
           UPDATE bb_stocks
@@ -1130,8 +1184,12 @@ function distributeDividend(stockId, overridePool = null) {
           WHERE id = ?
         `).run(payout, stockId);
       } else {
-        adjustBalance(getBigBusinessUserId(stock.guild_id), -payout, `Dividend payout to ${holder.username}`);
+        const debit = adjustBalance(getBigBusinessUserId(stock.guild_id), -payout, `Dividend payout to ${holder.username}`); // debit the treasury
+        if (!debit.success) throw new Error(debit.error); // treasury couldn't pay: roll back instead of minting the dividend
       }
+
+      const credit = adjustBalance(holder.user_id, payout, `Dividend from ${stock.ticker}: ${payout} SGC`); // pay the shareholder
+      if (!credit.success) throw new Error(credit.error); // credit failed: roll back the treasury debit too
 
       db.prepare(`
         UPDATE bb_shareholders
@@ -1184,6 +1242,10 @@ function distributeDividend(stockId, overridePool = null) {
       details,
     };
   })();
+  } catch (error) { // rolled back: no dividends were paid for this stock
+    logger.error(`Private Stock: dividend for ${stock.ticker} rolled back.`, error.message); // log the real reason for admins
+    return { success: false, error: 'The dividend could not be paid, so no coins were moved. Please try again later.' }; // friendly message
+  }
 
   return result;
 }
@@ -1230,7 +1292,7 @@ function getStockSummary(stockId) {
   const totalShares = shareholders.reduce((sum, holder) => sum + holder.shares, 0);
   const treasuryBalance = getCorporateTreasuryBalance(stock);
   const investedCapital = shareholders.reduce((sum, holder) => sum + holder.total_invested, 0);
-  const marketCap = treasuryBalance + investedCapital;
+  const marketCap = treasuryBalance; // audit #13: treasury already holds the invested coins, so don't add them twice
   const snapshot = getRealMarketSnapshot();
   const metrics = buildPerformanceMetrics(stock, treasuryBalance, investedCapital, snapshot);
 
@@ -1262,9 +1324,14 @@ function creditPromotionalValueForGuild(guildId, amount, note = 'Promotional cha
     return { success: false, error: `No stock found for guild ${guildId}.` };
   }
 
-  const credited = roundCurrency(normalizedAmount);
+  const credited = Math.floor(normalizedAmount); // whole SGC only (promo values like 2.5 per link round down)
+  if (credited < 1) { // less than 1 SGC after rounding down
+    return { success: false, error: 'Promotional value rounds down to 0 SGC.' };
+  }
 
-  const result = db.transaction(() => {
+  let result; // filled in by the transaction below
+  try { // a throw (e.g. missing Big Business account) rolls the credit back
+  result = db.transaction(() => {
     if (isSyntheticStock(stock)) {
       db.prepare(`
         UPDATE bb_stocks
@@ -1292,6 +1359,9 @@ function creditPromotionalValueForGuild(guildId, amount, note = 'Promotional cha
       newPrice,
     };
   })();
+  } catch (error) { // rolled back, nothing credited
+    return { success: false, error: `Promotional credit failed: ${error.message}` }; // caller (commands.js) just logs this
+  }
 
   return result;
 }
@@ -1326,7 +1396,7 @@ function backfillDollStreetFees({ dryRun = false } = {}) {
   for (const row of rows) {
     totalFee += roundCurrency(Number(row.total_amount) * 0.05);
   }
-  totalFee = roundCurrency(totalFee);
+  totalFee = Math.floor(totalFee); // whole SGC only (balances are INTEGER)
 
   if (!dryRun && totalFee > 0) {
     db.prepare(`

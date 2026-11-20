@@ -28,6 +28,8 @@ const {
   incrementSearchCount,
 } = require('./braveSearch');
 const { requestLlmCompletion } = require('./llmClient');
+const { evaluateOutgoingMessage } = require('./moderation'); // same outgoing filter chatbot replies use
+const MAX_QUOTE_CHARS = 1500; // longest quote /lumi-quoteadd accepts (keeps "Quote #n" + text under Discord's 2000 limit)
 
 const DISCORD_MAX_CHARS = 2000;
 const PROMOTIONAL_LINK_RE = /https?:\/\/[^\s<>()]+/giu;
@@ -113,6 +115,7 @@ function buildGlobalCommands() {
       .addStringOption((option) => option
         .setName('text')
         .setDescription('The quote text to add')
+        .setMaxLength(MAX_QUOTE_CHARS) // Discord itself refuses longer text in the slash box
         .setRequired(true)),
     new SlashCommandBuilder()
       .setName('lumi-jh')
@@ -202,7 +205,10 @@ async function handleQuoteCommand(interaction) {
     await interaction.reply({ content: 'There are no quotes in the database yet. Use `/quoteadd` to add one!', ephemeral: true });
     return;
   }
-  await interaction.reply(`📖 Quote #${quote.number}/${quote.total}:\n> ${quote.text}`);
+  await interaction.reply({
+    content: `📖 Quote #${quote.number}/${quote.total}:\n> ${quote.text}`.slice(0, 2000), // older quotes may be long; never exceed Discord's limit
+    allowedMentions: { parse: [] }, // quotes are user-written text: never ping anyone from them
+  });
 }
 
 async function handleQuoteAddCommand(interaction) {
@@ -210,6 +216,10 @@ async function handleQuoteAddCommand(interaction) {
   if (!text) {
     await interaction.reply({ content: 'Please provide the quote text. Usage: `/quoteadd <your quote>`', ephemeral: true });
     return;
+  }
+  if (text.length > MAX_QUOTE_CHARS) { // backup check in case an old command registration lacks the max length
+    await interaction.reply({ content: `That quote is too long (${text.length} chars). Max is ${MAX_QUOTE_CHARS}.`, ephemeral: true }); // tell only the author
+    return; // don't store it
   }
   const result = addQuote(text);
   await interaction.reply(`✅ Quote #${result.number} added! There are now ${result.total} quote(s) in the database.`);
@@ -252,7 +262,8 @@ async function handleSearchCommand(interaction) {
         systemOverride,
       });
 
-      const rlChunks = splitMessage(response || 'Sorry, search is unavailable right now.');
+      const rlModerated = evaluateOutgoingMessage(response, { preserveWhitespace: true, maxChars: 4000 }); // filter the LLM text like chatbot replies
+      const rlChunks = splitMessage((rlModerated.allowed && rlModerated.text) || 'Sorry, search is unavailable right now.'); // blocked/empty -> safe fallback
       await interaction.editReply(rlChunks[0]);
       for (let i = 1; i < rlChunks.length; i += 1) {
         // eslint-disable-next-line no-await-in-loop
@@ -293,7 +304,8 @@ async function handleSearchCommand(interaction) {
       searchResults,
     });
 
-    const searchChunks = splitMessage(response || "I found some results but couldn't put together a good answer.");
+    const searchModerated = evaluateOutgoingMessage(response, { preserveWhitespace: true, maxChars: 4000 }); // web text + LLM output go through the same filter as chat replies
+    const searchChunks = splitMessage((searchModerated.allowed && searchModerated.text) || "I found some results but couldn't put together a good answer."); // blocked/empty -> fallback
     await interaction.editReply(searchChunks[0]);
     for (let i = 1; i < searchChunks.length; i += 1) {
       // eslint-disable-next-line no-await-in-loop

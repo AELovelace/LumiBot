@@ -5,6 +5,8 @@
  * No Discord, no DB, no timers.
  */
 
+const { shuffleInPlace } = require('../secureRandom'); // crypto-backed deck shuffle (audit #36)
+
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const RANK_VALUE = {
@@ -36,10 +38,7 @@ function createDeck() {
   for (const suit of SUITS) {
     for (const rank of RANKS) cards.push({ rank, suit });
   }
-  for (let i = cards.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [cards[i], cards[j]] = [cards[j], cards[i]];
-  }
+  shuffleInPlace(cards); // crypto Fisher-Yates shuffle of the 52-card deck (same uniform odds as before)
   return cards;
 }
 

@@ -5,6 +5,8 @@
  * No Discord, no DB.
  */
 
+const { randomFloat } = require('../secureRandom'); // crypto-backed [0,1) float for reel rolls (audit #36)
+
 const SYMBOLS = ['🍋', '🍒', '⭐', '💎', '7️⃣', '🔔'];
 const SYMBOL_VALUES = Object.freeze({
   '🍋': 1,
@@ -78,7 +80,7 @@ function randomGrid() {
 function pickWeightedSymbol(columnIndex) {
   const reel = REEL_WEIGHTS[columnIndex] || REEL_WEIGHTS[REEL_WEIGHTS.length - 1];
   const totalWeight = reel.reduce((sum, [, weight]) => sum + weight, 0);
-  let roll = Math.random() * totalWeight;
+  let roll = randomFloat() * totalWeight; // crypto roll in [0, totalWeight), walked down the weights below exactly as before
 
   for (const [symbol, weight] of reel) {
     roll -= weight;

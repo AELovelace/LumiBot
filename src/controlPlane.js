@@ -16,6 +16,12 @@ const { getBigBusinessBalance } = require('./sadgirlEconomyStore');
 const { matchPayout } = require('./bigBusiness');
 const { getGuildConfig, getBigBusinessUserId } = require('./guildConfig');
 
+function getHomeGuildIds() { // works out which guilds count as Lumi's "home" for admin powers
+  const ids = new Set(parseSlashGuildIds(config.slashGuildId)); // SLASH_GUILD_ID list = guilds where admin commands are registered
+  if (config.allowedGuildId) ids.add(config.allowedGuildId); // ALLOWED_GUILD_ID (guild lock) is also home when it is set
+  return ids; // a Set of guild id strings (may be empty)
+}
+
 function isAdminUser(interaction) {
   if (!interaction.inGuild()) {
     return false;
@@ -25,7 +31,9 @@ function isAdminUser(interaction) {
     return true;
   }
 
-  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) || false;
+  const homeGuildIds = getHomeGuildIds(); // the guilds where Manage Server is allowed to count
+  if (!homeGuildIds.has(interaction.guildId)) return false; // Manage Server in some OTHER server must never grant Lumi admin
+  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) || false; // in a home guild, Manage Server is enough
 }
 
 function buildAdminCommands() {
@@ -186,24 +194,24 @@ async function registerControlPlane(client) {
     // and bank work in every server the bot is in.
     const globalCommands = buildRegisteredGlobalCommands();
     const adminCommands = buildAdminCommands();
-    const allGlobalCommands = [...globalCommands, ...adminCommands];
+    const homeGuildIds = [...getHomeGuildIds()]; // SLASH_GUILD_ID + ALLOWED_GUILD_ID as an array
 
-    const guildIds = parseSlashGuildIds(config.slashGuildId);
-    for (const guildId of guildIds) {
-      try {
-        // Admin commands stay guild-scoped for fast updates
-        const guild = await client.guilds.fetch(guildId);
-        await guild.commands.set([...adminCommands, ...globalCommands]);
-        logger.info(`Registered ${adminCommands.length} admin commands for guild ${guildId}.`);
-      } catch (error) {
-        logger.warn(`Failed to register guild-scoped admin commands for guild ${guildId}.`, error.message);
+    if (homeGuildIds.length > 0) { // we know the home guild(s), so admin commands live ONLY there
+      for (const guildId of homeGuildIds) { // visit each home guild one at a time
+        try {
+          const guild = await client.guilds.fetch(guildId); // look up the guild object
+          await guild.commands.set(adminCommands); // admin-only set (member commands come from the global list, so no duplicates)
+          logger.info(`Registered ${adminCommands.length} admin commands for guild ${guildId}.`); // success note
+        } catch (error) {
+          logger.warn(`Failed to register guild-scoped admin commands for guild ${guildId}.`, error.message); // keep going for the other guilds
+        }
       }
+      await client.application.commands.set(globalCommands); // global list = member/economy commands only (removes old global admin copies)
+      logger.info(`Registered ${globalCommands.length} global slash commands (admin commands are guild-scoped).`); // success note
+    } else { // no home guild configured, so the only way to expose admin commands is globally
+      await client.application.commands.set([...globalCommands, ...adminCommands]); // old behaviour; isAdminUser then only trusts ADMIN_USER_IDS
+      logger.warn('No SLASH_GUILD_ID/ALLOWED_GUILD_ID set: admin commands registered globally and usable only by ADMIN_USER_IDS.'); // nudge the owner to configure a home guild
     }
-
-    // Register all commands globally so admin/debug commands are available
-    // even outside SLASH_GUILD_ID.
-    await client.application.commands.set(allGlobalCommands);
-    logger.info(`Registered ${allGlobalCommands.length} global slash commands (including admin).`);
   } catch (error) {
     logger.error('Failed to register slash commands.', error.message);
   }

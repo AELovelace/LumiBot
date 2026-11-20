@@ -5,6 +5,8 @@
  * No Discord, no DB.
  */
 
+const { randomInt } = require('../secureRandom'); // crypto-backed integer rolls for horse steps (audit #36)
+
 const HORSES = ['A', 'B', 'C', 'D'];
 const HORSE_EMOJI = '🐎';
 
@@ -55,7 +57,7 @@ function tickPositions(positions, trackWidth) {
   let finished = false;
   let winner = null;
   for (let i = 0; i < HORSES.length; i++) {
-    positions[i] += Math.floor(Math.random() * 5);
+    positions[i] += randomInt(5); // crypto roll: each horse moves 0-4 spaces, all equally likely
     if (positions[i] >= trackWidth) {
       positions[i] = trackWidth;
       if (!winner) winner = HORSES[i];

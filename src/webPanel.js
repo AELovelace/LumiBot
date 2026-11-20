@@ -89,6 +89,7 @@ const {
   requireUserAuth,
   buildUserBadgeHtml,
   validateSameOrigin,
+  getTrustedHosts,   // reads the admin panel's own trusted-origins list
 } = require('./webPanelAuth');
 const {
   createOAuthClient,
@@ -2607,6 +2608,7 @@ async function handleRequest(req, res) {
   // Security headers (defense-in-depth — applied to every response).
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");   // modern browsers: no site (not even this one) may frame the admin panel
   // same-origin allows the browser to send a Referer header on same-origin
   // POSTs, which we use as a CSRF fallback when the Origin header is absent
   // or set to the opaque value "null".
@@ -2616,7 +2618,7 @@ async function handleRequest(req, res) {
   try {
     // CSRF defense for state-changing methods. Applies to ALL routes including
     // /auth/logout. Read-only methods (GET/HEAD) are passed through.
-    const originCheck = validateSameOrigin(req);
+    const originCheck = validateSameOrigin(req, getTrustedHosts('WEB_PANEL_TRUSTED_ORIGINS'));   // admin panel trusts only its own list
     if (!originCheck.ok) {
       logger.warn(`[csrf] rejected ${method} ${pathname}: ${originCheck.reason}`);
       res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });

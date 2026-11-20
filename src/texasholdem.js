@@ -20,6 +20,7 @@
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder } = require('discord.js');
 const { logger } = require('./logger');
+const { shuffleInPlace } = require('./workers/engines/secureRandom'); // crypto-backed randomness for money outcomes (audit #36)
 const {
   ensureAccount,
   getBalance,
@@ -97,10 +98,7 @@ function createDeck() {
     }
   }
 
-  for (let i = cards.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [cards[i], cards[j]] = [cards[j], cards[i]];
-  }
+  shuffleInPlace(cards); // crypto Fisher-Yates shuffle of the deck (same uniform odds as before)
 
   return cards;
 }

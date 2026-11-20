@@ -217,6 +217,8 @@ const config = Object.freeze({
   llmRetryBaseDelayMs: parsePositiveInt(process.env.LLM_RETRY_BASE_DELAY_MS, 1_000),
   llmDisableThinking: parseBoolean(process.env.LLM_DISABLE_THINKING, true),
   llmMaxPredictTokens: parsePositiveInt(process.env.LLM_MAX_PREDICT_TOKENS, 512),
+  starboardLlmEndpoint: parseHttpBaseUrl(process.env.STARBOARD_LLM_ENDPOINT?.trim() || 'http://100.83.3.32:11434'), // Ollama server for starboard commentary (old hardcoded value is the default)
+  starboardLlmModel: process.env.STARBOARD_LLM_MODEL?.trim() || 'server-2', // model name for starboard commentary (old hardcoded value is the default)
   chatbotMemoryFile: chatbotMemoryLegacyFile,
   chatbotMemoryLegacyFile,
   chatbotMemoryDbFile: process.env.CHATBOT_MEMORY_DB_FILE?.trim() || 'data/chatbot-memory.sqlite3',

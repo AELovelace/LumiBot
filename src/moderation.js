@@ -1,8 +1,12 @@
 const { config } = require('./config');
 
 function countMentions(text) {
-  const matches = text.match(/<@!?\d+>|@everyone|@here/gu);
+  const matches = text.match(/<@[!&]?\d+>|@everyone|@here/gu); // user pings <@id>/<@!id>, role pings <@&id>, and mass pings
   return matches ? matches.length : 0;
+}
+
+function neutralizeMassMentions(text) { // makes @everyone/@here harmless text instead of a server-wide ping
+  return String(text || '').replace(/@(everyone|here)\b/giu, '@​$1'); // a zero-width space after @ stops Discord treating it as a mention
 }
 
 function containsInviteLink(text) {
@@ -53,18 +57,24 @@ function evaluateIncomingMessage(text) {
   return { allowed: true, reason: 'ok' };
 }
 
-function evaluateOutgoingMessage(text) {
+// options.preserveWhitespace: keep newlines/formatting (welcome cards, search results, starboard) instead of flattening to one line
+// options.maxChars: length cap for this caller (defaults to MODERATION_MAX_OUTPUT_CHARS, which is sized for chat replies)
+function evaluateOutgoingMessage(text, options = {}) {
+  const safeText = neutralizeMassMentions(text); // @everyone/@here are defused ALWAYS, even when moderation is switched off
   if (!config.moderationEnabled) {
-    return { allowed: true, reason: 'disabled', text: String(text || '').trim() };
+    return { allowed: true, reason: 'disabled', text: safeText.trim() };
   }
 
-  let normalized = String(text || '').replace(/\s+/gu, ' ').trim();
+  let normalized = options.preserveWhitespace // pick how to tidy the text
+    ? safeText.replace(/[ \t]+\n/gu, '\n').trim() // keep line breaks, just trim trailing spaces on each line
+    : safeText.replace(/\s+/gu, ' ').trim(); // chat replies: squash everything onto one line (old behaviour)
   if (!normalized) {
     return { allowed: false, reason: 'empty', text: '' };
   }
 
-  if (normalized.length > config.moderationMaxOutputChars) {
-    normalized = `${normalized.slice(0, Math.max(1, config.moderationMaxOutputChars - 3)).trim()}...`;
+  const maxChars = Number.isFinite(options.maxChars) && options.maxChars > 0 ? options.maxChars : config.moderationMaxOutputChars; // per-caller cap or the global one
+  if (normalized.length > maxChars) {
+    normalized = `${normalized.slice(0, Math.max(1, maxChars - 3)).trim()}...`; // cut and add an ellipsis
   }
 
   if (countMentions(normalized) > config.moderationMaxMentions) {

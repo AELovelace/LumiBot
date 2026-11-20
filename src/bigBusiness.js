@@ -130,7 +130,7 @@ async function generateAnnouncement(username, matchedCoins, reason, bigBusinessB
  * @param {string} [guildId] - The guild this payout is for.
  */
 async function matchPayout(username, coins, source, guildId) {
-  if (coins <= 0) return;
+  if (!Number.isSafeInteger(coins) || coins <= 0) return; // only whole, positive SGC is ever matched
 
   if (!guildId) {
     logger.warn(`Big Business: skipped match payout for ${username} (${source}) because guildId is missing.`);
@@ -156,7 +156,8 @@ async function matchPayout(username, coins, source, guildId) {
     : `Starboard match for ${username}`;
 
   try {
-    depositBigBusiness(coins, note, bigBusinessUserId);
+    ensureGuildBigBusiness(bigBusinessUserId, businessName); // audit #11: create the account if this guild was enabled after boot
+    depositBigBusiness(coins, note, bigBusinessUserId); // now throws instead of silently losing coins if the account is missing
   } catch (error) {
     logger.error(`${businessName} deposit failed.`, error.message);
     return;

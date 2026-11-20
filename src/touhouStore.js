@@ -873,6 +873,20 @@ function getListingPrice(guildId, touhouName) {
 }
 
 /**
+ * Get a valid listing's price AND seller, so a buyer can be charged (and the
+ * seller paid) BEFORE the Touhou moves. Returns { price, sellerId } or null.
+ */
+function getListingInfo(guildId, touhouName) {
+  const listing = db.prepare(`
+    SELECT l.price, l.seller_id
+    FROM touhou_listings l
+    JOIN touhous t ON t.guild_id = l.guild_id AND t.name = l.touhou_name
+    WHERE l.guild_id = ? AND l.touhou_name = ? AND t.owner_id = l.seller_id
+  `).get(guildId, touhouName); // same validity rule as getListingPrice / buyListing
+  return listing ? { price: listing.price, sellerId: listing.seller_id } : null; // null when not listed
+}
+
+/**
  * Buy a listed Touhou.
  */
 function buyListing(guildId, buyerId, touhouName) {
@@ -1287,6 +1301,7 @@ module.exports = {
   getListingsPage,
   getListingsCount,
   getListingPrice,
+  getListingInfo, // price + seller of a valid listing (used to charge before moving the Touhou)
   buyListing,
   getTradeHistory,
   getUserTradeHistory,

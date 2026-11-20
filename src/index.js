@@ -60,19 +60,21 @@ const client = new Client({
     Partials.Reaction,
     Partials.User,
   ],
+  allowedMentions: { parse: ['users'], repliedUser: true }, // default for every send: only real user pings work; @everyone/@here and role pings never fire
 });
 
 setThoughtRelayClient(client);
 
 let isShuttingDown = false;
 
-async function shutdown(signal) {
+async function shutdown(signal, exitCode = 0) { // exitCode lets a crash shutdown exit non-zero
   if (isShuttingDown) {
     return;
   }
 
   isShuttingDown = true;
   logger.info(`Received ${signal}, shutting down.`);
+  setTimeout(() => process.exit(exitCode || 1), 30_000).unref(); // safety net: if a step below hangs, still exit after 30s
 
   try {
     await flushChatbotState();
@@ -115,12 +117,13 @@ async function shutdown(signal) {
   }
 
   try {
-      stopStockEvents();
-    } catch (error) {
-      logger.warn('Failed to stop stock events during shutdown.', error.message);
-    }
+    stopStockEvents(); // stop random stock events (indentation fixed; this block was mis-nested before)
+  } catch (error) {
+    logger.warn('Failed to stop stock events during shutdown.', error.message);
+  }
 
-    try {
+  try {
+    stopPrivateStockScheduler(); // restored: stop the private-stock timers so they can't fire mid-shutdown
   } catch (error) {
     logger.warn('Failed to stop private stock scheduler during shutdown.', error.message);
   }
@@ -161,7 +164,7 @@ async function shutdown(signal) {
   }
 
   client.destroy();
-  process.exit(0);
+  process.exit(exitCode); // 0 for a normal stop, 1 after a crash
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
@@ -517,6 +520,10 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught exception.', error);
+  if (isShuttingDown) { // crashed again while already shutting down: don't re-enter shutdown
+    process.exit(1); // bail out immediately with a failure code
+  }
+  void shutdown('uncaughtException', 1); // flush memory + close DBs, then exit 1 (app state is no longer trustworthy)
 });
 
 process.once('SIGINT', () => {

@@ -44,6 +44,7 @@ const {
   getListingsCount,
   buyListing,
   getListingPrice,
+  getListingInfo, // price + seller, so we can charge before the Touhou moves
   delistTouhou,
   sellbackToMarket,
   sendTouhou,
@@ -61,6 +62,8 @@ const {
   getBalance,
   ensureAccount,
   adjustBalance,
+  adjustBalancesAtomic, // several balance changes as one all-or-nothing transaction
+  payThenRun, // charge first, move the item, refund if the item move fails
 } = require('./sadgirlEconomyStore');
 
 const { startBattle, cancelFaintReminder } = require('./touhouBattle');
@@ -117,14 +120,21 @@ function formatRemaining(ms) {
 }
 
 function localPayout(userId, amount, note) {
-  if (amount <= 0) return;
+  const coins = Math.floor(Number(amount) || 0); // balances are whole SGC, so round any fractional reward down
+  if (coins <= 0) return { success: false, error: 'Nothing to pay.' }; // nothing to pay
   const bal = getBalance(TOUHOU_MGMT_USER_ID);
-  adjustBalance(userId, amount, note);
-  if (bal >= TOUHOU_TRADER_LIQUIDITY_FLOOR + amount) {
-    adjustBalance(TOUHOU_MGMT_USER_ID, -amount, note);
+  let result; // outcome of the payout
+  if (bal >= TOUHOU_TRADER_LIQUIDITY_FLOOR + coins) {
+    result = adjustBalancesAtomic([ // credit the player and debit the trader together (never one without the other)
+      { userId, amount: coins, note }, // player gets paid
+      { userId: TOUHOU_MGMT_USER_ID, amount: -coins, note }, // Touhou Management pays
+    ]);
   } else {
-    logger.info(`Touhou Trader below liquidity floor (balance=${bal}, payout=${amount}); minting payout.`);
+    logger.info(`Touhou Trader below liquidity floor (balance=${bal}, payout=${coins}); minting payout.`);
+    result = adjustBalance(userId, coins, note); // intentional mint (documented design), credit only
   }
+  if (!result.success) logger.error(`Touhou Trader payout of ${coins} SGC to ${userId} failed: ${result.error}`); // surface failures instead of ignoring them
+  return result; // callers may check it
 }
 
 function trunc(str, max) {
@@ -987,15 +997,17 @@ async function handleInlineAdopt(userId, username, guildId, menuMsg, token) {
     return;
   }
 
-  const result = adoptTouhou(guildId, userId);
+  // Audit #12: charge first in one transaction, then adopt; refunded automatically if adoption fails
+  const result = payThenRun([
+    { userId, amount: -BASE_ADOPT_PRICE, note: 'Adopted a Touhou' }, // player pays
+    { userId: TOUHOU_MGMT_USER_ID, amount: BASE_ADOPT_PRICE, note: 'Touhou adoption fee' }, // Touhou Management gets the fee
+  ], () => adoptTouhou(guildId, userId)); // the Touhou DB change
   if (!result.success) {
-    await menuMsg.edit(renderFlash(`❌ ${result.error}`, 0xed4245, token));
+    await menuMsg.edit(renderFlash(`❌ ${result.error}`, 0xed4245, token)); // friendly error (payment refunded)
     return;
   }
 
   const { name } = result.touhou;
-  adjustBalance(userId, -BASE_ADOPT_PRICE, `Adopted Touhou: ${name}`);
-  adjustBalance(TOUHOU_MGMT_USER_ID, BASE_ADOPT_PRICE, `Touhou adoption fee: ${name}`);
   const rarity = getRarity(result.touhou.trade_count || 0, name, result.touhou.base_rarity_score || 0);
   await menuMsg.edit(renderFlash(
     `🎉 You adopted **${name}**! ${rarity.emoji} ${rarity.tier}\n💰 Cost: **${BASE_ADOPT_PRICE} SGC** | Balance: **${balance - BASE_ADOPT_PRICE} SGC**`,
@@ -1022,18 +1034,32 @@ async function handleInlineBuy(menuMsg, token, guildId, userId, username, touhou
     return;
   }
 
-  const result = buyListing(guildId, userId, touhouName);
-  if (!result.success) {
-    await menuMsg.edit(renderFlash(`❌ ${result.error}`, 0xed4245, token, '🔙 Back to Listings'));
+  const listing = getListingInfo(guildId, touhouName); // price + seller BEFORE anything moves
+  if (!listing || listing.sellerId === userId) { // gone, or the player's own listing: never charge for it
+    await menuMsg.edit(renderFlash(`❌ ${listing ? 'You can\'t buy your own listing.' : `**${touhouName}** is no longer listed for sale.`}`, 0xed4245, token, '🔙 Back to Listings'));
     menuState.screen = 'flash_listings';
     return;
   }
 
-  const tax = Math.max(1, Math.floor(result.price * 0.10));
-  const sellerReceives = result.price - tax;
-  adjustBalance(userId, -result.price, `Bought Touhou: ${touhouName}`);
-  adjustBalance(result.sellerId, sellerReceives, `Sold Touhou: ${touhouName} (after 10% tax)`);
-  adjustBalance(TOUHOU_MGMT_USER_ID, tax, `Touhou trade tax: ${touhouName}`);
+  const tax = Math.max(1, Math.floor(listing.price * 0.10)); // whole-SGC 10% tax
+  const sellerReceives = listing.price - tax; // seller's share
+  // Audit #12: buyer debit + seller credit + tax in ONE transaction before the Touhou moves; refunded if the move fails
+  const result = payThenRun([
+    { userId, amount: -listing.price, note: `Bought Touhou: ${touhouName}` }, // buyer pays
+    { userId: listing.sellerId, amount: sellerReceives, note: `Sold Touhou: ${touhouName} (after 10% tax)` }, // seller paid
+    { userId: TOUHOU_MGMT_USER_ID, amount: tax, note: `Touhou trade tax: ${touhouName}` }, // tax
+  ], () => {
+    const now = getListingInfo(guildId, touhouName); // make sure the listing is still the one we charged for
+    if (!now || now.price !== listing.price || now.sellerId !== listing.sellerId) {
+      return { success: false, error: 'That listing just changed. Please try again.' }; // triggers a refund
+    }
+    return buyListing(guildId, userId, touhouName); // move the Touhou in the Touhou DB
+  });
+  if (!result.success) {
+    await menuMsg.edit(renderFlash(`❌ ${result.error}`, 0xed4245, token, '🔙 Back to Listings')); // friendly error, payment refunded
+    menuState.screen = 'flash_listings';
+    return;
+  }
 
   const rarity = getRarity(result.touhou.trade_count, touhouName, result.touhou.base_rarity_score || 0);
   await menuMsg.edit(renderFlash(
@@ -1064,16 +1090,28 @@ async function handleInlinePotionBuy(menuMsg, token, guildId, userId, username, 
     return;
   }
 
-  const addResult = addPotions(guildId, userId, addable);
-  if (!addResult.success || addResult.added <= 0) {
-    await menuMsg.edit(renderFlash('❌ Potion purchase failed: inventory cap reached.', 0xed4245, token, '🏪 Back to Market'));
+  // Audit #12: charge for all `addable` potions first (one transaction), then add them; refund on failure
+  const addResult = payThenRun([
+    { userId, amount: -totalCost, note: `Bought ${addable} Health Potion(s)` }, // player pays
+    { userId: TOUHOU_MGMT_USER_ID, amount: totalCost, note: `Touhou potion sale (${addable})` }, // Touhou Management is paid
+  ], () => {
+    const r = addPotions(guildId, userId, addable); // add potions in the Touhou DB
+    return r.success && r.added > 0 ? r : { ...r, success: false, error: 'Potion purchase failed: inventory cap reached.' }; // 0 added -> refund
+  });
+  if (!addResult.success) {
+    await menuMsg.edit(renderFlash(`❌ ${addResult.error || 'Potion purchase failed.'}`, 0xed4245, token, '🏪 Back to Market')); // payment refunded
     menuState.screen = 'flash_market';
     return;
   }
 
-  const finalCost = addResult.added * POTION_PRICE;
-  adjustBalance(userId, -finalCost, `Bought ${addResult.added} Health Potion(s)`);
-  adjustBalance(TOUHOU_MGMT_USER_ID, finalCost, `Touhou potion sale (${addResult.added})`);
+  const finalCost = addResult.added * POTION_PRICE; // what the player actually pays for
+  if (finalCost < totalCost) { // fewer potions fit than we charged for: give the difference back
+    const partialRefund = adjustBalancesAtomic([
+      { userId: TOUHOU_MGMT_USER_ID, amount: -(totalCost - finalCost), note: 'Potion partial refund' }, // take it back from Touhou Management
+      { userId, amount: totalCost - finalCost, note: 'Potion partial refund' }, // return it to the player
+    ]);
+    if (!partialRefund.success) logger.error(`Potion partial refund to ${userId} failed: ${partialRefund.error}`); // admins fix by hand
+  }
   await menuMsg.edit(renderFlash(
     `🧪 Purchased **${addResult.added}** Health Potion(s) for **${finalCost} SGC**!\nInventory: **${addResult.newCount}/${POTION_CAP}**`,
     0x57f287, token, '🏪 Back to Market',
@@ -1101,9 +1139,19 @@ async function handleInlineHeal(menuMsg, token, guildId, userId, username, touho
     return;
   }
 
-  adjustBalance(userId, -HEAL_COST, `Touhou instant-heal: ${touhouName}`);
-  adjustBalance(TOUHOU_MGMT_USER_ID, HEAL_COST, `Touhou instant-heal fee: ${touhouName}`);
-  healTouhou(guildId, touhouName, userId);
+  // Audit #12: debit + credit in one transaction, then heal; refunded if healing throws
+  const healed = payThenRun([
+    { userId, amount: -HEAL_COST, note: `Touhou instant-heal: ${touhouName}` }, // player pays
+    { userId: TOUHOU_MGMT_USER_ID, amount: HEAL_COST, note: `Touhou instant-heal fee: ${touhouName}` }, // Touhou Management paid
+  ], () => {
+    healTouhou(guildId, touhouName, userId); // heal in the Touhou DB
+    return { success: true }; // healing has no failure result, only throws
+  });
+  if (!healed.success) {
+    await menuMsg.edit(renderFlash(`❌ ${healed.error}`, 0xed4245, token)); // e.g. balance changed since the check
+    menuState.screen = 'flash_main';
+    return;
+  }
   cancelFaintReminder(guildId, userId, touhouName);
   await menuMsg.edit(renderFlash(
     `✨ **${touhouName}** is healed for **${HEAL_COST} SGC** and ready to battle!`,

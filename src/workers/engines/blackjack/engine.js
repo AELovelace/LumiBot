@@ -4,13 +4,15 @@
  * Pure Blackjack engine — extracted from src/blackjack.js.
  *
  * No Discord, no SQLite. All functions are deterministic given their
- * arguments (except where they intentionally call Math.random for shoe
+ * arguments (except where they intentionally use crypto randomness for shoe
  * shuffling and the dealer anti-sweep). State is kept in plain objects
  * so it round-trips across the worker channel safely.
  *
  * The associated worker entry (worker.js) wires these primitives to the
  * runtime helpers (commands, DB broker, events).
  */
+
+const { shuffleInPlace, randomFloat } = require('../secureRandom'); // crypto-backed shuffle + coin-flip helpers (audit #36)
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -36,10 +38,7 @@ function createShoe(numDecks) {
       }
     }
   }
-  for (let i = cards.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [cards[i], cards[j]] = [cards[j], cards[i]];
-  }
+  shuffleInPlace(cards); // crypto Fisher-Yates shuffle of the whole shoe (same uniform odds as before)
   return cards;
 }
 
@@ -180,7 +179,7 @@ function maybeApplyDealerAntiSweep(table, dealerValue, dealerBJ, settings, drawC
     settings.antiSweepMaxChance,
     settings.antiSweepBaseChance + (streak * settings.antiSweepStreakBonus),
   );
-  if (Math.random() >= chance) {
+  if (randomFloat() >= chance) { // crypto roll in [0,1): skip the nerf unless the roll lands under `chance`
     return { dealerValue, dealerBJ, nerf: false };
   }
   table.dealerHand.push(drawCardFn());
