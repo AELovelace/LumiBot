@@ -44,13 +44,13 @@ test("Market Street: the Retro café and the Market, round the corner and back",
   assert.deepEqual(Tw.arrive("market"), { street: "market", inside: "market", cursor: 1 });
 });
 
-test("the Retro café opens Retro, and says it's closed while Retro is off", () => {
+test("the Retro café opens Retro when on, and says it's closed for renovations while Retro is off (always, in LumiBot)", () => {
   const cafe = Tw.place("cafe");
   assert.equal(cafe.retro, true);
   const open = Tw.rows(ctx({ street: "market" }))[0], shut = Tw.rows(ctx({ street: "market", retro: false }))[0];
   assert.equal(typeof open.local, "function");
   assert.equal(shut.local, undefined);
-  assert.match(shut.note, /Retro on/);
+  assert.match(shut.note, /closed for renovations/);                 // LumiBot has no Retro emulator
 });
 
 test("the Market: a row per stall, a stall's own wares, and back", () => {
@@ -97,7 +97,7 @@ test("Lumi's own apps open straight away; the Arcade, Casino and field have game
   assert.equal(Tw.place("home").app, "lumi-pet");
   assert.ok(Tw.place("home").home, "Leaving her house doesn't come back to the town");
   assert.deepEqual(Tw.inside("arcade").games.map(g => g.slug), ["breakout", "snake", "teacup-tower", "prism-drop", "lumi-launch"], "Doll picked the Lumi games: no StickBob Runner");
-  assert.deepEqual(Tw.inside("casino").games.map(g => g.slug), ["blackjack", "roulette", "horse-racing", "slots"]);
+  assert.deepEqual(Tw.inside("casino").games.map(g => g.slug), ["casino:slots", "casino:blackjack", "casino:holdem", "casino:horseracing"], "LumiBot's own casino tables");
   assert.deepEqual(Tw.inside("field").games.map(g => g.slug), ["lumi-soft"]);
   assert.equal(Tw.inside("tavern"), null);
   assert.equal(Tw.inside("nowhere"), null);
@@ -105,10 +105,10 @@ test("Lumi's own apps open straight away; the Arcade, Casino and field have game
 
 test("inside a place: a row per game that opens it and comes back to this place, then the way out", () => {
   const c = ctx({ at: "casino" }), rows = Tw.rows(c);
-  assert.deepEqual(rows.map(r => r.key), ["game-blackjack", "game-roulette", "game-horse-racing", "game-slots", "leave"]);
+  assert.deepEqual(rows.map(r => r.key), ["game-casino:slots", "game-casino:blackjack", "game-casino:holdem", "game-casino:horseracing", "leave"]);
   rows[1].local();
-  assert.deepEqual(c.asked[0].slice(0, 3), ["open", "roulette", "casino"]);
-  assert.match(c.asked[0][3], /Roulette/);
+  assert.deepEqual(c.asked[0].slice(0, 3), ["open", "casino:blackjack", "casino"]);
+  assert.match(c.asked[0][3], /Blackjack/);
   rows[4].local();
   assert.deepEqual(c.asked[1], ["go", { leave: true }]);
 });

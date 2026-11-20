@@ -127,6 +127,7 @@
 
   function openApp(slug, where) { // Go to another of Lumi's apps (or, from Lumi Town, a game). Inside Media's game layer the layer swaps the game in its frame (media.js), so its bar and remote keys follow; on its own the page just goes there.
     where = where || {}; // at: where that page starts (Lumi Town: a place); back: the town place to come back to when it closes (media.js games.back).
+    if (String(slug).indexOf("casino:") === 0) { location.href = (window.LUMI_CASINO || "/games/") + String(slug).slice(7); return; } // LumiBot: a Casino table is LumiBot's own casino game (Lumi Games app)
     if (framed) window.parent.postMessage({ type: "mnemerynne-game-open", slug: slug, at: where.at || null, back: where.back || null }, location.origin);
     else location.href = slug === "retro" ? window.LUMI_PAGES : window.LUMI_PAGES + slug + (where.at ? "?at=" + encodeURIComponent(where.at) : ""); // On its own the browser's Back is the way back (drawTown keeps the town's address current). Retro is Media's own page.
   }
@@ -290,7 +291,7 @@
       if (TI.parse(id)) { enterInside(id); return; }                     // the lobbies, the office, the Arcade, the Casino, the Market, the field
       if (id === "tavern") { townOpen("lumi-dungeons", "tavern", exploring() ? "Lumi's friends are waiting at the Lantern & Paw! 🍺" : "Into the Lantern & Paw! 🍺"); return; }
       if (id === "garden") { townOpen("lumi-garden", "garden", "Through the gate into the Stardust Garden! 🌸"); return; }
-      if (id === "cafe") { if (RETRO_ON) townOpen("retro", "cafe", "Into the Retro café! 🕹☕"); else say("The Retro café is closed: an admin opens it by turning Retro on (Settings → Entertainment → Media → Retro)."); return; }
+      if (id === "cafe") { if (RETRO_ON) townOpen("retro", "cafe", "Into the Retro café! 🕹☕"); else say("The Retro café is closed for renovations. ☕"); return; } // LumiBot: there is no Retro (Media's emulator), so the café stays shut
       return;
     }
     if (t.kind === "lot") {
@@ -629,7 +630,7 @@
     }).concat([backRow("Decide later")]);
     if (list.kind === "leave") return [
       { key: "leave-home", icon: "🏠", name: "Home to my flat", hint: "Back to her room (Lumi Pet)", local: function () { townList = null; townOpen("lumi-pet", null, "Home again! 🏠"); } },
-      { key: "leave-games", icon: "🎮", name: "Leave Lumi City", hint: "Back to Games", local: function () { townList = null; if (framed) G.close(); else location.href = window.LUMI_PAGES; } },
+      { key: "leave-games", icon: "🏠", name: "Leave Lumi City", hint: "Back to her house", local: function () { townList = null; if (framed) G.close(); else location.href = window.LUMI_PAGES + "lumi-pet"; } }, // LumiBot: there is no games hub; leaving the city goes home
       backRow("Stay in town")];
     if (list.kind === "floors") {
       const here = TI.parse(townAt), out = [];

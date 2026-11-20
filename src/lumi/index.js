@@ -19,8 +19,6 @@ const treasury = require('./treasury');
 const events = require('./events');
 const auth = require('./auth');
 const pages = require('./pages');
-const sgc = require('./sgc');
-const save = require('./pet/save');
 const { createRouter, sendError, sendRedirect, sendHtml } = require('./router');
 const { serveStatic } = require('./static');
 const { notFound } = require('./errors');
@@ -51,9 +49,10 @@ function loadModules(folder, use) {
   }
 }
 
-// The hub at /lumipet/.
-function hub(ctx) {
-  sendHtml(ctx.res, 200, pages.renderHub({ user: ctx.user, coins: sgc.balance(ctx.user.id), look: save.look(ctx.user.id) })); // the page
+// /lumipet/ has no games hub (Doll, 2026-11-19): every game is played from inside Lumi Pet (Lumi Town's buildings),
+// so the front door goes straight to her house.
+function home(ctx) {
+  sendRedirect(ctx.res, `${BASE}/lumi-pet${ctx.url.search}`);                      // /lumipet/ -> /lumipet/lumi-pet (her house)
 }
 
 // /lumipet/<slug>: a registered page (login needed), an alias (redirect), or 404.
@@ -73,7 +72,7 @@ function buildRouter() {
   auth.register(r);                                                                 // /login, /auth/...
   loadModules('views', (mod) => mod.register(pages));                               // pages
   loadModules('routes', (mod) => mod.register(r));                                  // APIs
-  r.get('/', hub);                                                                  // the hub (login needed)
+  r.get('/', home, { auth: false });                                                // the front door: straight to her house (that page asks for login)
   r.get('/:slug', pageRoute, { auth: false });                                      // game pages (checks login itself)
   return r;                                                                         // ready
 }

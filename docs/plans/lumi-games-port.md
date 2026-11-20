@@ -81,7 +81,7 @@ tests/lumi/           // erinne tests/js/*.test.mjs with paths fixed, plus new s
 `if (url.pathname === '/lumipet' || url.pathname.startsWith('/lumipet/')) { if (await handleLumiRequest(req, res, url)) return; }`.
 
 **URLs** (all under `https://sadgirlsclub.wtf/lumipet/`):
-- `/lumipet/`: the Lumi hub, with your Lumi, your SGC balance and a card for every game.
+- `/lumipet/`: goes straight to her house (`/lumipet/lumi-pet`). The games hub was dropped (Doll, 2026-11-19): every game is played from inside Lumi Pet through Lumi Town's buildings. Lumi Town's Casino opens LumiBot's own casino tables (`/games/slots`, `blackjack`, `holdem`, `horseracing`).
 - `/lumipet/{app}`: `pet`, `dungeons`, `garden`, `prism-drop`, `lumi-launch`, `lumi-soft`, `arcade`, `teacup-tower`, `yarn-pop`, `lumi-conga`.
 - `/lumipet/api/{slug}/…`: the game API, the same sub-paths erinne uses under `/api/media/games/{slug}/`.
 - `/lumipet/api/coins`: your SGC balance (the coin chip).

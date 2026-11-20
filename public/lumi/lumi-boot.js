@@ -8,6 +8,7 @@
   window.LUMI_API = typeof boot.api === "string" ? boot.api : "/lumipet/api/";        // API base: fetch(LUMI_API + "lumi-pet/state")
   window.LUMI_STATIC = typeof boot.static === "string" ? boot.static : "/lumipet/static/"; // static files base
   window.LUMI_PAGES = typeof boot.pages === "string" ? boot.pages : "/lumipet/";      // page base: LUMI_PAGES + "lumi-town"
+  window.LUMI_CASINO = typeof boot.casino === "string" ? boot.casino : "/games/";   // LumiBot's casino pages: LUMI_CASINO + "slots"
   window.LUMI_TUNING = boot.tuning && typeof boot.tuning === "object" ? boot.tuning : { scale: 0.2, games: {} }; // prices/prizes (lumi-tuning.js)
   window.LUMI_USER = boot.user && typeof boot.user === "object" ? boot.user : null;   // { id, name } of the player
   window.LUMI_FLAGS = boot.flags && typeof boot.flags === "object" ? boot.flags : { tvPlay: false, whoPlays: false, retro: false }; // erinne's TV flags: always off here

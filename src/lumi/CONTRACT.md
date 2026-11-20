@@ -34,7 +34,7 @@ src/lumi/
   users.js        remember / displayName / avatarUrl
   router.js       createRouter (route table, auth, same-origin, JSON body, money lock, rate limit)
   static.js       /lumipet/static/** from public/lumi
-  pages.js        page shell + registerPage + hub
+  pages.js        page shell + registerPage (no hub: /lumipet/ redirects to /lumipet/lumi-pet)
   games.js        default tuning ids (defineDefaults)
   pet/save.js     Lumi Pet's save model (fresh, load, save, peek, look, placed, catalogs ...)
   routes/*.js     API modules: each exports register(router)       <- game agents add files here
@@ -42,7 +42,7 @@ src/lumi/
   data/           erinne lumipet_data/** + lumisoft_data/stages.json (stages.json sits next to the others)
 public/lumi/      erinne web/static/games/{common.js, common.css, gamepad.js, lumi-pet, lumi-launch, lumi-soft,
                   prism-drop, teacup-tower, breakout, snake, arcade} + icons/lumi* + LumiBot's lumi-boot.js,
-                  lumi-tuning.js, theme.css, hub.css, hub.js
+                  lumi-tuning.js, theme.css, hub.css (login page styles)
 tests/lumi/       erinne's JS tests (paths fixed) + sgc/treasury/lumi_stock/lumi_save/lumi_web tests + lumi_env.mjs
 ```
 
@@ -50,7 +50,7 @@ URLs (base `LUMI_WEB_BASE_PATH`, default `/lumipet`):
 
 | URL | What |
 |---|---|
-| `/lumipet/` | hub: hello, SGC balance, your Lumi, a card per page with a `card` |
+| `/lumipet/` | 302 to `/lumipet/lumi-pet`, her house. There is no games hub (Doll, 2026-11-19): every game is reached from inside Lumi Pet through Lumi Town's buildings (Arcade, Lumi-Soft field, Tavern, Garden gate, Market, Casino) |
 | `/lumipet/<slug>` | a registered page (login needed; logged out -> 302 to `/lumipet/login?next=...`) |
 | `/lumipet/api/...` | JSON API (routes/*.js) |
 | `/lumipet/static/...` | files in `public/lumi` |
@@ -391,7 +391,7 @@ function register(pages) {
     kit: 'prism-drop',                                           // public/lumi folder (default: slug)
     css: ['common.css', 'prism-drop/game.css'],                  // in order (theme.css is always first)
     scripts: ['common.js', 'prism-drop/rules.js', 'lumi-pet/closet.js', 'arcade/lumi-sprite.js', 'prism-drop/game.js'], // EXACT load order
-    card: { icon: '🔮', name: 'Prism Drop', description: '...', order: 10 },   // hub card (null = hidden)
+    card: { icon: '🔮', name: 'Prism Drop', description: '...', order: 10 },   // optional metadata (no hub shows it any more)
     aliases: ['prism'],                                          // 302 to the slug
     body: (h, page, { user }) => `<section>...${h.esc(text)}... ${h.price('prism', 'entry', 25)} SGC</section>`,
   });
@@ -409,7 +409,7 @@ are off). Already registered (views/): `lumi-pet`, `lumi-dungeons`, `lumi-garden
 `prism-drop`, `lumi-launch`, `lumi-soft`, `breakout`, `snake`, `teacup-tower` - their owners may edit them.
 
 Front-end edits already done in public/lumi: every `/api/media/games/` -> `window.LUMI_API`, page links
-`/media/games/<slug>` -> `window.LUMI_PAGES + slug` (`/media`, retro -> the hub), `common.js` posts nothing to a TV
+`/media/games/<slug>` -> `window.LUMI_PAGES + slug` (`/media`, retro -> the front door, i.e. her house; the Retro café says it's closed). The Casino's tables are `casino:<page>` slugs that `openApp` sends to LumiBot's own casino pages (`window.LUMI_CASINO`, i.e. `GAME_WEB_BASE_PATH`: slots, blackjack, holdem, horseracing), `common.js` posts nothing to a TV
 frame, uses the `lumi-game:` localStorage prefix, reads errors' `detail`/`error`/`code`, and its coin chip calls
 `/lumipet/api/coins`. Not done (per game): "coins" wording inside game JS, hard-coded prices in JS, TV/couch/
 who's-playing code paths (flags are false, so they stay dormant), and lumi-pet/game.js's push + `/sw.js`

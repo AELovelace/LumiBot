@@ -29,9 +29,9 @@
       arcade: { name: "Arcade", icon: "🕹", hint: "Yarn Pop, Lumi Conga, Teacup Tower, Prism Drop and Lumi Launch" },
       tavern: { name: "Tavern", icon: "🗝", hint: "The Lantern & Paw: dungeon trips, the arena and skills (Lumi Dungeons)" },
       office: { name: "Real-estate office", icon: "🏡", hint: "Buy a plot, sell yours, house styles, yard things and the Keepsake Capsule" },
-      casino: { name: "Casino", icon: "🎰", hint: "Lumi's Lounge: Blackjack, Roulette, Horse Racing and Slots" },
+      casino: { name: "Casino", icon: "🎰", hint: "Lumi's Lounge: Slots, Blackjack, Hold'em and Horse Racing (Momiji Casino)" }, // LumiBot's own casino tables
       market: { name: "Market", icon: "🧺", hint: "The general store, the capsule machines, the seed stall and garden things" },
-      cafe: { name: "Retro café", icon: "☕", hint: "Console games from the Games folder, with a cocoa (Media → Retro)" },
+      cafe: { name: "Retro café", icon: "☕", hint: "Closed for renovations" }, // LumiBot: no Retro emulator
       garden: { name: "Garden gate", icon: "🌸", hint: "The Stardust Garden: flowers, starpowder and the press (Lumi's Garden)" },
       field: { name: "Lumi-Soft field", icon: "🎯", hint: "Pop cardboard creatures through the Star Scope" },
     };

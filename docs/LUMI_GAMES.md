@@ -19,7 +19,13 @@ through the real server with three fake players and checks every SGC move.
 | `prism-drop`, `lumi-launch`, `lumi-soft` | minigames (the server rolls Prism; Launch and Soft are replayed with the page's own `rules.js`) | `src/lumi/minis/` |
 | `teacup-tower`, `breakout` (Yarn Pop), `snake` (Lumi Conga) | arcade, solo runs and showdowns (race rooms with watcher bets) | `src/lumi/arcade/` |
 
-**Not ported:** StickBob Runner and the casino (not Lumi games), erinne's TV, remote and couch modes, web push
+**No hub:** `/lumipet/` goes straight to Lumi's house. Every game is reached from inside Lumi Pet: walk into Lumi Town
+and use its buildings: the **Arcade** (Yarn Pop, Lumi Conga, Teacup Tower, Prism Drop, Lumi Launch), the
+**Lumi-Soft field**, the **Tavern** (Dungeons), the **Garden gate**, the **Market**, the **Real-estate office**, and
+**Lumi Heights** (flats). The **Casino** (Lumi's Lounge) opens LumiBot's own casino tables on the Lumi Games app
+(`/games/slots`, `blackjack`, `holdem`, `horseracing`: Momiji Casino, its own Discord login). The **Retro café** is closed.
+
+**Not ported:** StickBob Runner and erinne's casino (LumiBot's casino is used instead), erinne's TV, remote and couch modes, web push
 reminders (planned as Discord DMs later), and the live AI storyteller (the tales library tells the stories).
 
 ## The admin page: `/lumi` on the web panel

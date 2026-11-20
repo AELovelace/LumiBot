@@ -36,13 +36,13 @@
         { slug: "lumi-launch", icon: "🎇", name: "Lumi Launch", hint: "Fire her from the star cannon and see how far she flies" },
       ] },
     { id: "tavern", street: "high", icon: "🗝", name: "Tavern", hint: "The Lantern & Paw: dungeon trips, the arena and skills (Lumi Dungeons)", app: "lumi-dungeons", going: "Into the Lantern & Paw! 🍺" },
-    { id: "casino", street: "high", icon: "🎰", name: "Casino", hint: "Lumi's Lounge: Blackjack, Roulette, Horse Racing and Slots", room: "LUMI’S LOUNGE",
+    { id: "casino", street: "high", icon: "🎰", name: "Casino", hint: "Lumi's Lounge: Slots, Blackjack, Hold'em and Horse Racing (Momiji Casino)", room: "LUMI’S LOUNGE", // LumiBot: the tables are LumiBot's own casino games
       hello: "Lumi's Lounge. The dealer winks. Pick a table.",
-      games: [
-        { slug: "blackjack", icon: "🂡", name: "Blackjack", hint: "Hit or stand, and beat Dealer Lumi" },
-        { slug: "roulette", icon: "🎡", name: "Roulette", hint: "Pick a number and watch the wheel" },
-        { slug: "horse-racing", icon: "🏇", name: "Horse Racing", hint: "Back a pony and cheer her home" },
-        { slug: "slots", icon: "🎰", name: "Slot Machines", hint: "Three reels, three paylines" },
+      games: [ // "casino:<page>" opens that table in LumiBot's Lumi Games casino (openApp in game.js), paid in SGC through Momiji Casino
+        { slug: "casino:slots", icon: "🎰", name: "Slot Machines", hint: "Spin the reels with up to three friends" }, // /games/slots
+        { slug: "casino:blackjack", icon: "🂡", name: "Blackjack", hint: "Hit or stand, and beat the dealer" }, // /games/blackjack
+        { slug: "casino:holdem", icon: "🃏", name: "Texas Hold'em", hint: "Poker with friends and Lumi at the table" }, // /games/holdem
+        { slug: "casino:horseracing", icon: "🏇", name: "Horse Racing", hint: "Back a pony and cheer her home" }, // /games/horseracing
       ] },
     { id: "home", street: "high", icon: "🏠", name: "Lumi's house", hint: "Back to her room (Lumi Pet)", app: "lumi-pet", home: true, going: "Home again! 🏠" },
     { id: "garden", street: "high", icon: "🌸", name: "Garden", hint: "The Stardust Garden: flowers, starpowder and the press (Lumi's Garden)", app: "lumi-garden", going: "Through the gate into the Stardust Garden! 🌸" },
@@ -115,7 +115,7 @@
       return street(way.id).map(function (p) {
         const hint = p.id === "tavern" && ctx.away ? "Lumi is out exploring: find her in the Lantern & Paw" : p.hint;
         const row = { key: "place-" + p.id, icon: p.icon, name: p.name, hint: hint };
-        if (p.retro && !ctx.retro) row.note = "The Retro café is closed: an admin opens it by turning Retro on (Settings → Entertainment → Media → Retro).";
+        if (p.retro && !ctx.retro) row.note = "The Retro café is closed for renovations. ☕"; // LumiBot: no Retro emulator, so the café stays shut
         else row.local = function () { ctx.go({ enter: p.id }); };
         return row;
       }).concat([

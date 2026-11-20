@@ -171,14 +171,14 @@ test("setup: Central Bank seeds Lumi-Town, players get SGC", () => {
 const PAGES = ["lumi-pet", "lumi-dungeons", "lumi-garden", "lumi-town", "prism-drop", "lumi-launch", "lumi-soft", "breakout", "snake", "teacup-tower"]; // every page
 
 test("every page renders and every script/stylesheet it loads is a real file", async () => {
-  const hub = await request("/lumipet/");                                        // the hub
-  assert.equal(hub.status, 200, hub.text.slice(0, 200));                          // renders
+  const front = await request("/lumipet/");                                      // the front door (no hub any more)
+  assert.equal(front.status, 302);                                                // goes...
+  assert.equal(front.headers.location, "/lumipet/lumi-pet");                      // ...straight to her house
   const urls = new Set();                                                         // every asset URL seen
   const collect = (html) => {                                                     // <script src> + <link href>
     for (const m of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/gu)) urls.add(m[1]); // scripts
     for (const m of html.matchAll(/<link[^>]*\shref="([^"]+)"/gu)) urls.add(m[1]);  // stylesheets, icons, manifests
   };
-  collect(hub.text);                                                              // the hub's own
   for (const slug of PAGES) {
     const page = await request(`/lumipet/${slug}`);                               // the page
     assert.equal(page.status, 200, `${slug}: ${page.status} ${page.text.slice(0, 200)}`); // renders

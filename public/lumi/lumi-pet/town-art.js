@@ -395,6 +395,8 @@
   }
 
   function station(x, slug, on) { // One of the Casino's tables: blackjack, roulette, the horse-racing screen, or a slot machine, each with its glow on the glossy floor.
+    const full = slug; // LumiBot: the table's real id ("casino:slots"), used for the click
+    slug = { "casino:slots": "slots", "casino:blackjack": "blackjack", "casino:holdem": "roulette", "casino:horseracing": "horse-racing" }[slug] || slug; // LumiBot: draw LumiBot's tables with erinne's table art (Hold'em uses the round table)
     let art = "";
     const edge = { blackjack: "#8be9a8", roulette: "#ff8ecb", "horse-racing": "#70ebea", slots: "#ffdc83" }[slug] || "#ffdc83";
     if (slug === "blackjack") art = path("M" + (x - 42) + " 336 A42 30 0 0 0 " + (x + 42) + " 336 Z", "#0f4a34") + tube("M" + (x - 42) + " 336 A42 30 0 0 0 " + (x + 42) + " 336 Z", "#8be9a8", 1.6) + rect(x - 42, 330, 84, 8, "#1c0a1c") +
@@ -412,8 +414,8 @@
     else art = path("M" + (x - 36) + " 390 V214 Q" + x + " 186 " + (x + 36) + " 214 V390 Z", "#3a0a2a") + tube("M" + (x - 36) + " 390 V214 Q" + x + " 186 " + (x + 36) + " 214 V390 Z", "#ffdc83", 1.6) + rect(x - 28, 236, 56, 34, "#fff5fb", 'rx="3"') +
       [["7", -18, "#c8304a"], ["★", 0, "#d8b24a"], ["♥", 18, "#ff2e97"]].map(function (r) { return text(x + r[1], 260, r[0], 15, r[2], 'font-weight="bold"'); }).join("") + line(x - 28, 253, x + 28, 253, "#d8b24a", 1, 'opacity=".6"') +
       line(x + 40, 260, x + 40, 228, "#d8d8e8", 3) + glow(circle(x + 40, 224, 6, HOT)) + rect(x - 20, 300, 40, 10, "#07031a", 'rx="2"') + glow(text(x, 206, "♦ ♦ ♦", 9, "#ffdc83"));
-    const title = { blackjack: "BLACKJACK", roulette: "ROULETTE", "horse-racing": "RACES", slots: "SLOTS" }[slug] || "";
-    return group((on ? marker(x, 452) : "") + reflect(x, 394, 78, edge, 48) + neon(x, slug === "horse-racing" ? 166 : 160, title, 10, on ? "#ffdc83" : edge, 'font-family="monospace" font-weight="bold" letter-spacing="1.5"') + art + hit(x - 44, 150, 88, 306, "game:" + slug), on ? 'class="lp-tw-on"' : "");
+    const title = full === "casino:holdem" ? "HOLD'EM" : ({ blackjack: "BLACKJACK", roulette: "ROULETTE", "horse-racing": "RACES", slots: "SLOTS" }[slug] || ""); // LumiBot: Hold'em gets its own sign
+    return group((on ? marker(x, 452) : "") + reflect(x, 394, 78, edge, 48) + neon(x, slug === "horse-racing" ? 166 : 160, title, 10, on ? "#ffdc83" : edge, 'font-family="monospace" font-weight="bold" letter-spacing="1.5"') + art + hit(x - 44, 150, 88, 306, "game:" + full), on ? 'class="lp-tw-on"' : "");
   }
 
   function casinoInside(opts) { // The Casino, Lumi's Lounge: dark velvet walls ruled with neon diamonds, a ring of light for a chandelier, a glossy floor and the four tables.

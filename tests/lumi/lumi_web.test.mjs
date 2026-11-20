@@ -43,10 +43,13 @@ function request(path, { method = "GET", headers = {}, body } = {}) {
   });
 }
 
-test("the hub redirects to the login page when there is no session", async () => {
-  const r = await request("/lumipet/");
+test("the front door goes to her house, and her house asks for login when there is no session", async () => {
+  const r = await request("/lumipet/");                               // no hub: the front door
   assert.equal(r.status, 302);
-  assert.equal(r.headers.location, "/lumipet/login?next=%2Flumipet%2F");
+  assert.equal(r.headers.location, "/lumipet/lumi-pet");              // straight to Lumi Pet
+  const house = await request("/lumipet/lumi-pet");                   // logged out
+  assert.equal(house.status, 302);
+  assert.equal(house.headers.location, "/lumipet/login?next=%2Flumipet%2Flumi-pet"); // login, then back to her house
   const bare = await request("/lumipet");
   assert.equal(bare.status, 301);
   assert.equal(bare.headers.location, "/lumipet/");
@@ -88,10 +91,9 @@ test("the coin chip needs a session, then shows the SGC balance", async () => {
 });
 
 test("pages render with the boot data and erinne's script order; aliases redirect; unknown pages 404", async () => {
-  const hub = await request("/lumipet/", { headers: { cookie: COOKIE } });
-  assert.equal(hub.status, 200);
-  assert.match(hub.body, /1,234/);                                    // the balance
-  assert.match(hub.body, /href="\/lumipet\/lumi-pet"/);               // a card
+  const front = await request("/lumipet/", { headers: { cookie: COOKIE } });
+  assert.equal(front.status, 302);                                    // logged in: still no hub
+  assert.equal(front.headers.location, "/lumipet/lumi-pet");          // her house
   const page = await request("/lumipet/lumi-pet", { headers: { cookie: COOKIE } });
   assert.equal(page.status, 200);
   assert.match(page.headers["content-security-policy"], /script-src 'self'/);

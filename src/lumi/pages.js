@@ -66,7 +66,7 @@ function helpers() {
  *   css       stylesheet paths under public/lumi, in order (default: ['common.css', `${kit}/game.css`])
  *   scripts   script paths under public/lumi, IN LOAD ORDER (default: ['common.js', `${kit}/rules.js`, `${kit}/game.js`])
  *   body      (h, page, view) => HTML string for inside <main class="gm" id="gm">; h = helpers()
- *   card      { icon, name, description, order } to show on the hub, or null to hide it there
+ *   card      { icon, name, description, order } (kept for reference only: there is no hub, every game is reached in Lumi Town)
  *   icon      favicon path under public/lumi (default 'icons/lumi.svg')
  *   touchIcon apple-touch-icon path under public/lumi (optional)
  *   aliases   other slugs that redirect here (e.g. ['yarn-pop'])
@@ -103,7 +103,7 @@ function aliasOf(slug) {
   return aliases.get(slug) || null;                                              // e.g. 'breakout'
 }
 
-/** Every page (hub cards come from these). */
+/** Every page, in registration order. */
 function listPages() {
   return [...pages.values()];                                                    // registration order
 }
@@ -114,6 +114,7 @@ function bootData(user) {
     api: `${BASE}/api/`,                                                         // window.LUMI_API
     static: `${BASE}/static/`,                                                   // window.LUMI_STATIC
     pages: `${BASE}/`,                                                           // window.LUMI_PAGES (links to other games)
+    casino: `${(process.env.GAME_WEB_BASE_PATH || '/games').replace(/\/+$/u, '') || ''}/`, // window.LUMI_CASINO: LumiBot's casino pages (the Casino's tables)
     tuning: tuning.clientTuning(),                                               // window.LUMI_TUNING
     user: user ? { id: user.id, name: user.name } : null,                        // window.LUMI_USER
     flags: { tvPlay: false, whoPlays: false, retro: false },                     // window.LUMI_FLAGS (erinne's tv_play/who_plays/retro_on)
@@ -159,45 +160,6 @@ ${page.scripts.map((rel) => `<script src="${esc(staticUrl(rel))}"></script>`).jo
 </html>`;                                                                         // erinne's game.html, in HTML
 }
 
-/**
- * The hub at /lumipet/: hello, the player's SGC, their Lumi, and a card per game (pages with a `card`).
- * @param {{ user, coins: number, look: {name, glow, colour} }} info
- */
-function renderHub({ user, coins, look }) {
-  const cards = listPages().filter((p) => p.card)                                // only pages that want a card
-    .sort((a, b) => (a.card.order || 99) - (b.card.order || 99))                 // in their order
-    .map((p) => `
-    <a class="hub-card hub-game" href="${esc(`${BASE}/${p.slug}`)}">
-      <span class="hub-icon" aria-hidden="true">${esc(p.card.icon || '✦')}</span>
-      <b>${esc(p.card.name || p.title)}</b>
-      <small>${esc(p.card.description || '')}</small>
-    </a>`).join('');                                                             // one link each
-  const glow = look && look.colour ? look.colour : '';                           // her own colour, if set
-  return `<!doctype html>
-<html lang="en" data-theme="neon">
-<head>
-${head({ title: 'Lumi-Town', icon: 'icons/lumi.svg', touchIcon: 'icons/lumi-180.png', css: ['hub.css'], user })}
-</head>
-<body>
-<main class="hub">
-  <section class="hub-card hub-hello">
-    <p class="hub-eyebrow">// LUMI-TOWN</p>
-    <h1 class="hub-title">HELLO,<span>${esc(user ? user.name : 'friend')}</span></h1>
-    <dl class="hub-stats">
-      <div><dt>Your SGC</dt><dd id="hub-coins">${esc(Number(coins || 0).toLocaleString('en-US'))}</dd></div>
-      <div><dt>Your Lumi</dt><dd><span class="hub-glow hub-glow-${esc(look ? look.glow : 'rose')}"${glow ? ` data-colour="${esc(glow)}"` : ''}></span> ${esc(look ? look.name : 'Lumi')}</dd></div>
-    </dl>
-    <p class="hub-note">Every coin here is real SadGirlCoin. Shops sell, prizes pay, and Lumi-Town Bank keeps it all going.</p>
-    <form method="post" action="${esc(`${BASE}/auth/logout`)}"><button type="submit" class="hub-link">Sign out</button></form>
-  </section>
-  <section class="hub-games" aria-label="Games">${cards}
-  </section>
-</main>
-<script src="${esc(staticUrl('hub.js'))}"></script>
-</body>
-</html>`;                                                                         // the hub page
-}
-
 module.exports = {
   configure,      // set the base path
   registerPage,   // add a page
@@ -205,7 +167,6 @@ module.exports = {
   aliasOf,        // alias -> slug
   listPages,      // every page
   render,         // HTML for a game page
-  renderHub,      // HTML for the hub
   bootData,       // window.LUMI_* values (tests)
   esc,            // HTML escape
   staticUrl,      // versioned static URL
