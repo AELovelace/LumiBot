@@ -146,3 +146,15 @@ test("every inside: its things stand where a phone shows them, each can be walke
   assert.equal(TI.parse("hall-r-12").town, "right"); assert.equal(TI.parse("hall-r-12").floor, 12);
   assert.equal(TI.parse("tavern"), null);                          // the tavern opens Lumi Dungeons: no inside of its own here
 });
+
+test("a doorstep is their front door from outside: their name (escaped), flat number, a light when someone's in; a house gets a porch", () => {
+  const flat = TI.doorstep({ name: "pal<b>", label: "3B", town: "right", home: true, house: false, night: true });
+  assert.match(flat, /data-inside="doorstep"/);                     // a doorstep, not a room
+  assert.doesNotMatch(flat, /NaN|undefined|<b>/);                   // nothing a person typed goes in raw
+  assert.match(flat, /pal&lt;b&gt;/); assert.match(flat, />3B</);    // their nameplate and flat number
+  assert.match(flat, /#ffdc83" opacity=".95"/);                     // someone's home: the warm light under the door
+  const house = TI.doorstep({ name: "pal", town: "left", home: false, house: true, night: false });
+  assert.doesNotMatch(house, /NaN|undefined/);
+  assert.doesNotMatch(house, />3B</);                               // a house has no flat number
+  assert.match(house, /#3a3352" opacity=".95"/);                    // nobody in: the dark gap under the door
+});

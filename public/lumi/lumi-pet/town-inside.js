@@ -206,6 +206,43 @@
       (night ? rect(-20, -20, 1040, 540, "#0a0620", 'opacity=".12" pointer-events="none"') : ""), 'data-inside="office"');
   }
 
+  function doorstep(opts) { // Someone's front door from the outside (LumiBot, Doll 2026-11-20: the doorstep used to show a bare bedroom, as if she were already in).
+    // opts: {name, label (flat number, "3B"), town ("left"/"right"), home (someone's in), house (a Lumi City house: a porch, not a hallway), night}.
+    const glowC = opts.town === "right" ? "#70ebea" : "#ff8ecb", cx = 340;               // her town's glow; the door stands just right of where she waits (x 236)
+    const lit = opts.home ? "#ffdc83" : "#3a3352";                                         // a warm light under the door when someone's in
+    const who = String(opts.name || "");                                                   // their name (escaped below)
+    let back;                                                                              // what's behind the door: a hallway, or a porch
+    if (opts.house) {                                                                      // a house: sky over a porch wall
+      let stars = "";                                                                      // a few fixed stars (no randomness: the picture never flickers)
+      [[60, 40], [180, 80], [470, 30], [620, 70], [760, 36], [900, 90], [990, 50]].forEach(function (s) { stars += circle(s[0], s[1], 1.6, "#ffe9f5", 'opacity="' + (opts.night ? ".9" : ".3") + '"'); });
+      let siding = "";                                                                     // the porch wall's boards
+      for (let y = 112; y < 392; y += 18) siding += rect(-200, y, 1400, 1.5, "#000000", 'opacity=".18"');
+      back = rect(-200, -20, 1400, 540, opts.night ? "#140a30" : "#5a3a8a") + stars +    // the sky
+        rect(-200, 100, 1400, 292, opts.night ? "#3a2450" : "#7a5a9a") + siding +       // the house's front wall
+        rect(-200, 92, 1400, 10, "#2a1a3e") + rect(-200, 392, 1400, 130, "#2a1d24") +    // the eaves, and the porch boards
+        rect(cx - 96, 392, 192, 14, "#4a3436", 'rx="2"') + rect(cx - 110, 406, 220, 14, "#3a2a2c", 'rx="2"'); // the steps up
+    } else {                                                                               // a flat: Lumi Heights' hallway
+      back = rect(-200, -20, 1400, 540, "#160d2c") + wall(0, glowC, 5) + floorTiles(glowC) +
+        path("M-200 430 H1200 L1200 470 H-200 Z", glowC, 'opacity=".12"');                 // the carpet runner
+    }
+    const lamps = [cx - 104, cx + 104].map(function (x) {                                  // a lamp either side of the door
+      return glow(path("M" + (x - 9) + " 150 h18 l-5 16 h-8 Z", "#ffdc83", 'opacity=".85"')) + reflect(x, 392, 50, "#ffdc83", 24);
+    }).join("");
+    const door = rect(cx - 64, 116, 128, 276, "#24163e", 'rx="4"') +                        // the frame
+      rect(cx - 54, 128, 108, 260, opts.house ? "#5a2a4a" : "#2e1d4a") +                   // the door itself
+      rect(cx - 42, 200, 84, 76, "none", 'stroke="#ffffff" stroke-opacity=".1" stroke-width="2" rx="3"') + // its upper panel
+      rect(cx - 42, 292, 84, 80, "none", 'stroke="#ffffff" stroke-opacity=".1" stroke-width="2" rx="3"') + // and its lower one
+      circle(cx, 182, 4, "#07031a") + circle(cx, 182, 2, "#c9a8ff", 'opacity=".6"') +          // the peephole
+      circle(cx + 38, 300, 5.5, "#ffdc83") + rect(cx + 34, 296, 4, 8, "#d9b45a") +             // the knob
+      glow(rect(cx - 54, 386, 108, 5, lit, 'opacity=".95"'));                               // the light under the door
+    const plate = (opts.label && !opts.house ? rect(cx - 28, 92, 56, 20, "#07031a", 'rx="3"') + text(cx, 107, esc(String(opts.label)), 12, glowC, 'font-family="monospace" font-weight="bold"') : "") + // the flat number
+      (who ? rect(cx - 62, 140, 124, 24, "#07031a", 'rx="4" opacity=".92"') + text(cx, 157, esc(who.length > 16 ? who.slice(0, 15) + "…" : who), 12, "#ffe9f5") : ""); // their nameplate
+    const welcome = path("M" + (cx - 70) + " 440 h140 l12 26 h-164 Z", "#3a1a2e") +       // the welcome mat in front
+      text(cx, 459, "WELCOME", 11, glowC, 'font-family="monospace" font-weight="bold" letter-spacing="3" opacity=".85"');
+    const dusk = opts.night && !opts.house ? rect(-200, -20, 1400, 540, "#0a0620", 'opacity=".12" pointer-events="none"') : ""; // a hallway at night: a touch darker
+    return group(back + lamps + door + plate + welcome + dusk, 'data-inside="doorstep"');
+  }
+
   function art(sp, opts) { // The picture for a room: sp from space(), opts {on: the thing in reach's id, night}.
     const o = { on: opts.on || null, night: Boolean(opts.night), things: sp.things, town: sp.town, floor: sp.floor };
     if (sp.kind === "lobby") return lobby(o);
@@ -217,5 +254,5 @@
       sp.things.map(hitBox).join("");                                     // (its own hit boxes still say game:/stall:/leave; ours say thing:)
   }
 
-  return { FLOOR: FLOOR, DOORS: DOORS, LETTERS: LETTERS, TOWN_NAME: TOWN_NAME, parse: parse, space: space, art: art, hallId: hallId, lobbyId: lobbyId };
+  return { FLOOR: FLOOR, DOORS: DOORS, LETTERS: LETTERS, TOWN_NAME: TOWN_NAME, parse: parse, space: space, art: art, doorstep: doorstep, hallId: hallId, lobbyId: lobbyId };
 });

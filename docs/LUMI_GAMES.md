@@ -15,7 +15,7 @@ through the real server with three fake players and checks every SGC move.
 | `lumi-pet` | Lumi Pet: care, snacks, toys, closet, capsules, her flat, room mode, moving boxes | `src/lumi/pet/` |
 | `lumi-dungeons` | battles, skills, mods, dungeon trips (Sokoban, lights, runes...), tales, co-op parties of 3 | `src/lumi/dungeon/`, `src/lumi/party/` |
 | `lumi-garden` | Lumi's Garden: plots, seeds, starpowder, the coin press | `src/lumi/garden/` |
-| `lumi-town` | Lumi Town / Lumi City: walk about, local chat, emotes, visit flats, knock, guestbook, plots and real estate | `src/lumi/town/`, `src/lumi/city/` |
+| `lumi-town` | Lumi Town / Lumi City: walk about, local chat, emotes, visit flats (their doorstep shows their front door: knock, or walk in where it's open; knocking needs them home), guestbook, plots and real estate | `src/lumi/town/`, `src/lumi/city/` |
 | `prism-drop`, `lumi-launch`, `lumi-soft` | minigames (the server rolls Prism; Launch and Soft are replayed with the page's own `rules.js`) | `src/lumi/minis/` |
 | `teacup-tower`, `breakout` (Yarn Pop), `snake` (Lumi Conga) | arcade, solo runs and showdowns (race rooms with watcher bets) | `src/lumi/arcade/` |
 

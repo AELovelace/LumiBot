@@ -1630,6 +1630,12 @@
     const whose = VISIT && (visitView || visitDoor) ? (visitView || visitDoor).name : ""; // (a person's own name: text only)
     $("lp-place").textContent = whose ? whose.toUpperCase() + "'S " + (visitView ? here.name.replace(/^HER |^THE /, "") : "FRONT DOOR") : here.name; // (not in yet: their doorstep)
     const scenery = document.querySelector(".parallax"), backdrop = Boolean(scenery) && getComputedStyle(scenery).display !== "none";
+    if (VISIT && !visitView) { // Not in yet: their front door from the outside (town-inside.js doorstep), never a bare room as if she were already in (LumiBot, Doll 2026-11-20)
+      const d = visitDoor || {}, night = sceneNow().night;                     // whose door (the server's doorstep view), and the hour
+      const sig = JSON.stringify(["door", d.name || "", d.apt ? d.apt.label : "", d.town || "", Boolean(d.home), AT_HOUSE, night]); // redrawn only when any of that changes
+      if (sig !== lastHouse) { lastHouse = sig; room.dataset.open = "false"; houseArt.innerHTML = TI.doorstep({ name: d.name, label: d.apt ? d.apt.label : "", town: d.town, home: d.home, house: AT_HOUSE, night: night }); } // names escaped there
+      placeLumi(); drawHouseFolk(); return;                                     // she waits beside their door
+    }
     const boxes = here.id !== "bedroom" ? 0 : VISIT ? (visitView ? visitView.boxes : 0) : (snap.boxes ? snap.boxes.left : 0);
     const signature = JSON.stringify(["room", here.id, house, backdrop, boxes]);
     if (signature !== lastHouse) { // Only redrawn when the room or what's in it changes: walking just moves her and her shadow (placeLumi).
