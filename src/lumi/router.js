@@ -21,6 +21,7 @@ const { logger } = require('../logger');
 const { validateSameOrigin, getTrustedHosts, getClientIp, buildFrameAncestorsDirective } = require('../webPanelAuth');
 const { CoinMoveError } = require('../sadgirlEconomyStore');
 const { LumiError, isLumiError } = require('./errors');
+const locks = require('./locks');                                                          // the per-player money lock (shared with Discord)
 
 const BODY_LIMIT = 16 * 1024;                                         // biggest JSON body a page may send (16 KB)
 const RATE_PER_SEC = Number(process.env.LUMI_API_RATE_PER_SEC) || 20; // token refill per second per IP on /api/*
@@ -178,7 +179,6 @@ function compile(pattern) {
  */
 function createRouter({ base, auth, trustedOriginsEnv = 'LUMI_TRUSTED_ORIGINS' }) {
   const routes = [];                                                                       // [{ method, pattern, match, handler, opts }]
-  const busy = new Set();                                                                  // player ids with a money action in flight
 
   /** Add a route. method: GET/POST/PUT/DELETE. Returns the router (chainable). */
   function route(method, pattern, handler, opts = {}) {
@@ -236,8 +236,7 @@ function createRouter({ base, auth, trustedOriginsEnv = 'LUMI_TRUSTED_ORIGINS' }
       if (!r.opts.raw && r.opts.body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) ctx.body = await readJsonBody(req, r.opts.maxBody); // JSON body (per-route size cap)
       if (r.opts.money) {
         if (!ctx.user) throw new Error(`route ${r.pattern} has money:true but auth:false`); // a money route always knows who pays
-        if (busy.has(ctx.user.id)) throw new LumiError(409, 'busy', 'One thing at a time, please: your last action is still going.'); // in-flight lock
-        busy.add(ctx.user.id);                                                             // take the lock
+        if (!locks.take(ctx.user.id)) throw locks.busyError();                             // in-flight lock (locks.js, shared with Discord)
         lockedUid = ctx.user.id;                                                           // remember to free it
       }
       const result = await r.handler(ctx);                                                 // the game's code
@@ -269,7 +268,7 @@ function createRouter({ base, auth, trustedOriginsEnv = 'LUMI_TRUSTED_ORIGINS' }
       sendError(res, 500, 'internal_error', 'Something went wrong. Please try again.');     // plain 500
       return true;
     } finally {
-      if (lockedUid) busy.delete(lockedUid);                                               // always free the money lock
+      if (lockedUid) locks.release(lockedUid);                                             // always free the money lock
     }
   }
 

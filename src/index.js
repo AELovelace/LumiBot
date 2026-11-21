@@ -23,7 +23,8 @@ const { initGuildConfig } = require('./guildConfig');
 const { startWebPanel, stopWebPanel } = require('./webPanel');
 const { startWebAppServer, stopWebAppServer } = require('./webAppServer');
 const { startGameWebServer, stopGameWebServer } = require('./gameWebServer');
-const { initLumiGames, stopLumiGames } = require('./lumi'); // Lumi-Town: Lumi Pet + Lumi minigames under /lumipet
+const { initLumiGames, stopLumiGames, isLumiReady } = require('./lumi'); // Lumi-Town: Lumi Pet + Lumi minigames under /lumipet
+const { initLumiDiscord, stopLumiDiscord, handleLumiInteraction } = require('./lumi/discord'); // Lumi-Town on Discord (/lumi-pet, reminders, news)
 const { startLeaderboardServer, stopLeaderboardServer } = require('./leaderboardServer');
 const { startApiServer, stopApiServer } = require('./apiServer');
 const { initPrivateStockStore } = require('./privateStockStore');
@@ -133,6 +134,7 @@ async function shutdown(signal, exitCode = 0) { // exitCode lets a crash shutdow
   try {
     stopWebPanel();
     stopWebAppServer();
+    stopLumiDiscord(); // Lumi-Town on Discord: stop answering and stop its timers first
     stopLumiGames(); // Lumi-Town: stop the sweep timer and close live streams before the server goes
     stopGameWebServer();
     stopLeaderboardServer();
@@ -303,6 +305,15 @@ client.once(Events.ClientReady, async (readyClient) => {
         initLumiGames(); // tables, accounts, LUMI stock, tuning, routes, sweep scheduler
       } catch (error) {
         logger.error('Failed to initialize Lumi-Town.', error.message);
+      }
+    }
+
+    // Lumi-Town on Discord (src/lumi/discord): only once Lumi-Town itself is up. LUMI_DISCORD_ENABLED=false turns it off.
+    if (isLumiReady()) {
+      try {
+        initLumiDiscord(readyClient); // /lumi-pet, DM reminders and news (each piece plugs in through registerHandler)
+      } catch (error) {
+        logger.error('Failed to initialize Lumi-Town on Discord.', error.message);
       }
     }
 
@@ -520,6 +531,7 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 client.on(Events.InteractionCreate, (interaction) => {
   void handleControlPlaneInteraction(interaction);
   void handleCommandInteraction(interaction);
+  void handleLumiInteraction(interaction); // Lumi-Town on Discord: answers only /lumi-pet and 'lumipet:' buttons, ignores the rest
 });
 
 client.on(Events.Error, (error) => {

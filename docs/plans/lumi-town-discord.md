@@ -46,8 +46,9 @@ keeps. Four pieces, all chosen by Doll on 2026-11-20:
    (`withUserLock(uid, fn)`). Router and Discord both use it, so a Discord snack and a website snack can't race.
 3. **Same members.** Before any pet action from Discord, check the user is in `DISCORD_PANEL_GUILD_ID` (cached
    `guild.members.fetch`, 10 min). Not a member → polite ephemeral "Lumi-Town is for members of the club 💜".
-4. **Idempotent money.** A Discord purchase uses `interaction.id` as its `sgc` ref key, so a retried interaction never
-   charges twice (the duplicate-ref rule `sgc.test.mjs` already covers).
+4. **Idempotent money.** `sgc.spend` has no ref key, so a Discord action passes `onceRef: 'lumi-discord:<interaction
+   id>'` to `runPetAction`, which claims it in `lumi_coin_refs` inside the same transaction. A retried interaction
+   gets 409 `already_done` and never charges twice; a refused action rolls the claim back. *(Built in D0.)*
 5. **Only the owner presses.** Every button/select `customId` carries the owner: `lumipet:<verb>:<ownerId>[:<arg>]`.
    Someone else pressing gets an ephemeral "That's not your Lumi!".
 6. **Tunable, not hard-coded.** Every interval, threshold and on/off switch is a `tuning.js` id shown on the `/lumi`
@@ -61,8 +62,8 @@ keeps. Four pieces, all chosen by Doll on 2026-11-20:
 ```
 src/lumi/
   locks.js                 // withUserLock(uid, fn): the per-player money lock (moved from router.js)
-  pet/actions.js           // runPetAction(uid, username, action, opts, { ref }): the ONE entry used by
-                           //   routes/pet.js AND Discord (transaction + lock + sgc + snapshot)
+  pet/actions.js           // runPetAction(uid, username, input, { onceRef, lock }): the ONE entry used by
+                           //   routes/pet.js AND Discord (form check + transaction + sgc + town updates)
   discord/
     index.js               // initLumiDiscord(client): registers handlers, starts the reminder + digest timers
     member.js              // isClubMember(client, userId): cached guild-membership check
@@ -221,9 +222,13 @@ developer portal. The page loads Discord's **Embedded App SDK**, calls `ready()`
 Each phase ends the same way as the port: `npm test` green, `node --check` on new files, a play-through on
 `npm run start:3080` with a test bot in a test guild, docs updated, and Doll's go-ahead before the next phase.
 
-**D0: plumbing.** `locks.js` (move the lock, router uses it), `pet/actions.js` (routes/pet.js uses it, no behaviour
-change), `discord/member.js`, `discord/index.js` wiring, `LUMI_DISCORD_ENABLED`.
-Tests: lock shared across both callers, member cache, `runPetAction` duplicate ref.
+**D0: plumbing.** ✅ Done 2026-11-20. `locks.js` (the lock moved out of the router), `pet/actions.js` (`POST
+/api/lumi-pet/act` now calls it; same behaviour), `discord/member.js`, `discord/index.js` (registry + interaction
+router, wired in `src/index.js` and the global command list in `controlPlane.js`), `LUMI_DISCORD_ENABLED`,
+`isLumiReady()`, `webPanelAuth.getPanelAuthConfig` exported.
+Tests: `tests/lumi/discord_plumbing.test.mjs` (15): shared lock vs the real website route, `onceRef` once-only and
+rollback, input checks, member cache TTLs / shared lookups / errors not cached, the router only answering its own.
+Full suite 559/559.
 
 **D1: `/lumi-pet`.** `card.js`, `command.js`: status/show/feed, buttons, feed select, buy-and-feed confirm.
 Tests: `card.test.mjs` (pure card builder: bars, low marks, button sets per task), owner-only presses, insufficient

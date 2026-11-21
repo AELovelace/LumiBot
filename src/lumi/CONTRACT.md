@@ -224,6 +224,7 @@ sgc.inGame(fn)                                                              // =
 | Lumi City sale to the office | `city, sale` (`exact:true, cap:false`) | `lumi-city:{town}:{block}:{lot}:{bought_at}` |
 | Lumi City plot bought from a listing | `city, trade` (`sgc.transfer`, buyer -> seller) | `lumi-plot:{plot}:{bought_at}:{version}` |
 | Lumi City Keepsake repeat buyback | `city, buyback` (`cap:false`) | `lumi-city-buyback:{uid}:{random}` |
+| Discord run-once guard (not a payout: amount 0) | `runPetAction(..., { onceRef })` | `lumi-discord:{interaction id}` |
 
 Spends with `kind`: `pet,snacks` (snacks + toys), `pet,boutique` (decor, wear, house things), `pet,capsule`
 (both capsules), `battle,shop` (respec, mods, potions, heals, reset, kit), `garden,shop` (plots, seeds),
@@ -372,7 +373,8 @@ module.exports = { register };
 * Return a value -> JSON 200 (`undefined` -> `{ok:true}`). Or answer yourself with `ctx.json/html/redirect` or
   `events.sse()`. Async handlers are fine (but never `await` inside `tx()`).
 * opts: `auth` (default true; logged out -> 401 JSON for `/api/*`, a login redirect for pages), `money` (default
-  false: per-player in-flight lock, a second concurrent call -> 409 `busy`), `body` (default true: POST/PUT/PATCH
+  false: per-player in-flight lock from `locks.js`, a second concurrent call -> 409 `busy`; the Discord side takes
+  the **same** lock, so a website call and a Discord button can't overlap either), `body` (default true: POST/PUT/PATCH
   bodies parsed as a JSON object, 16 KB cap, 400 `bad_json` / 413 `too_large`), `maxBody` (bytes, default 16 KB: a
   bigger cap for one route, e.g. `{ money: true, maxBody: 512 * 1024 }` for a finished run's log; used by
   `/api/lumi-soft/finish` 512 KB, `/api/lumi-launch/finish` 128 KB, `/api/<arcade slug>/run/finish` 1 MB),
@@ -474,6 +476,30 @@ Fights and dungeon trips have ONE code path: `pet/lumipet.js` exports erinne's `
 `fightAct(uid, battleId, turn, action, now, rng, { username })`, `_narrate(uid, rng)`, `dungeonStart(uid, env, now,
 rng, opts)` and `dungeonAct(uid, action, { way, moves, picks, now, rng, username })`; `routes/dungeon.js` calls them
 directly (PetError -> 400 via `routes/pet.js refusals`). The old `dungeon/play.js` hand-off is gone.
+
+**Care actions and purchases have ONE entry: `pet/actions.js` `runPetAction(uid, username, input, { onceRef, lock })`.**
+`POST /api/lumi-pet/act` and the Discord side both call it. It checks `input` against `ACT_FORM` (422 `invalid`),
+runs `lumipet.act()` with the coins in one `tx()`, turns a PetError into a 400 `refused`, then tells the town (look
+changed, guests sent home). `onceRef` (Discord: `lumi-discord:{interaction id}`) is claimed in `lumi_coin_refs` in the
+same transaction: a second run is a 409 `already_done`, and a refused action rolls the claim back. `lock: true` takes
+the `locks.js` money lock itself (Discord); the website route leaves it false because the router already holds it.
+`refusals`, `named` and `ACT_FORM` live there too; `routes/pet.js` re-exports them.
+
+## 12b. Discord side (src/lumi/discord) — docs/plans/lumi-town-discord.md
+
+* `locks.js`: `take(uid)` / `release(uid)` / `isBusy(uid)` / `withUserLock(uid, fn)` / `busyError()`. One in-memory
+  Set for the whole process (router + Discord).
+* `discord/index.js`: `initLumiDiscord(client)` (after `initLumiGames()`, only if `isLumiReady()`),
+  `stopLumiDiscord()`, `handleLumiInteraction(i)` (wired in `src/index.js` InteractionCreate). Pieces plug in with
+  `registerHandler({ command: { name, data }, verbs, onCommand, onAutocomplete, onComponent(i, args) })`. It answers
+  only registered slash commands and `lumipet:<verb>:...` customIds (`customId(verb, ...args)` builds one, 100-char
+  max); everything else is ignored. A crash in a piece is logged and answered with one polite ephemeral message.
+  `commandDefinitions()` is added to the global member command list in `controlPlane.js`.
+* `discord/member.js`: `isClubMember(client, userId)`: is the user in `DISCORD_PANEL_GUILD_ID` (the same guild the
+  website's login checks)? Cached 10 min for yes and 1 min for no; one lookup per user at a time; Discord errors
+  throw and are not cached.
+* `LUMI_DISCORD_ENABLED=false` switches all of it off (no commands registered, nothing answered). The website
+  doesn't change.
 
 ## 13. Testing
 

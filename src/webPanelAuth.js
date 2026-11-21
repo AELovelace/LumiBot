@@ -795,6 +795,7 @@ function buildUserBadgeHtml(session) {
 }
 
 module.exports = {
+  getPanelAuthConfig,             // the OAuth + member-guild settings from env (Lumi's Discord side reads panelGuildId)
   validateAuthConfig,
   assertAuthConfigOrThrow,
   handleLoginRoute,

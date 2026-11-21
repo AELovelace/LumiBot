@@ -155,7 +155,7 @@ function buildAdminCommands() {
 }
 
 function buildRegisteredGlobalCommands() {
-  return [...buildUserCommands(), ...buildEconomyCommands(), ...buildApiLinkCommand()];
+  return [...buildUserCommands(), ...buildEconomyCommands(), ...buildApiLinkCommand(), ...require('./lumi/discord').commandDefinitions()]; // + Lumi-Town's (/lumi-pet; empty when LUMI_DISCORD_ENABLED=false)
 }
 
 function formatSettings(settings) {

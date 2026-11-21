@@ -134,10 +134,16 @@ function getRouter() {
   return router;                                                                    // null before init
 }
 
+/** Has initLumiGames() finished (and stopLumiGames() not run)? The Discord side checks this before touching pets. */
+function isLumiReady() {
+  return initialized;                                                               // open for requests
+}
+
 module.exports = {
   BASE,               // '/lumipet'
   initLumiGames,      // start
   stopLumiGames,      // stop
+  isLumiReady,        // started and not stopped?
   handleLumiRequest,  // the gameWebServer hook
   isLumiPath,         // path check
   getRouter,          // the router
