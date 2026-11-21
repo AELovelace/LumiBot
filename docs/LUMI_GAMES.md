@@ -86,6 +86,23 @@ If a game gets farmed, set a daily cap above 0 on its row, or lower its payout �
 2. For local testing over plain http set `LUMI_SESSION_SECURE=false` (otherwise the login cookie needs https).
 3. nginx: proxy `/lumipet/` to the Lumi Games server (plan section 8), with buffering off for `.../stream` URLs.
 
+## Lumi-Town on Discord (`/lumi-pet`)
+
+Plan: `docs/plans/lumi-town-discord.md`. Code: `src/lumi/discord/`. Player docs: `docs/LUMI_USER_COMMANDS.md` §8½.
+
+- **`/lumi-pet status | show | feed`** registers with the other global member commands the next time the bot starts
+  (no portal steps). It answers only members of `DISCORD_PANEL_GUILD_ID`, the same guild the website login checks.
+- **Same rules as the website.** Every change goes through `runPetAction` (`src/lumi/pet/actions.js`) with the same
+  per-player money lock, so a Discord button and a website click can't overlap. Prices are the website's (tuning on
+  the `/lumi` admin page). Buy-and-feed is one transaction: if she won't eat, nothing is charged.
+- **No double charges.** Each button press is run once (`lumi-discord:<interaction id>` in `lumi_coin_refs`), and a
+  "Buy & feed" question once in total (`lumi-discord:offer:<question id>`), however often ✅ is clicked.
+- **Links and picture.** The card's 🏠 Visit Lumi button and thumbnail need the public address:
+  `LUMI_PUBLIC_URL=https://sadgirlsclub.wtf/lumipet`. If it's unset, the address is taken from
+  `LUMI_DISCORD_OAUTH_REDIRECT_URI`; with neither, the card works without the link and picture.
+- **Off switch:** `LUMI_DISCORD_ENABLED=false` (the website is unaffected).
+- Checking the card marks a visit for reminders but never pays the website's daily visit reward.
+
 ## Where the money goes
 
 ```

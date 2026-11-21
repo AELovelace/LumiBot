@@ -105,8 +105,9 @@ It ignores anything whose name or `customId` doesn't start with `lumi-pet` / `lu
 **Paid snacks from Discord** (Doll: full care, snacks included):
 - Picking an item you hold → feed straight away (free, you already own it).
 - Picking an item you don't hold → an ephemeral **confirm** ("Buy 1 Strawberry Milk for 40 SGC and feed her?" ✅ / ✖).
-  ✅ runs `buy` + `feed` as one `runPetAction` inside one lock, ref = the confirm interaction's id. The confirm
-  expires after 60 s.
+  ✅ runs `buy` + `feed` as one `runPetAction` (a list of two steps, one transaction) inside one lock. The run-once
+  key is the **question's** id (`lumi-discord:offer:<id>`), not the click's, so clicking ✅ twice can't buy twice.
+  The question expires 60 s after that id's snowflake time. *(As built in D1.)*
 - Prices come from `tuning.scalePrice('pet', …)` exactly like the website (item scale 1, erinne's prices).
 - Not enough SGC → the same message the website shows.
 
@@ -230,9 +231,14 @@ Tests: `tests/lumi/discord_plumbing.test.mjs` (15): shared lock vs the real webs
 rollback, input checks, member cache TTLs / shared lookups / errors not cached, the router only answering its own.
 Full suite 559/559.
 
-**D1: `/lumi-pet`.** `card.js`, `command.js`: status/show/feed, buttons, feed select, buy-and-feed confirm.
-Tests: `card.test.mjs` (pure card builder: bars, low marks, button sets per task), owner-only presses, insufficient
-SGC, the confirm expiring, a double-press not double-charging.
+**D1: `/lumi-pet`.** ✅ Done 2026-11-20. `card.js` (pure), `command.js` (status/show/feed, care buttons, feed + play
+menus, buy-and-feed question), `ids.js` (customIds without a require loop), `links.js` (`LUMI_PUBLIC_URL`).
+`runPetAction` takes a list of steps for buy-and-feed. Extra beyond the plan: a **🎾 Play with…** menu (owned + free
+toys), since "full care" includes play.
+Tests: `tests/lumi/discord_pet_command.test.mjs` (21): bars/mood/menus/buttons, the 100-char id limit, non-members
+and players without a Lumi (none created), owner-only presses, status = visit but no reward, retried presses run
+once, buy-and-feed once per question, the minute running out, no charge when she won't eat, not enough SGC, the shared
+lock, autocomplete. Full suite 580/580.
 
 **D2: reminders.** Tables, sweep, DM, the settings toggle in Lumi Pet, `reminders` / `timezone` subcommands, admin row.
 Tests: a port of erinne's `tests/test_push.py` cases (once per episode, stale drop, 3 h gap, quiet hours in a

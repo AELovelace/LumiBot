@@ -17,9 +17,9 @@
  * LUMI_DISCORD_ENABLED=false turns the whole Discord side off; the website keeps working.
  */
 
+const { MessageFlags } = require('discord.js');
 const { logger } = require('../../logger');
-
-const CUSTOM_ID_PREFIX = 'lumipet:';     // every Lumi button/select customId starts with this
+const { customId, parseCustomId, CUSTOM_ID_PREFIX } = require('./ids');               // button ids (no require loop)
 
 const commandHandlers = new Map();      // command name -> handler def (slash commands + their autocomplete)
 const componentHandlers = new Map();    // customId verb ('lumipet:<verb>:...') -> handler def
@@ -55,21 +55,6 @@ function registerHandler(def) {
 function commandDefinitions() {
   if (!isEnabled()) return [];                                                         // off: no commands at all
   return [...commandHandlers.values()].map((def) => def.command.data);                 // builders (or JSON)
-}
-
-/** Split 'lumipet:<verb>:<a>:<b>' into { verb, args: [a, b] } (null if not ours). */
-function parseCustomId(customId) {
-  const text = String(customId || '');                                                 // may be undefined
-  if (!text.startsWith(CUSTOM_ID_PREFIX)) return null;                                 // not Lumi's
-  const [verb, ...args] = text.slice(CUSTOM_ID_PREFIX.length).split(':');             // pieces
-  return verb ? { verb, args } : null;                                                 // a verb is required
-}
-
-/** Build a customId: customId('feed', ownerId, 'berry') -> 'lumipet:feed:<ownerId>:berry' (Discord max 100 chars). */
-function customId(verb, ...args) {
-  const id = [CUSTOM_ID_PREFIX + verb, ...args.map(String)].join(':');                // join
-  if (id.length > 100) throw new Error(`customId too long (${id.length}): ${id}`);    // Discord's limit
-  return id;                                                                           // done
 }
 
 /** Start the Discord side (after initLumiGames). Safe to call twice. */
@@ -130,7 +115,7 @@ async function handleLumiInteraction(interaction) {
 /** Last-resort ephemeral reply after a crash (never throws). */
 async function sayOops(interaction) {
   if (typeof interaction.isAutocomplete === 'function' && interaction.isAutocomplete()) return; // autocomplete can't show a message
-  const payload = { content: 'Something went wrong in Lumi-Town. Please try again. 💜', ephemeral: true }; // the words
+  const payload = { content: 'Something went wrong in Lumi-Town. Please try again. 💜', flags: MessageFlags.Ephemeral }; // the words, only for them
   try {
     if (interaction.deferred || interaction.replied) await interaction.followUp(payload); // already answered once
     else await interaction.reply(payload);                                             // first answer
@@ -150,3 +135,7 @@ module.exports = {
   getClient,               // the bot
   CUSTOM_ID_PREFIX,        // 'lumipet:'
 };
+
+// The pieces plug themselves in here, after module.exports exists. They get this module handed to them instead of
+// requiring it, so there is no require loop whichever file Node loads first.
+require('./command').register(module.exports);   // D1: /lumi-pet

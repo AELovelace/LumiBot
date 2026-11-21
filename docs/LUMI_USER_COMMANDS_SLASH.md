@@ -93,6 +93,16 @@ Battling:
 
 ---
 
+## 🌙 Lumi Pet (Lumi-Town)
+
+Meet Lumi first at https://sadgirlsclub.wtf/lumipet/ — then look after her from Discord too.
+
+**`/lumi-pet status`** — her card (only you see it): needs, mood, coins, flat, with **Cuddle / Nap / Wake / Refresh** buttons, a **Feed** menu and a **Play** menu
+**`/lumi-pet show`** — show her card to everyone in the channel (no buttons)
+**`/lumi-pet feed item:<food>`** — feed her (type to search). Food you don't have asks **"Buy 1 for N SGC and feed her?"** first
+
+---
+
 ## 🛠 Misc / Utility
 
 **`/lumi-man`** — full in-bot help

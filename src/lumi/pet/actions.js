@@ -5,7 +5,8 @@
  * and by Discord (src/lumi/discord). Nothing else should call lumipet.act() for a player's own action.
  *
  *   runPetAction(uid, username, input, { onceRef, lock })
- *     input     the same choices the website sends ({ action, item, count, ... }), checked against ACT_FORM
+ *     input     the same choices the website sends ({ action, item, count, ... }), checked against ACT_FORM;
+ *               or a list of up to 3 of them that must ALL succeed together (Discord's buy-and-feed)
  *     onceRef   optional: a key that may only ever run once (Discord passes 'lumi-discord:<interaction id>'), claimed
  *               in lumi_coin_refs inside the same transaction, so a retried interaction can't buy twice
  *     lock      true: take the per-player money lock here (Discord). The website's router already holds it for
@@ -68,16 +69,28 @@ function claimOnce(ref, uid) {
   db.prepare('INSERT INTO lumi_coin_refs (ref, user_id, amount, at) VALUES (?, ?, 0, ?)').run(ref, String(uid), nowMs()); // claim (amount 0: it is a guard, not a payout)
 }
 
-/** The action itself (no lock): validate, run act() with the coins in one transaction, then tell the town. */
+/**
+ * The action itself (no lock): validate, run act() with the coins in one transaction, then tell the town.
+ * `input` may be a list of steps (Discord's "buy one and feed her"): they run in order in the SAME transaction, so if
+ * any step is refused nothing at all happens (no charge for a snack she wouldn't eat). The answer is the last step's,
+ * with `paid` = SGC charged across all steps.
+ */
 function runUnlocked(uid, username, input, onceRef) {
-  const body = form(input, ACT_FORM);                                               // only choices (400 on anything odd)
+  const steps = (Array.isArray(input) ? input : [input]).map((one) => form(one, ACT_FORM)); // only choices (422 on anything odd)
+  if (!steps.length || steps.length > 3) throw new Error(`runPetAction: 1-3 steps, got ${steps.length}`); // programming bug
   const id = String(uid);                                                           // Discord id
   const done = refusals(() => tx(() => {                                            // pet + coins (+ the once-claim) together
     if (onceRef !== undefined && onceRef !== null) claimOnce(onceRef, id);          // rolls back with a refusal, so a retry can run
-    return lumipet.act(id, body.action, {
-      item: body.item, count: body.count, moments: body.moments, glow: body.glow, slot: body.slot, // the choices
-      name: body.name, colour: body.colour, spot: body.spot, home: body.home, username,
-    });
+    let last = null;                                                                // the latest step's answer
+    let paid = 0;                                                                   // SGC charged by all steps
+    for (const body of steps) {
+      last = lumipet.act(id, body.action, {
+        item: body.item, count: body.count, moments: body.moments, glow: body.glow, slot: body.slot, // the choices
+        name: body.name, colour: body.colour, spot: body.spot, home: body.home, username,
+      });
+      paid += (last.said && Number.isSafeInteger(last.said.paid)) ? last.said.paid : 0; // add this step's charge
+    }
+    return Array.isArray(input) ? { ...last, paid } : last;                         // a list also reports the total paid
   }));
   lumitown.forgetLook(id);                                                          // her look may have changed: town sees it at once
   const said = done.said || {};                                                     // what happened

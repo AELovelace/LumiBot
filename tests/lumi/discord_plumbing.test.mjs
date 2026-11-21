@@ -228,10 +228,10 @@ test("the router answers only registered commands and verbs, sends each to its p
   const crash = fakeInteraction({ customId: "lumipet:boom:1" });
   assert.equal(await discord.handleLumiInteraction(crash), true);     // handled...
   assert.equal(crash.said.length, 1);                                  // ...with one polite reply
-  assert.equal(crash.said[0].ephemeral, true);
+  assert.equal(crash.said[0].flags, require("discord.js").MessageFlags.Ephemeral); // only they see it
   assert.match(crash.said[0].content, /went wrong/);
 
-  assert.deepEqual(discord.commandDefinitions().map((d) => d.name), ["lumi-test"]); // goes into the global list
+  assert.deepEqual(discord.commandDefinitions().map((d) => d.name).sort(), ["lumi-pet", "lumi-test"]); // both go into the global list
   discord.stopLumiDiscord();
   assert.equal(await discord.handleLumiInteraction(fakeInteraction({ commandName: "lumi-test" })), false); // stopped: ignored
 });

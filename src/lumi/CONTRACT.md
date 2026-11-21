@@ -500,6 +500,19 @@ the `locks.js` money lock itself (Discord); the website route leaves it false be
   throw and are not cached.
 * `LUMI_DISCORD_ENABLED=false` switches all of it off (no commands registered, nothing answered). The website
   doesn't change.
+* `discord/ids.js`: `customId(verb, ...args)` / `parseCustomId(id)` (no dependencies, so nothing loops). Pieces get
+  `discord/index.js` handed to their `register(discord)`; they never `require('./index')`.
+* `discord/links.js`: `publicBase()` / `page(slug)` / `staticFile(rel)`: absolute URLs from `LUMI_PUBLIC_URL`, else
+  the origin of `LUMI_DISCORD_OAUTH_REDIRECT_URI` + the base path, else null (cards drop the link and picture).
+* `discord/card.js` (pure, D1): `buildPetCard(view)`, `buildConfirm(view, { itemId, price, offerId })`, `moodLine`,
+  `meterLine`, `feedChoices` (pantry, then free, then buyable; max 25), `playChoices` (owned + free toys).
+* `discord/command.js` (D1): `/lumi-pet status|show|feed`. customIds: `care:<owner>:cuddle|nap|wake`,
+  `refresh:<owner>`, `feed:<owner>` (menu), `play:<owner>` (menu), `bf:<owner>:<item>:<offer id>` (✅ buy & feed).
+  The offer id is the question's own interaction id; it expires 60 s after that id's snowflake time and is the
+  run-once key (`lumi-discord:offer:<id>`). Other presses use `lumi-discord:<interaction id>`. `status` / `show` call
+  `lumipet.state()` (a visit for reminders); nobody without a save (`save.exists`) gets one made from Discord.
+* `runPetAction` also takes a **list** of up to 3 inputs, run in one transaction (all or nothing); the answer is the
+  last step's, plus `paid` (SGC charged by all steps).
 
 ## 13. Testing
 

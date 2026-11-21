@@ -194,6 +194,33 @@ A cigarette gacha. Pulls are cheap, and smoking the rare ones temporarily multip
 
 ---
 
+## 8½. Lumi Pet (Lumi-Town) — `/lumi-pet` (slash only)
+
+Lumi-Town lives on the web at **https://sadgirlsclub.wtf/lumipet/** (members of the server only). Meet Lumi there
+first; after that you can look after her from Discord as well. It's the same Lumi and the same SGC: anything you do
+here shows on the website and the other way round.
+
+| Command | What it does |
+|---|---|
+| `/lumi-pet status` | Her card, **only you see it**: her hunger, energy and joy as bars (⚠️ when one is low), what she's doing, your SGC and your Lumi Heights flat. Buttons: **💞 Cuddle**, **😴 Nap** / **☀️ Wake**, **🔄 Refresh**, **🏠 Visit Lumi** (opens the website). Menus: **🍓 Feed her…** and **🎾 Play with…**. |
+| `/lumi-pet show` | Her card for **everyone in the channel**, without buttons. |
+| `/lumi-pet feed item:<food>` | Feed her. Start typing to search the pantry and the Snack Stand. |
+
+**Feeding and buying:**
+- Free food (🍎 Apple) and food already in her pantry are eaten straight away. Free.
+- Food you don't have asks **"Buy 1 … for N SGC and feed her?"** with ✅ **Buy & feed** / ✖️ **Never mind**. Nothing
+  is charged until you press ✅. The question lasts one minute, and pressing ✅ twice still buys only once.
+- If she can't eat yet (she just ate), nothing is charged.
+- Prices are the same as the website's Snack Stand.
+
+**Good to know:**
+- Only you can press the buttons on your card.
+- Checking her card counts as a visit (so she won't send a reminder about something you just saw), but the
+  **daily visit reward** is only on the website. The card says 🎁 when it's waiting.
+- Adopting Lumi, the shop for toys, decor and clothes, dungeons, the garden and the minigames are all on the website.
+
+---
+
 ## 9. Misc / Utility
 
 | Command | What it does |
@@ -245,5 +272,6 @@ These run quietly in the background:
 !bets                  ← prediction markets
 !pachinko 5 10         ← drop ball on peg 5, bet 10 SGC
 !slots / !bj / !th / !hr   ← casino tables
+/lumi-pet status       ← your Lumi: needs, cuddle, feed, play
 @Lumi <anything>       ← talk to her
 ```
