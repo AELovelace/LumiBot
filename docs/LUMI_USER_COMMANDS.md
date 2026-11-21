@@ -200,18 +200,24 @@ Lumi-Town lives on the web at **https://sadgirlsclub.wtf/lumipet/** (members of 
 first; after that you can look after her from Discord as well. It's the same Lumi and the same SGC: anything you do
 here shows on the website and the other way round.
 
-| Command | What it does |
-|---|---|
-| `/lumi-pet status` | Her card, **only you see it**: her hunger, energy and joy as bars (⚠️ when one is low), what she's doing, your SGC and your Lumi Heights flat. Buttons: **💞 Cuddle**, **😴 Nap** / **☀️ Wake**, **🔄 Refresh**, **🏠 Visit Lumi** (opens the website). Menus: **🍓 Feed her…** and **🎾 Play with…**. |
-| `/lumi-pet show` | Her card for **everyone in the channel**, without buttons. |
-| `/lumi-pet feed item:<food>` | Feed her. Start typing to search the pantry and the Snack Stand. |
-| `/lumi-pet reminders turn:<on\|off>` | **DM reminders.** Lumi DMs you when she's hungry, sleepy or lonely, when a nap finished, or when slow flowers are ready in her garden. You get a hello DM when you turn it on. |
-| `/lumi-pet timezone zone:<zone>` | Your clock, so reminders stay quiet from 22:00 to 07:00 **your** time (start typing a city, like *London* or *New_York*). Until you set it, Los Angeles time is used. |
-| `/lumi-pet news name:<show\|hide>` | Lumi-Town news posts big wins and showdown winners in the server's Lumi-Town channel. **hide** shows you as "a Lumi-Town neighbour" instead. |
+Type **`/lumi-pet`**. Like the Touhou trader's menu, it opens ONE message that only you can see and that changes as
+you press buttons. It shows a **picture of your Lumi** (her glow or her own colour, her outfit, sleepy eyes when she
+naps), her hunger, energy and joy as bars (⚠️ when one is low), what she's doing, your SGC and your Lumi Heights flat.
 
-**DM reminders:**
-- Off until you turn them on, with the command above or **Settings ▸ Discord DMs from Lumi** in Lumi Pet (that one
-  also sets your timezone from your browser).
+| Button | What it does |
+|---|---|
+| **💞 Cuddle**, **😴 Nap** / **☀️ Wake** | Quick care, right from the first screen. |
+| **🍓 Feed** | Pick from her pantry, free food (🍎 Apple), or something to buy and feed her. |
+| **🎾 Play** | Pick one of her toys (greyed out while she's busy). |
+| **🛒 Shop** | Buy snacks and treats for her pantry, or toys for her toy box. |
+| **📣 Show my friends** | Posts her card with a **big picture of her** in the channel for everyone (no buttons, and your SGC isn't shown). |
+| **⚙️ Settings** | **🔔 DM reminders** on/off · **🕐 Set my timezone** (a little box: type a city like *London* or *New_York*; until then Los Angeles time is used) · **🙈 Hide my name in news** (Lumi-Town news then calls you "a Lumi-Town neighbour"). |
+| **🔄 Refresh**, **🔙 Back**, **🏠 Visit Lumi** | Redraw, go back to the first screen, open the website. |
+
+**DM reminders:** Lumi DMs you when she's hungry, sleepy or lonely, when a nap finished, or when slow flowers are
+ready in her garden.
+- Off until you turn them on, in the menu's **⚙️ Settings** or **Settings ▸ Discord DMs from Lumi** on the website
+  (that one also sets your timezone from your browser). You get a hello DM when you turn them on.
 - At most **one DM every 3 hours**, never at night on your clock, and never about something you've already seen or
   fixed on the website.
 - The DM is her card, so you can cuddle, feed or play right there. **🔕 Stop reminders** turns them off.
@@ -224,8 +230,9 @@ not inside Discord.
 
 **Feeding and buying:**
 - Free food (🍎 Apple) and food already in her pantry are eaten straight away. Free.
-- Food you don't have asks **"Buy 1 … for N SGC and feed her?"** with ✅ **Buy & feed** / ✖️ **Never mind**. Nothing
-  is charged until you press ✅. The question lasts one minute, and pressing ✅ twice still buys only once.
+- Food you don't have asks **"Buy 1 … for N SGC and feed her?"** with ✅ **Buy & feed** / ✖️ **Never mind**; the
+  🛒 Shop asks **"Buy 1 … for N SGC?"** with ✅ **Buy**. Nothing is charged until you press ✅. The question lasts one
+  minute, and pressing ✅ twice still buys only once.
 - If she can't eat yet (she just ate), nothing is charged.
 - Prices are the same as the website's Snack Stand.
 
@@ -233,7 +240,7 @@ not inside Discord.
 - Only you can press the buttons on your card.
 - Checking her card counts as a visit (so she won't send a reminder about something you just saw), but the
   **daily visit reward** is only on the website. The card says 🎁 when it's waiting.
-- Adopting Lumi, the shop for toys, decor and clothes, dungeons, the garden and the minigames are all on the website.
+- Adopting Lumi, decor and clothes, capsules, dungeons, the garden and the minigames are all on the website.
 
 ---
 
@@ -288,6 +295,6 @@ These run quietly in the background:
 !bets                  ← prediction markets
 !pachinko 5 10         ← drop ball on peg 5, bet 10 SGC
 !slots / !bj / !th / !hr   ← casino tables
-/lumi-pet status       ← your Lumi: needs, cuddle, feed, play
+/lumi-pet              ← your Lumi's menu: care, feed, play, shop, show her off
 @Lumi <anything>       ← talk to her
 ```

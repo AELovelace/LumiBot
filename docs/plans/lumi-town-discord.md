@@ -82,7 +82,14 @@ It ignores anything whose name or `customId` doesn't start with `lumi-pet` / `lu
 
 ## 4. `/lumi-pet` command
 
-| Subcommand | Does | Visibility |
+> **Changed 2026-11-20 (Doll, after trying it):** the subcommands below became ONE button menu like the Touhou
+> trader's. Plain `/lumi-pet` opens Home (💞 Cuddle · 😴 Nap · 🍓 Feed · 🎾 Play · 🛒 Shop · 📣 Show my friends ·
+> ⚙️ Settings · 🔄 Refresh · 🏠 Visit Lumi); Feed/Play/Shop/Settings are screens with 🔙 Back; the timezone is a
+> pop-up (modal) that understands a city name. Every card shows a **picture of that player's own Lumi**
+> (`discord/portrait.js`), big on the public "Show my friends" card. The 🛒 Shop (buy into the pantry / toy box) is
+> new. The table below is the first version, kept for history.
+
+| Subcommand (first version) | Does | Visibility |
 |---|---|---|
 | `/lumi-pet status` | Her card + care buttons | Ephemeral (only you) |
 | `/lumi-pet show` | Her card for everyone, **no** buttons (show off your Lumi) | Public |
@@ -178,7 +185,7 @@ summary yet.
 **How**: game code calls `events.publish(events.NEWS_CHANNEL, kind, data)` INSIDE its transaction, with the ref that
 proves it. `discord/news.js` keeps the big ones, waits `lumi.discord.newsBatchMs` (2 min), then checks each ref in the
 database (a rolled-back prize is never posted) and sends ONE embed (15 lines max + "and N more") to every Lumi-Town
-channel. Players with `/lumi-pet news name:hide` are "a Lumi-Town neighbour". Nothing from the admin log; never who
+channel. Players who hide their name (`/lumi-pet` ▸ ⚙️ Settings) are "a Lumi-Town neighbour". Nothing from the admin log; never who
 owes what.
 
 ---

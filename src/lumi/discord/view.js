@@ -17,6 +17,8 @@
 const { MessageFlags } = require('discord.js');
 const member = require('./member');
 const links = require('./links');
+const portrait = require('./portrait');                                                // her picture as a PNG
+const save = require('../pet/save');                                                   // save.look(uid)
 const { tx, getDb, dayKey } = require('../db');
 const lumipet = require('../pet/lumipet');
 const tuning = require('../tuning');
@@ -55,6 +57,12 @@ function visitWaiting(uid) {
   return !getDb().prepare('SELECT 1 FROM lumi_coin_refs WHERE ref = ?').get(`lumi-pet:${uid}:${dayKey()}`); // routes/pet.js's ref
 }
 
+/** Her picture as an attachment ('lumi.png'), or [] when the renderer is off. Big for showing her off. */
+function pictureFiles(uid, pet, { share = false } = {}) {
+  const png = portrait.portrait(save.look(uid), { eyes: portrait.eyesFor(pet), size: share ? 512 : 256 }); // her look, her eyes
+  return png ? [portrait.attachment(png)] : [];                                        // attachment://lumi.png
+}
+
 /** Everything card.js needs to draw her. snap = a lumipet snapshot (state() or an act() answer). */
 function viewOf(owner, snap, { share = false, notice = null } = {}) {
   return {
@@ -62,6 +70,7 @@ function viewOf(owner, snap, { share = false, notice = null } = {}) {
     flat: flatLabel(owner.id),                                                         // her flat
     visitWaiting: visitWaiting(owner.id),                                              // the website's reward
     links: { page: links.page('lumi-pet'), thumb: links.staticFile(THUMB) },           // absolute URLs (or null)
+    files: pictureFiles(owner.id, snap.pet, { share }),                                // her own picture
   };
 }
 
@@ -70,12 +79,17 @@ function readSnap(uid) {
   return tx(() => lumipet.state(uid));                                                 // catch up + save
 }
 
-/** Reply to a slash command, or redraw the message a button/menu sits on. */
+/**
+ * Reply to a slash command, or redraw the message a button/menu/pop-up sits on (editReply when already deferred).
+ * A redraw with a new picture drops the old one (attachments: []), so the message never piles up images.
+ */
 async function answer(interaction, message, { ephemeral = true } = {}) {
   if (interaction.isChatInputCommand()) {
     return interaction.reply(ephemeral ? { ...message, flags: EPHEMERAL } : message);  // a new message
   }
-  return interaction.update(message);                                                  // the card redraws in place
+  const payload = message.files && message.files.length ? { ...message, attachments: [] } : message; // replace, don't add
+  if (interaction.deferred || interaction.replied) return interaction.editReply(payload); // we said "working on it" first
+  return interaction.update(payload);                                                  // the menu redraws in place
 }
 
 /** A short private message (refusals that aren't about the card). */
@@ -118,6 +132,6 @@ function noPetMessage() {
 }
 
 module.exports = {
-  playerOf, priceOf, flatLabel, visitWaiting, viewOf, readSnap, answer, sayPrivately, letIn, ownerOnly, noPetMessage,
+  playerOf, priceOf, flatLabel, visitWaiting, viewOf, pictureFiles, readSnap, answer, sayPrivately, letIn, ownerOnly, noPetMessage,
   EPHEMERAL, THUMB,
 };

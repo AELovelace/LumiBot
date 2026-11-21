@@ -90,8 +90,13 @@ If a game gets farmed, set a daily cap above 0 on its row, or lower its payout �
 
 Plan: `docs/plans/lumi-town-discord.md`. Code: `src/lumi/discord/`. Player docs: `docs/LUMI_USER_COMMANDS.md` §8½.
 
-- **`/lumi-pet status | show | feed`** registers with the other global member commands the next time the bot starts
-  (no portal steps). It answers only members of `DISCORD_PANEL_GUILD_ID`, the same guild the website login checks.
+- **`/lumi-pet`** is a button menu like the Touhou trader's (`discord/command.js` + the screens in `discord/card.js`:
+  Home, Feed, Play, Shop, Settings, the buy question; 📣 Show my friends posts a public card). It registers with the
+  other global member commands the next time the bot starts (no portal steps). It answers only members of
+  `DISCORD_PANEL_GUILD_ID`, the same guild the website login checks.
+- **Her picture** is each player's own Lumi (glow or own colour, outfit, eyes): `discord/portrait.js` draws the arcade
+  sprite (`public/lumi/arcade/lumi-sprite.js` + `lumi-pet/closet.js`) and turns it into a PNG with `@resvg/resvg-js`
+  (a prebuilt dependency; no system libraries). If that ever fails to load, cards fall back to the Lumi icon.
 - **Same rules as the website.** Every change goes through `runPetAction` (`src/lumi/pet/actions.js`) with the same
   per-player money lock, so a Discord button and a website click can't overlap. Prices are the website's (tuning on
   the `/lumi` admin page). Buy-and-feed is one transaction: if she won't eat, nothing is charged.
@@ -105,7 +110,7 @@ Plan: `docs/plans/lumi-town-discord.md`. Code: `src/lumi/discord/`. Player docs:
 
 ### DM reminders (`src/lumi/discord/reminders.js`)
 
-- Opt-in per player (`/lumi-pet reminders` or Lumi Pet's **Settings ▸ Discord DMs from Lumi**). Stored in
+- Opt-in per player (`/lumi-pet` ▸ ⚙️ Settings, or Lumi Pet's **Settings ▸ Discord DMs from Lumi**). Stored in
   `lumi_discord_prefs`; queued needs in `lumi_remind_events`.
 - Every **Reminder Check** (Economy page ▸ Lumi-Town Discord, default 5 min) the bot catches up each opted-in Lumi
   *without* counting a visit and DMs at most once per player per 3 h, never 22:00–07:00 on their clock.
@@ -120,7 +125,7 @@ Plan: `docs/plans/lumi-town-discord.md`. Code: `src/lumi/discord/`. Player docs:
   (default 2 min), **Daily Summary Hour** (Los Angeles, default 9; 24 = off).
 - Posts: big single prizes, owed prizes the bank finally paid, showdown winners (2+ racers), and the morning bank
   summary (bank + health, reserve, 24 h in/out, yesterday's top 3). Each item is checked against the database before
-  posting, so a rolled-back prize is never announced. Players can hide their name (`/lumi-pet news name:hide`).
+  posting, so a rolled-back prize is never announced. Players can hide their name (`/lumi-pet` ▸ ⚙️ Settings).
 
 ### The Activity: Lumi Pet inside Discord (`src/lumi/routes/activity.js`), off by default
 

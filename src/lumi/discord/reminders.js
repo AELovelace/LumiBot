@@ -129,6 +129,7 @@ function buildReminder(uid, need, snap) {
   return {
     content: `**${name}:** ${LINES[need] || LINES.joy}`,                                // her voice
     embeds: message.embeds,
+    files: message.files,                                                               // her picture (the embed points at it)
     components: [...message.components, new ActionRowBuilder().addComponents(stopButton(uid))], // + Stop (max 5 rows)
   };
 }

@@ -78,7 +78,8 @@ test("a hungry Lumi sends ONE DM naming the most urgent need, then nothing again
   assert.ok(s.got[0].message.embeds.length === 1);                     // her card
   const ids = s.got[0].message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id || c.url));
   assert.ok(ids.includes(`lumipet:remind:${uid}:off`));                // Stop reminders
-  assert.ok(ids.includes(`lumipet:feed:${uid}`));                      // she can be fed from the DM
+  assert.ok(ids.includes(`lumipet:nav:${uid}:feed`));                  // she can be fed from the DM (the menu's Feed)
+  assert.equal(s.got[0].message.files.length, 1);                      // with her picture
   assert.ok(events(uid).every((e) => e.sent_at === now));
   later(HOUR);
   setPet(uid, { energy: 5 });                                          // a new need, but too soon
@@ -178,54 +179,62 @@ test("turning reminders on sends a hello DM; closed DMs leave it off and say how
   assert.equal(prefs.get("555555555555555555").remind, false);
 });
 
-/** A fake interaction through the real router. */
-function fake(uid, bot, { kind = "command", sub, strings = {}, customId, focused, focusedName } = {}) {
-  const out = { replies: [], updates: [], edits: [], responded: null, deferred: false };
+/** A fake button / pop-up interaction through the real router. */
+function fake(uid, bot, { customId, zone } = {}) {
+  const out = { replies: [], updates: [], edits: [], modal: null, deferred: false };
   const i = {
     id: String(BigInt(now - 1_420_070_400_000) << 22n), client: bot, user: { id: uid, username: "tester", avatar: "" },
-    commandName: kind === "command" || kind === "autocomplete" ? "lumi-pet" : undefined, customId, replied: false, deferred: false,
-    isChatInputCommand: () => kind === "command", isAutocomplete: () => kind === "autocomplete",
-    options: { getSubcommand: () => sub, getString: (name) => strings[name], getFocused: (full) => (full ? { name: focusedName, value: focused || "" } : focused || "") },
+    customId, replied: false, deferred: false,
+    isChatInputCommand: () => false, isAutocomplete: () => false,
+    fields: { getTextInputValue: () => zone },                         // the timezone pop-up's answer
     reply: async (p) => { out.replies.push(p); i.replied = true; },
-    deferReply: async () => { out.deferred = true; i.deferred = true; },
+    deferUpdate: async () => { out.deferred = true; i.deferred = true; },
     editReply: async (p) => { out.edits.push(p); },
     update: async (p) => { out.updates.push(p); },
     followUp: async (p) => { out.replies.push(p); },
-    respond: async (list) => { out.responded = list; },
+    showModal: async (m) => { out.modal = m.toJSON(); },
   };
   return { i, out };
 }
+const text = (msg) => msg.embeds[0].toJSON().description;              // the Settings screen's words
 
-test("/lumi-pet reminders, timezone (with suggestions) and news, and the 🔕 Stop button", async () => {
+test("⚙️ Settings: reminders on (hello DM), the timezone pop-up, hiding your name, and the 🔕 Stop button", async () => {
   const bot = fakeBot();
   discord.initLumiDiscord({});                                         // started (a stand-in: no timers)
-  const uid = newPlayer(); bot.members.add(uid);
-  const on = fake(uid, bot, { sub: "reminders", strings: { turn: "on" } });
+  const uid = newPlayer(); bot.members.add(uid); adopt(uid);
+  const on = fake(uid, bot, { customId: `lumipet:set:${uid}:remind` });
   await discord.handleLumiInteraction(on.i);
-  assert.equal(on.out.deferred, true);
-  assert.match(on.out.edits[0].content, /Reminders are on/u);
+  assert.equal(on.out.deferred, true);                                 // waited for the hello DM
+  assert.match(text(on.out.edits[0]), /Reminders are on/u);
+  assert.match(text(on.out.edits[0]), /DM reminders:\*\* on/u);
   assert.equal(prefs.get(uid).remind, true);
+  assert.equal(bot.dms.filter((d) => d.uid === uid).length, 1);
 
-  const tz = fake(uid, bot, { sub: "timezone", strings: { zone: "Europe/London" } });
+  const ask = fake(uid, bot, { customId: `lumipet:tz:${uid}` });
+  await discord.handleLumiInteraction(ask.i);
+  assert.equal(ask.out.modal.custom_id, `lumipet:tzset:${uid}`);       // the pop-up opened
+  const tz = fake(uid, bot, { customId: `lumipet:tzset:${uid}`, zone: "london" });
   await discord.handleLumiInteraction(tz.i);
-  assert.match(tz.out.replies[0].content, /Europe\/London/u);
-  assert.equal(prefs.get(uid).tz, "Europe/London");
-  const badTz = fake(uid, bot, { sub: "timezone", strings: { zone: "Narnia" } });
+  assert.equal(prefs.get(uid).tz, "Europe/London");                    // a city is enough
+  assert.match(text(tz.out.updates[0]), /Europe\/London/u);
+  const badTz = fake(uid, bot, { customId: `lumipet:tzset:${uid}`, zone: "Narnia" });
   await discord.handleLumiInteraction(badTz.i);
-  assert.match(badTz.out.replies[0].content, /don't know the timezone/u);
-  const suggest = fake(uid, bot, { kind: "autocomplete", focused: "lond", focusedName: "zone" });
-  await discord.handleLumiInteraction(suggest.i);
-  assert.ok(suggest.out.responded.some((c) => c.value === "Europe/London"));
+  assert.match(text(badTz.out.updates[0]), /don't know/u);
+  assert.equal(prefs.get(uid).tz, "Europe/London");                    // unchanged
 
-  const hide = fake(uid, bot, { sub: "news", strings: { name: "hide" } });
+  const hide = fake(uid, bot, { customId: `lumipet:set:${uid}:news` });
   await discord.handleLumiInteraction(hide.i);
   assert.equal(prefs.get(uid).newsHidden, true);
+  const off = fake(uid, bot, { customId: `lumipet:set:${uid}:remind` });
+  await discord.handleLumiInteraction(off.i);
+  assert.equal(prefs.get(uid).remind, false);
+  prefs.setRemind(uid, true);
 
-  const notMine = fake("777777777777777777", bot, { kind: "button", customId: `lumipet:remind:${uid}:off` });
+  const notMine = fake("777777777777777777", bot, { customId: `lumipet:remind:${uid}:off` });
   await discord.handleLumiInteraction(notMine.i);
   assert.match(notMine.out.replies[0].content, /not your Lumi/u);
   assert.equal(prefs.get(uid).remind, true);
-  const stop = fake(uid, bot, { kind: "button", customId: `lumipet:remind:${uid}:off` });
+  const stop = fake(uid, bot, { customId: `lumipet:remind:${uid}:off` });
   await discord.handleLumiInteraction(stop.i);
   assert.match(stop.out.updates[0].content, /no more reminder DMs/u);
   assert.equal(prefs.get(uid).remind, false);

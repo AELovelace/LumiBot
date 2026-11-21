@@ -97,12 +97,12 @@ Battling:
 
 Meet Lumi first at https://sadgirlsclub.wtf/lumipet/ — then look after her from Discord too.
 
-**`/lumi-pet status`** — her card (only you see it): needs, mood, coins, flat, with **Cuddle / Nap / Wake / Refresh** buttons, a **Feed** menu and a **Play** menu
-**`/lumi-pet show`** — show her card to everyone in the channel (no buttons)
-**`/lumi-pet feed item:<food>`** — feed her (type to search). Food you don't have asks **"Buy 1 for N SGC and feed her?"** first
-**`/lumi-pet reminders turn:<on|off>`** — Lumi DMs you when she needs you (at most every 3 h, never 22:00–07:00 your time)
-**`/lumi-pet timezone zone:<zone>`** — your clock for those quiet hours (type a city, e.g. *London*)
-**`/lumi-pet news name:<show|hide>`** — whether Lumi-Town news (big wins, showdowns) may name you
+**`/lumi-pet`** — Lumi's menu (only you see it), with a picture of **your** Lumi. Buttons:
+- **💞 Cuddle · 😴 Nap / ☀️ Wake** — quick care
+- **🍓 Feed** — the pantry, free food, or buy something and feed her (asks before buying)
+- **🎾 Play** — her toys · **🛒 Shop** — snacks, treats and toys (asks before buying)
+- **📣 Show my friends** — posts her card with a big picture of her in the channel
+- **⚙️ Settings** — DM reminders on/off, your timezone, your name in Lumi-Town news · **🔄 Refresh** · **🏠 Visit Lumi**
 
 ---
 

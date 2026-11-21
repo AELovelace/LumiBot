@@ -504,13 +504,23 @@ the `locks.js` money lock itself (Discord); the website route leaves it false be
   `discord/index.js` handed to their `register(discord)`; they never `require('./index')`.
 * `discord/links.js`: `publicBase()` / `page(slug)` / `staticFile(rel)`: absolute URLs from `LUMI_PUBLIC_URL`, else
   the origin of `LUMI_DISCORD_OAUTH_REDIRECT_URI` + the base path, else null (cards drop the link and picture).
-* `discord/card.js` (pure, D1): `buildPetCard(view)`, `buildConfirm(view, { itemId, price, offerId })`, `moodLine`,
-  `meterLine`, `feedChoices` (pantry, then free, then buyable; max 25), `playChoices` (owned + free toys).
-* `discord/command.js` (D1): `/lumi-pet status|show|feed`. customIds: `care:<owner>:cuddle|nap|wake`,
-  `refresh:<owner>`, `feed:<owner>` (menu), `play:<owner>` (menu), `bf:<owner>:<item>:<offer id>` (✅ buy & feed).
-  The offer id is the question's own interaction id; it expires 60 s after that id's snowflake time and is the
-  run-once key (`lumi-discord:offer:<id>`). Other presses use `lumi-discord:<interaction id>`. `status` / `show` call
-  `lumipet.state()` (a visit for reminders); nobody without a save (`save.exists`) gets one made from Discord.
+* `discord/card.js` (pure): the menu's screens, each `{ embeds, components, files }`: `buildPetCard(view)` (Home, or
+  with `view.share` the public show-off card: big picture, no buttons, no SGC), `buildFeed`, `buildPlay`, `buildShop`,
+  `buildSettings(view, prefs, { tz, time })`, `buildConfirm(view, { mode: 'bf'|'buy', itemId, price, offerId })`;
+  pieces `moodLine`, `meterLine`, `feedChoices`, `playChoices`, `shopChoices` (max 25 each). Pictures are
+  `attachment://lumi.png` (the icon URL when `view.files` is empty).
+* `discord/portrait.js`: `portrait(look, { eyes, size })` -> PNG Buffer (cached) from `lumi-sprite.js` `svg()` via
+  `@resvg/resvg-js`; her own colour uses `rules.js tint()`; `eyesFor(pet)`; `attachment(png)`. It sets a `self` global
+  only for the moment it requires the browser files, then removes it. `view.viewOf()` attaches it (`view.files`).
+* `discord/command.js`: `/lumi-pet` (no options) opens the menu, one ephemeral message redrawn by `view.answer()`
+  (which sends `attachments: []` with a new picture, and uses `editReply` after `deferUpdate`). customIds:
+  `nav:<owner>:feed|play|shop|settings`, `refresh:<owner>` (Home / 🔙 Back), `care:<owner>:cuddle|nap|wake`,
+  `feed:<owner>` / `play:<owner>` / `buy:<owner>` (menus), `bf` / `by:<owner>:<item>:<offer id>` (✅ buy & feed / buy),
+  `show:<owner>` (update + public `followUp`), `set:<owner>:remind|news`, `tz:<owner>` (opens a modal),
+  `tzset:<owner>` (the modal; `resolveZone('london')` -> `Europe/London`). The offer id is the question's own
+  interaction id; it expires 60 s after that id's snowflake time and is the run-once key (`lumi-discord:offer:<id>`).
+  Other presses use `lumi-discord:<interaction id>`. Opening the menu calls `lumipet.state()` (a visit for reminders);
+  nobody without a save (`save.exists`) gets one made from Discord.
 * `runPetAction` also takes a **list** of up to 3 inputs, run in one transaction (all or nothing); the answer is the
   last step's, plus `paid` (SGC charged by all steps).
 * `discord/view.js`: the shared helpers (`playerOf`, `viewOf`, `readSnap`, `answer`, `sayPrivately`, `letIn`,

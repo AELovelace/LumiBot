@@ -111,26 +111,47 @@ test("the feed menu lists pantry food, then free food, then food to buy at the t
   assert.equal(new Set(choices.map((c) => c.id)).size, choices.length); // no food listed twice
 });
 
-test("a shared card has no buttons; a private one has care, feed and play; napping swaps Nap for Wake", () => {
+test("Home has the touhou-style menu buttons; the shared card has none; napping swaps Nap for Wake and greys out Play", () => {
   const uid = newPlayer(); adopt(uid);
   const snap = db.tx(() => lumipet.state(uid));
   const view = { snap, owner: { id: uid, name: "Tester" }, flat: "Lumi Heights 1A", visitWaiting: true, share: false, notice: null,
     links: { page: "https://lumi.example/lumipet/lumi-pet", thumb: "https://lumi.example/lumipet/static/icons/lumi-192.png" },
-    priceOf: (id, n) => tuning.scalePrice("pet", id, n) };
+    priceOf: (id, n) => tuning.scalePrice("pet", id, n), files: [] };
   assert.deepEqual(card.buildPetCard({ ...view, share: true }).components, []);
   const ids = idsOf(card.buildPetCard(view));
-  assert.ok(ids.includes(`lumipet:care:${uid}:cuddle`) && ids.includes(`lumipet:care:${uid}:nap`));
-  assert.ok(ids.includes(`lumipet:feed:${uid}`) && ids.includes(`lumipet:play:${uid}`) && ids.includes(`lumipet:refresh:${uid}`));
-  assert.ok(ids.includes("https://lumi.example/lumipet/lumi-pet"));    // Visit Lumi link
+  for (const want of [`lumipet:care:${uid}:cuddle`, `lumipet:care:${uid}:nap`, `lumipet:nav:${uid}:feed`, `lumipet:nav:${uid}:play`,
+    `lumipet:nav:${uid}:shop`, `lumipet:show:${uid}`, `lumipet:nav:${uid}:settings`, `lumipet:refresh:${uid}`, "https://lumi.example/lumipet/lumi-pet"]) {
+    assert.ok(ids.includes(want), want);
+  }
   const embed = embedOf(card.buildPetCard(view));
   assert.match(embed.footer.text, /Lumi Heights 1A/u);
   assert.match(embed.footer.text, /daily visit waiting/u);
-  assert.equal(embed.thumbnail.url, view.links.thumb);
+  assert.equal(embed.thumbnail.url, view.links.thumb);                 // no picture file: the icon
+  assert.equal(embedOf(card.buildPetCard({ ...view, files: [{}] })).thumbnail.url, "attachment://lumi.png"); // her picture when there is one
   const napping = { ...view, snap: { ...snap, pet: { ...snap.pet, task: { kind: "nap", finishesAt: now + 60_000 } } } };
-  const napIds = idsOf(card.buildPetCard(napping));
+  const napMsg = card.buildPetCard(napping);
+  const napIds = idsOf(napMsg);
   assert.ok(napIds.includes(`lumipet:care:${uid}:wake`) && !napIds.includes(`lumipet:care:${uid}:nap`));
-  assert.ok(!napIds.includes(`lumipet:play:${uid}`));                  // no play menu while she's busy
-  assert.match(embedOf(card.buildPetCard(napping)).fields[1].value, /Napping, wakes <t:\d+:R>/u);
+  const playButton = napMsg.components[0].toJSON().components.find((c) => c.custom_id === `lumipet:nav:${uid}:play`);
+  assert.equal(playButton.disabled, true);                             // one thing at a time
+  assert.match(embedOf(napMsg).fields[1].value, /Napping, wakes <t:\d+:R>/u);
+  assert.match(embedOf(card.buildPlay(napping)).description, /busy/u); // the Play screen says why
+  for (const screen of [card.buildFeed, card.buildPlay, card.buildShop]) {
+    assert.ok(idsOf(screen(view)).includes(`lumipet:refresh:${uid}`), "every screen has 🔙 Back");
+  }
+});
+
+test("her picture is HER: a real PNG in her glow or her own colour, with sleepy eyes when she naps", () => {
+  const portrait = require("../../src/lumi/discord/portrait.js");
+  const rose = portrait.portrait({ glow: "rose", outfit: {} });
+  const green = portrait.portrait({ glow: "rose", colour: "#33aa55", outfit: {} });
+  assert.equal(rose.subarray(1, 4).toString(), "PNG");
+  assert.notDeepEqual(rose, green);                                    // her own colour changes the picture
+  assert.match(portrait.svgFor({ glow: "rose", colour: "#33aa55", outfit: {} }), /#33aa55/u);
+  assert.equal(typeof globalThis.self, "undefined");                  // loading the browser files left no global behind
+  assert.equal(portrait.eyesFor({ task: { kind: "nap" } }), "closed");
+  assert.equal(portrait.eyesFor({ hunger: 90, energy: 90, joy: 90 }), "happy");
+  assert.equal(portrait.eyesFor({ hunger: 10, energy: 90, joy: 90 }), "open");
 });
 
 test("the longest ids still fit Discord's 100-character customId limit", () => {
@@ -183,11 +204,33 @@ test("status is a private card with buttons; it counts as a visit but never clai
   assert.match(embedOf(msg).footer.text, /daily visit waiting/u);
 });
 
-test("show posts her card for everyone, with no buttons", async () => {
+test("📣 Show my friends posts a public card with a big picture of her, and the menu says so", async () => {
   const uid = newPlayer(); members.add(uid); adopt(uid);
-  const out = await slash(uid, "show");
-  assert.equal(out.replies[0].flags, undefined);                       // public
-  assert.deepEqual(out.replies[0].components, []);
+  const out = await press(uid, `lumipet:show:${uid}`);
+  assert.match(notice(out.updates[0]), /Shared!/u);                    // the private menu
+  const post = out.replies[0];                                         // the followUp
+  assert.equal(post.flags, undefined);                                 // public
+  assert.equal(post.components, undefined);                            // no buttons for others to press
+  assert.equal(post.files.length, 1);                                  // her picture
+  assert.equal(embedOf(post).image.url, "attachment://lumi.png");      // shown big
+  assert.doesNotMatch(embedOf(post).footer ? embedOf(post).footer.text : "", /SGC/u); // their balance stays private
+});
+
+test("menu screens: Feed, Play, Shop and Settings open from Home, and 🔙 Back returns", async () => {
+  const uid = newPlayer(); members.add(uid); adopt(uid);
+  const feed = await press(uid, `lumipet:nav:${uid}:feed`);
+  assert.ok(idsOf(feed.updates[0]).includes(`lumipet:feed:${uid}`));
+  const play = await press(uid, `lumipet:nav:${uid}:play`);
+  assert.ok(idsOf(play.updates[0]).includes(`lumipet:play:${uid}`));
+  const shop = await press(uid, `lumipet:nav:${uid}:shop`);
+  assert.ok(idsOf(shop.updates[0]).includes(`lumipet:buy:${uid}`));
+  const settings = await press(uid, `lumipet:nav:${uid}:settings`);
+  assert.match(embedOf(settings.updates[0]).title, /Settings/u);
+  assert.ok(idsOf(settings.updates[0]).includes(`lumipet:set:${uid}:remind`));
+  const back = await press(uid, `lumipet:refresh:${uid}`);
+  assert.ok(idsOf(back.updates[0]).includes(`lumipet:show:${uid}`)); // Home again
+  assert.equal(back.updates[0].files.length, 1);                       // with her picture...
+  assert.deepEqual(back.updates[0].attachments, []);                   // ...replacing the old one
 });
 
 // ------------------------------------------------------------------------------------------------ care
@@ -299,22 +342,39 @@ test("while the website is mid-purchase, Discord care waits its turn (409 busy o
   assert.equal(locks.isBusy(uid), false);
 });
 
-test("/lumi-pet feed works like the menu, and its suggestions follow what you type", async () => {
+test("🛒 Shop: asks first, ✅ buys one into her pantry (once per question), and toys go to her toy box", async () => {
   const uid = newPlayer(); members.add(uid); adopt(uid);
-  const ac = fake("autocomplete", uid, { focused: "app" });
-  await run(ac);
-  assert.deepEqual(ac.out.responded.map((c) => c.value), ["apple"]);
-  const all = fake("autocomplete", uid, { focused: "" });
-  await run(all);
-  assert.ok(all.out.responded.length > 5 && all.out.responded.every((c) => c.name.length <= 100));
-  const nobody = fake("autocomplete", "888888888888888888", { focused: "" }); // no Lumi: no suggestions, nothing created
-  await run(nobody);
-  assert.deepEqual(nobody.out.responded, []);
-  assert.equal(save.exists("888888888888888888"), false);
-  setPet(uid, { hunger: 20 });
-  const fed = await slash(uid, "feed", "apple");
-  assert.equal(fed.replies[0].flags, MessageFlags.Ephemeral);
-  assert.match(notice(fed.replies[0]), /ate the 🍎 Apple/u);
+  const ask = fake("select", uid, { customId: `lumipet:buy:${uid}`, values: ["cookie"] });
+  await run(ask);
+  assert.equal(eco.getBalance(uid), 1000);                             // asking is free
+  const yes = idsOf(ask.out.updates[0]).find((x) => x.startsWith("lumipet:by:"));
+  assert.equal(yes, `lumipet:by:${uid}:cookie:${ask.i.id}`);
+  assert.ok(idsOf(ask.out.updates[0]).includes(`lumipet:nav:${uid}:shop`)); // ✖ goes back to the shop
+  const bought = await press(uid, yes);
+  assert.equal(eco.getBalance(uid), 1000 - COOKIE);
+  assert.equal(pet(uid).inventory.cookie, 1);                          // into the pantry, not eaten
+  assert.match(notice(bought.updates[0]), /in her pantry/u);
+  assert.ok(idsOf(bought.updates[0]).includes(`lumipet:buy:${uid}`)); // still in the shop
+  await press(uid, yes);                                               // a second click on the same question
+  assert.equal(eco.getBalance(uid), 1000 - COOKIE);                    // still once
+  const toy = card.shopChoices({ pet: pet(uid), catalog: lumipet.CATALOG }, (id, n) => tuning.scalePrice("pet", id, n)).find((c) => c.item.kind === "toys");
+  if (toy) {
+    const askToy = fake("select", uid, { customId: `lumipet:buy:${uid}`, values: [toy.id] });
+    await run(askToy);
+    await press(uid, `lumipet:by:${uid}:${toy.id}:${askToy.i.id}`);
+    assert.ok(pet(uid).toys.includes(toy.id));                         // in her toy box
+    assert.ok(!card.shopChoices({ pet: pet(uid), catalog: lumipet.CATALOG }, () => 1).some((c) => c.id === toy.id)); // not sold twice
+  }
+});
+
+test("plain /lumi-pet opens Home, privately, with her picture", async () => {
+  const uid = newPlayer(); members.add(uid); adopt(uid);
+  const out = await slash(uid);
+  const msg = out.replies[0];
+  assert.equal(msg.flags, MessageFlags.Ephemeral);
+  assert.equal(msg.files.length, 1);
+  assert.equal(embedOf(msg).thumbnail.url, "attachment://lumi.png");
+  assert.equal(command.commandData().toJSON().options.length, 0);     // no subcommands: the menu does it all
 });
 
 test("the snowflake clock reads Discord's ids correctly", () => {
