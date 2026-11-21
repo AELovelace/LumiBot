@@ -360,8 +360,9 @@ Each phase ends with `npm test` green, `node --check` on new files, a play-throu
 - nginx (§8), Discord redirect, the `.env` keys, a smoke test from outside, and the player guide posted.
 
 **Phase 7: nice-to-haves**
-- Discord DM pet reminders.
-- `/lumi pet` slash command (a status card + link).
+- Discord DM pet reminders. → planned in `lumi-town-discord.md` (D2).
+- `/lumi pet` slash command (a status card + link). → became `/lumi-pet` with full care, in `lumi-town-discord.md` (D1).
+- Channel announcements and a Discord Activity. → `lumi-town-discord.md` (D3–D6).
 - The LLM storyteller via `llmClient`.
 - Lumi faces at LumiBot's casino tables.
 - A Lumi-Town treasury post in the leaderboard channel.
