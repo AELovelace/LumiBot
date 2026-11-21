@@ -1440,7 +1440,7 @@
     });
     if (APP === "lumi-dungeons" || APP === "lumi-garden") settings.push({ key: "town", icon: "🏘", name: "Back to town", hint: "Lumi City: Lumi Heights, the Arcade, the Casino, Lumi Realty and her house", // Out of the tavern's door, or the garden's gate.
       local: function () { openApp("lumi-town", { at: APP === "lumi-garden" ? "garden" : "tavern" }); } });
-    if (!inApp && !framed) settings.push({ key: "install", icon: "⬇", name: "Install " + NAME, hint: "Its own icon on your home screen, opening straight here", local: installApp }); // In a browser tab: each of Lumi's apps can be an app of its own.
+    if (!inApp && !inFrame) settings.push({ key: "install", icon: "⬇", name: "Install " + NAME, hint: "Its own icon on your home screen, opening straight here", local: installApp }); // In a browser tab: each of Lumi's apps can be an app of its own.
     settings.push({ key: "sign-out", icon: "↪", name: "Sign out", hint: "Log out of Lumi-Town on this device", local: signOut }); // LumiBot: the games hub had the only Sign out; now it lives here, last, in every Lumi app's settings
     return settings;
   }
@@ -2681,7 +2681,11 @@
 
   // ---- Touch: the arrow pad and the press button (templates/games/lumi-pet.html), and installing this app (each of Lumi's three has its own manifest: web/app.py lumi_manifest).
   const touchy = window.matchMedia("(pointer: coarse), (max-width: 700px)"); // A touch screen, or a phone-sized window.
-  const framed = window.top !== window; // Inside Media's game layer: the frame around it is the app, not this page.
+  // LumiBot: there is no Media game layer, so `framed` (hand game swaps to the frame around us) is always false and
+  // openApp() always navigates. Inside the Discord Activity the frame around us is Discord, which ignores those
+  // messages, so going into town did nothing (Doll, 2026-11-20). `inFrame` only hides "Install" inside any frame.
+  const framed = false;
+  const inFrame = window.top !== window;
   const inApp = window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || window.navigator.standalone === true;
   let installOffer = null; // The browser's install prompt, once it gives us one.
 
