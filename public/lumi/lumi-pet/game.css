@@ -543,3 +543,19 @@
    panel opens only for a list (the lift, Lumi Realty's counters, Go to…), and her words are in a bubble over her head
    (game.js drawTownBits). Her bubble sits just over her: she's smaller in town than in her flat. */
 .lp-room[data-town]:not([data-town="map"]) .lp-guide { bottom: calc(50% + (250 - var(--gy, 430) + 92 * var(--gs, 1)) * var(--u)); }
+
+/* Lumi Realty's preview card (2026-11-20, Doll: "we need previews for what we're buying"): while a house style, a yard
+   piece or a plot is highlighted in the town's panel, her own plot is drawn here with that thing put on it (game.js
+   drawEstatePreview, estate-art.js plot()). Nothing is bought or changed by looking. Under her speech bubble (z-index 2 < 3),
+   so "Choose it again to buy" is never hidden; top middle on a narrow room, off to the left on a wide one (she's in the middle). */
+.lp-estate-card { position: absolute; z-index: 2; top: 17%; left: 50%; transform: translateX(-50%); width: min(40cqw, 18rem); margin: 0; padding: .4rem .4rem .3rem; /* sits in the clear middle strip */
+  border: 1px solid #ff8ecb99; border-radius: .9rem; background: #0b0618e6; box-shadow: 0 0 24px #ff2e9733, inset 0 0 18px #0008; pointer-events: none; } /* just a picture: presses go through to the room */
+.lp-estate-card svg { display: block; width: 100%; height: auto; border-radius: .6rem; background: #120a24; } /* the plot, drawn at its city size */
+.lp-estate-card figcaption { margin-top: .3rem; font-size: .68rem; line-height: 1.3; text-align: center; color: #ffe9f5; } /* what's shown, and what it costs */
+.lp-estate-card figcaption b { color: #ffdc83; font-weight: 700; } /* the thing's name in gold */
+.lp-estate-card .lp-tw-glow { animation: lp-tw-glow 2.6s ease-in-out infinite alternate; } /* its lights breathe like the city's */
+.lp-estate-card .lp-tw-pet { fill: var(--pet-glow, #ff8ecb); } /* lights that take Lumi's own glow colour */
+.lp-estate-card .lp-tw-pet-line { stroke: var(--pet-glow, #ff8ecb); }
+@container (min-width: 900px) { .lp-estate-card { left: 3%; transform: none; } } /* a wide room: beside her, not on top of her */
+@media (max-width: 700px) { .lp-estate-card { width: min(58cqw, 15rem, 60cqh); top: 10%; } .lp-estate-card figcaption { font-size: .62rem; } } /* a phone: wider, higher, and never taller than the short room above an open list */
+@media (prefers-reduced-motion: reduce) { .lp-estate-card .lp-tw-glow { animation: none; } }

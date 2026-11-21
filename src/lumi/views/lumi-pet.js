@@ -114,6 +114,10 @@ function body(h, app) {
   </div>
   <div class="lp-caption"><span class="lp-dot" aria-hidden="true"></span><span id="lp-state">Settling in</span></div>
   <p class="lp-guide" id="lp-guide" aria-hidden="true" hidden></p>
+  <figure class="lp-estate-card" id="lp-estate-card" hidden>
+    <svg id="lp-estate-svg" viewBox="-8 -82 272 206" aria-hidden="true"></svg>
+    <figcaption id="lp-estate-cap"></figcaption>
+  </figure>
   <nav class="lp-things" id="lp-things" aria-label="Things in the room" hidden></nav>
   <button type="button" class="lp-way lp-way-left" id="lp-way-left" hidden><span aria-hidden="true">◀</span><span data-way-name></span></button>
   <button type="button" class="lp-way lp-way-right" id="lp-way-right" hidden><span data-way-name></span><span aria-hidden="true">▶</span></button>

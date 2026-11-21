@@ -52,6 +52,8 @@
   // Lumi City (2026-11-19): ?at=house-<id> is the house on someone's plot, their second home (its own rooms); her own
   // house is HOME2: her rooms as she decorated them there (lumipet estate.rooms), decorated just like her flat.
   const AT_HOUSE = APP === "lumi-pet" && /^house-\d{1,25}$/.test(new URLSearchParams(location.search).get("at") || "");
+  const BACK_AT = APP === "lumi-pet" ? (function (b) { return /^[a-z0-9-]{1,40}$/.test(b) ? b : null; })(new URLSearchParams(location.search).get("back") || "") : null; // a visit's way back out into Lumi City (a plot's or place's id, e.g. plot-l-1-1 or hall-l-3), from the address; tidy ids only
+  function wayOut() { return BACK_AT || G.store.get("visit-back", "home"); } // where leaving a house or a friend's flat puts her: the address's &back=, else the old note, else her own lobby
   let VISIT = APP === "lumi-pet" ? (function (m) { return m ? m[1] : null; })(/^(?:visit|house)-(\d{1,25})$/.exec(new URLSearchParams(location.search).get("at") || "")) : null;
   let HOME2 = false; // in her own house (found out when its door answers "own")
   let roomAt = Ru ? (VISIT ? Ru.clean({ room: "bedroom", at: 1 }) : Ru.clean(G.store.get("room-at", null))) : null, roomCard = null, lastThings = ""; // (lastThings: what the lower bar last drew; a visit starts inside the front door)
@@ -129,7 +131,7 @@
     where = where || {}; // at: where that page starts (Lumi Town: a place); back: the town place to come back to when it closes (media.js games.back).
     if (String(slug).indexOf("casino:") === 0) { location.href = (window.LUMI_CASINO || "/games/") + String(slug).slice(7); return; } // LumiBot: a Casino table is LumiBot's own casino game (Lumi Games app)
     if (framed) window.parent.postMessage({ type: "mnemerynne-game-open", slug: slug, at: where.at || null, back: where.back || null }, location.origin);
-    else location.href = slug === "retro" ? window.LUMI_PAGES : window.LUMI_PAGES + slug + (where.at ? "?at=" + encodeURIComponent(where.at) : ""); // On its own the browser's Back is the way back (drawTown keeps the town's address current). Retro is Media's own page.
+    else location.href = slug === "retro" ? window.LUMI_PAGES : window.LUMI_PAGES + slug + (where.at ? "?at=" + encodeURIComponent(where.at) + (where.back && slug === "lumi-pet" ? "&back=" + encodeURIComponent(where.back) : "") : ""); // On its own the browser's Back is the way back (drawTown keeps the town's address current). Retro is Media's own page. A visit carries its way back out in the address (&back=): G.store is per page, so the town's note never reached Lumi Pet (Doll, 2026-11-20).
   }
 
   function adventure() { // Her room's door (Doll's design, 2026-11-11; Lumi Town 2026-11-12): she trots off through it, out into Lumi Town.
@@ -137,7 +139,7 @@
     room.dataset.leaving = "true"; // game.css: she trots towards the door and fades.
     say(HOME2 ? "Out into the yard! 🏡" : "Off into town! 🏘");
     G.sound.unlock(); [523.25, 659.25, 783.99].forEach(function (f, i) { G.sound.tone(f, 0.14, i * 0.09, 0.18); }); // Three little steps up: off she goes.
-    const out = HOME2 ? G.store.get("visit-back", "home") : snap.pet.home_town === "right" ? "lobby-r" : "lobby-l"; // her house's front door opens onto its plot (the town said which); her flat's onto Lumi Heights' lobby (Lumi City, 2026-11-19)
+    const out = HOME2 ? wayOut() : snap.pet.home_town === "right" ? "lobby-r" : "lobby-l"; // her house's front door opens onto its plot (the town said which); her flat's onto Lumi Heights' lobby (Lumi City, 2026-11-19)
     setTimeout(function () { openApp("lumi-town", { at: out }); }, 700); // Long enough to see her go.
     setTimeout(function () { delete room.dataset.leaving; }, 2500); // Back in place if this page is still showing (a refused swap, or the browser's Back).
   }
@@ -254,8 +256,8 @@
   }
 
   function visit(kind, host, back, name) { // To someone's flat ("visit-<id>") or house ("house-<id>"): their doorstep, and the way back here afterwards.
-    G.store.set("visit-back", back);                                     // Lumi Pet walks her back out here (leaveVisit)
-    townOpen("lumi-pet", null, kind === "house" ? "Off to " + name + "'s house! 🏡" : "Knock knock at " + name + "'s door! 🚪", kind + "-" + host);
+    G.store.set("visit-back", back);                                     // (the old note, for a page still on the old script)
+    townOpen("lumi-pet", back, kind === "house" ? "Off to " + name + "'s house! 🏡" : "Knock knock at " + name + "'s door! 🚪", kind + "-" + host);
   }
 
   function useInside(t) { // Use a thing inside: play a cabinet, a stall, the lift, a door...
@@ -547,7 +549,16 @@
   }
 
   // ---- The town's list -------------------------------------------------------------------------------------------
-  function backRow(words) { return { key: "list-back", icon: "‹", name: words || "Back", hint: "Escape, Back or B does it too", local: function () { townList = null; marketStall = null; marketDrawer = null; picks[tab] = 0; } }; }
+  function backRow(words, to) { // The list's way back: up to the list it came from (`to`), or closed when it has none.
+    return { key: "list-back", icon: "‹", name: words || "Back", hint: to ? "Back to the last list" : "Escape, Back or B does it too", local: function () {
+      townList = to || null; picks[tab] = 0; pendingConfirm = null;      // up one list (or shut); a half-asked purchase is forgotten
+      if (!to) { marketStall = null; marketDrawer = null; }              // leaving the panel: the Market forgets its stall
+    } };
+  } // end of backRow
+
+  function deeper(list, next) { // Open the list `next` from inside `list`, remembering the way back to it (Doll, 2026-11-20: Back used to shut everything).
+    next.back = list; townList = next; picks[tab] = 0; pendingConfirm = null; // its Back row returns here
+  } // end of deeper
 
   function townRows() { // What the panel offers in Lumi City: a list that's open (the phrases, the lift, an office counter...), else the town's own rows.
     if (chatOn) return Tw.chatRows(chatCtx());
@@ -562,6 +573,8 @@
       things.forEach(function (t) { out.push({ key: "thing-" + t.id, icon: t.icon, name: t.name, hint: t === nearThing ? "Right here · Enter" : t.hint, local: function () { if (t === nearThing) useInside(t); else goTo(t, true); } }); });
     } else if (cityMap) {
       if (nearThing) { const w = thingWords(nearThing); out.push({ key: "use", icon: w.icon, name: w.name, hint: w.hint, local: useNear }); } // out in the city: whatever's in reach first
+      if (myLot()) out.push({ key: "decorate", icon: "🎨", name: "Decorate my house", hint: "House style and yard things · a preview shows before you buy", // (Doll, 2026-11-20: it used to hide three lists deep in Lumi Realty)
+        local: function () { townList = { kind: "decorate" }; picks[tab] = 0; say("Ooh, let's make it pretty! Pick something and I'll show you. 🎨"); } }); // opens the decorate list from anywhere in the city
       out.push({ key: "goto", icon: "🧭", name: "Go to…", hint: "Home, the office, a place, a friend's house: she walks there", local: function () { townList = { kind: "goto" }; picks[tab] = 0; say("Where shall we go?"); } });
       out.push({ key: "where", icon: "📍", name: "Where am I?", hint: streetName(), local: function () { say("We're on " + streetName() + "." + (myLot() ? " Home is " + myLot().address + "." : "")); } });
       if (cityData && !cityData.me.home_town && !myLot()) out.push({ key: "home-town", icon: "🏡", name: "Choose where to live", hint: "LefTown or Right-City", local: function () { townList = { kind: "home-town" }; picks[tab] = 0; } });
@@ -660,12 +673,13 @@
     if (!cityData) return [backRow()];
     if (list.kind === "land") { // office land: cheapest first; her own plot first if she has one
       const out = [];
-      if (mineLot) out.push({ key: "my-plot", icon: "🏡", name: "My plot: " + mineLot.address, hint: mineData && mineData.list_price ? "For sale at " + money(mineData.list_price) + " SGC" : "List it, sell it, or change the house", local: function () { townList = { kind: "plot", price: null }; picks[tab] = 0; } });
+      if (mineLot) out.push({ key: "my-plot", icon: "🏡", name: "My plot: " + mineLot.address, hint: mineData && mineData.list_price ? "For sale at " + money(mineData.list_price) + " SGC" : "List it, sell it, or decorate it", local: function () { deeper(list, { kind: "plot", price: null }); }, estate: { mine: true } }); // (previews her plot as it stands)
       const free = cityData.lots.filter(function (l) { return !l.owner; }).sort(function (a, b) { return plotSgc(a) - plotSgc(b) || (a.id < b.id ? -1 : 1); });
       free.slice(0, 40).forEach(function (l) {
         const lot = lotOnMap(l.id);
         if (!lot) return;
-        const row = { key: "buy-" + l.id, icon: l.frontage === "avenue" ? "🌟" : "🪧", name: lot.address, hint: money(plotSgc(l)) + " SGC" + (l.frontage === "avenue" ? " · on the avenue" : "") + (mineLot ? " · you have a home already" : "") };
+        const row = { key: "buy-" + l.id, icon: l.frontage === "avenue" ? "🌟" : "🪧", name: lot.address, hint: money(plotSgc(l)) + " SGC" + (l.frontage === "avenue" ? " · on the avenue" : "") + (mineLot ? " · you have a home already" : ""),
+                      estate: { fresh: true, caption: "Comes with the free Starter Cottage" } }; // preview: what a new plot looks like on day one
         if (mineLot) row.note = "One plot each: sell yours first to buy another.";
         else row.local = sure(row.key, "Buy " + lot.address + " for " + money(plotSgc(l)) + " SGC? Choose it again to buy.", { action: "buy", plot: l.id });
         out.push(row);
@@ -678,7 +692,8 @@
       sold.forEach(function (l) {
         const lot = lotOnMap(l.id), mine = l.owner.id === meId();
         if (!lot) return;
-        const row = { key: "listing-" + l.id, icon: mine ? "🏡" : "📌", name: lot.address, hint: money(l.list_price) + " SGC from " + (mine ? "you" : l.owner.name) + " · suggested " + money(plotSgc(l)) };
+        const row = { key: "listing-" + l.id, icon: mine ? "🏡" : "📌", name: lot.address, hint: money(l.list_price) + " SGC from " + (mine ? "you" : l.owner.name) + " · suggested " + money(plotSgc(l)),
+                      estate: mine ? { mine: true } : { fresh: true, caption: "Yours with the Starter Cottage (their house and yard things stay theirs)" } }; // buying a listing resets the house (lumicity buy_listing)
         if (mine) row.note = "That's your own listing."; else if (mineLot) row.note = "One plot each: sell yours first to buy another.";
         else row.local = sure(row.key, "Buy " + lot.address + " from " + l.owner.name + " for " + money(l.list_price) + " SGC? Choose it again to buy.", { action: "buy_listing", plot: l.id, price: l.list_price, version: l.version });
         out.push(row);
@@ -697,39 +712,52 @@
       const back = Math.floor(worth * L.sell_office + 0.5); // LumiBot: the same exact SGC the server pays (lumicity sell)
       out.push({ key: "plot-sell", icon: "💰", name: "Sell it to the office: " + money(back) + " SGC", hint: "At once, for half the suggested price · the house and yard things stay yours",
                  local: sure("plot-sell", "Sell " + mineLot.address + " to Lumi Realty for " + money(back) + " SGC? Choose it again.", { action: "sell" }) });
-      out.push({ key: "plot-styles", icon: "🏠", name: "Change the house", hint: "Thirty styles", local: function () { townList = { kind: "styles" }; picks[tab] = 0; } });
-      out.push({ key: "plot-yard", icon: "🌷", name: "Decorate the yard", hint: "Fence, mailbox, path, lamp and ornament", local: function () { townList = { kind: "yard" }; picks[tab] = 0; } });
-      return out.concat([backRow()]);
+      out.push({ key: "plot-decorate", icon: "🎨", name: "Decorate my house", hint: "House style, fence, mailbox, path, lamp and ornament", local: function () { deeper(list, { kind: "decorate" }); }, estate: { mine: true } }); // one list for the house and the yard (Doll, 2026-11-20)
+      return out.concat([backRow(null, list.back)]);
     }
-    if (list.kind === "styles") return (cat.styles || []).map(function (s) {
-      const owned = me.styles.indexOf(s.id) >= 0 || !s.price, up = mineData && mineData.style === s.id;
-      const row = { key: "style-" + s.id, icon: up ? "✓" : owned ? s.icon : "✧", name: s.name, hint: up ? "My house now" : owned ? "Yours · Enter puts it up" + (mineLot ? "" : " (once you own a plot)") : money(price("city", s.id, s.price)) + " SGC · " + s.hint };
+    if (list.kind === "styles") return (cat.styles || []).map(function (s) { // every house style; the highlighted one is previewed on her plot (drawEstatePreview)
+      const owned = me.styles.indexOf(s.id) >= 0 || !s.price, up = mineData && mineData.style === s.id; // hers to use? up on her plot now?
+      const cost = money(price("city", s.id, s.price)) + " SGC";                       // what it costs, in SGC (same formula as the server)
+      const row = { key: "style-" + s.id, icon: up ? "✓" : owned ? s.icon : "✧", name: s.name, hint: up ? "My house now" : owned ? "Yours · Enter puts it up" + (mineLot ? "" : " (once you own a plot)") : cost + " · " + s.hint,
+                    estate: { style: s.id, caption: up ? "My house now" : owned ? "Yours · Enter puts it up" : cost } }; // preview: her plot with this house on it
       if (up) row.note = s.name + " is my house already!";
       else if (owned) { if (mineLot) row.local = function () { estate({ action: "style_set", item: s.id }, "Ta-da! A " + s.name + "! 🏡"); }; else row.note = "Buy a plot first, then the house goes up on it."; }
-      else row.local = sure(row.key, "Buy the " + s.name + " for " + money(price("city", s.id, s.price)) + " SGC? Choose it again.", { action: "style_buy", item: s.id });
+      else row.local = sure(row.key, "Buy the " + s.name + " for " + cost + "? Choose it again.", { action: "style_buy", item: s.id });
       return row;
-    }).concat([backRow()]);
-    if (list.kind === "yard") return (cat.slots || []).map(function (slot) {
-      const put = mineData && mineData.yard ? mineData.yard[slot.id] : "", item = (cat.yard[slot.id] || []).find(function (i) { return i.id === put; });
-      return { key: "slot-" + slot.id, icon: slot.icon, name: slot.name + ": " + (item ? item.name : "nothing yet"), hint: "Enter to choose", local: function () { townList = { kind: "yard-slot", slot: slot.id }; picks[tab] = 0; } };
-    }).concat([{ key: "yard-capsule", icon: "🎁", name: cat.capsule.name, hint: money(price("city", "capsule", cat.capsule.price)) + " SGC · yard treasures you can only win", local: function () { townList = { kind: "capsule" }; picks[tab] = 0; } }, backRow()]);
-    if (list.kind === "yard-slot") {
+    }).concat([backRow(null, list.back)]);
+    if (list.kind === "yard" || list.kind === "decorate") { // the yard's five spots (and, decorating, the house first), then the Keepsake Capsule
+      const out = [];
+      if (list.kind === "decorate") { // the house itself: its style
+        const style = (cat.styles || []).find(function (s) { return s.id === (mineData && mineData.style); }) || cat.styles[0]; // what's up now (the starter when unset)
+        out.push({ key: "deco-house", icon: "🏠", name: "House: " + style.name, hint: "Thirty styles · Enter to choose", local: function () { deeper(list, { kind: "styles" }); }, estate: { mine: true } });
+      }
+      (cat.slots || []).forEach(function (slot) { // one row per yard spot, naming what's out there now
+        const put = mineData && mineData.yard ? mineData.yard[slot.id] : "", item = (cat.yard[slot.id] || []).find(function (i) { return i.id === put; });
+        out.push({ key: "slot-" + slot.id, icon: slot.icon, name: slot.name + ": " + (item ? item.name : "nothing yet"), hint: "Enter to choose", local: function () { deeper(list, { kind: "yard-slot", slot: slot.id }); }, estate: { mine: true } });
+      });
+      out.push({ key: "yard-capsule", icon: "🎁", name: cat.capsule.name, hint: money(price("city", "capsule", cat.capsule.price)) + " SGC · yard treasures you can only win", local: function () { deeper(list, { kind: "capsule" }); } });
+      return out.concat([backRow(null, list.back)]);
+    }
+    if (list.kind === "yard-slot") { // one yard spot: clear it, or every piece for it (owned, for sale, or capsule-only); the highlighted one is previewed
       const slot = list.slot, put = mineData && mineData.yard ? mineData.yard[slot] : "";
-      const out = [{ key: "yard-none", icon: "○", name: "Nothing here", hint: "Clear this spot", local: function () { if (mineLot) estate({ action: "yard_set", slot: slot, item: "" }, "Cleared!"); else say("Buy a plot first!"); } }];
+      const out = [{ key: "yard-none", icon: "○", name: "Nothing here", hint: "Clear this spot", estate: { slot: slot, item: "", caption: "This spot left empty" },
+                     local: function () { if (mineLot) estate({ action: "yard_set", slot: slot, item: "" }, "Cleared!"); else say("Buy a plot first!"); } }];
       (cat.yard[slot] || []).forEach(function (i) {
-        const owned = me.yard.indexOf(i.id) >= 0, here = put === i.id;
-        const row = { key: "yard-" + i.id, icon: here ? "✓" : owned ? i.icon : i.price ? "✧" : "🔒", name: i.name, hint: here ? "In the yard now" : owned ? "Yours · Enter puts it out" : i.price ? money(price("city", i.id, i.price)) + " SGC · " + i.hint : i.rarity + " · only from the " + cat.capsule.name };
+        const owned = me.yard.indexOf(i.id) >= 0, here = put === i.id, cost = money(price("city", i.id, i.price)) + " SGC"; // hers? out now? its SGC price
+        const row = { key: "yard-" + i.id, icon: here ? "✓" : owned ? i.icon : i.price ? "✧" : "🔒", name: i.name, hint: here ? "In the yard now" : owned ? "Yours · Enter puts it out" : i.price ? cost + " · " + i.hint : i.rarity + " · only from the " + cat.capsule.name,
+                      estate: { slot: slot, item: i.id, caption: here ? "In the yard now" : owned ? "Yours · Enter puts it out" : i.price ? cost : i.rarity + " · " + cat.capsule.name + " only" } }; // preview: her yard with this piece out
         if (here) row.note = i.name + " is out already.";
         else if (owned) row.local = function () { if (mineLot) estate({ action: "yard_set", slot: slot, item: i.id }, i.name + " is out! 🌷"); else say("Buy a plot first, then the yard is yours to decorate."); };
-        else if (i.price) row.local = sure(row.key, "Buy the " + i.name + " for " + money(price("city", i.id, i.price)) + " SGC? Choose it again.", { action: "yard_buy", item: i.id });
+        else if (i.price) row.local = sure(row.key, "Buy the " + i.name + " for " + cost + "? Choose it again.", { action: "yard_buy", item: i.id });
         else row.note = i.name + " only comes from the " + cat.capsule.name + ".";
         out.push(row);
       });
-      return out.concat([backRow("Back to the yard")]);
+      return out.concat([backRow(list.back ? "Back to the yard" : null, list.back)]);
     }
     if (list.kind === "capsule") return [
       { key: "capsule-turn", icon: "🎁", name: "Turn the " + cat.capsule.name, hint: money(price("city", "capsule", cat.capsule.price)) + " SGC · a repeat pays back half its value", local: sure("capsule-turn", "Turn it for " + money(price("city", "capsule", cat.capsule.price)) + " SGC? Choose it again.", { action: "capsule" }) },
-      backRow()];
+      { key: "capsule-peek", icon: "🔒", name: "What's inside?", hint: "Every 🔒 piece in the yard lists: highlight one there to see it in your yard", note: "The 🔒 pieces in each yard spot's list come from here. Highlight one to see it in your yard!" },
+      backRow(null, list.back)];
     return [backRow()];
   }
 
@@ -1006,7 +1034,7 @@
     room.dataset.leaving = "true";
     say(visitView ? "Bye bye! Thanks for having me~ 👋" : "Back to town!");
     G.sound.unlock(); [783.99, 659.25, 523.25].forEach(function (f, i) { G.sound.tone(f, 0.12, i * 0.09, 0.16); });
-    setTimeout(function () { openApp("lumi-town", { at: G.store.get("visit-back", "home") }); }, 700); // back out to where she came from: the hallway outside their flat, or the street by their house
+    setTimeout(function () { openApp("lumi-town", { at: wayOut() }); }, 700); // back out to where she came from: the hallway outside their flat, or the street by their house
     setTimeout(function () { delete room.dataset.leaving; }, 2500);
   }
 
@@ -1014,7 +1042,7 @@
     if (!VISIT || !visitView) return;
     visitView = null; houseFolk = []; drawHouseFolk();
     say("Time to go home! 👋");
-    setTimeout(function () { openApp("lumi-town", { at: G.store.get("visit-back", "home") }); }, 1500);
+    setTimeout(function () { openApp("lumi-town", { at: wayOut() }); }, 1500);
   }
 
   function knockRows() { // Someone at her own door: let them in, or not now.
@@ -1655,12 +1683,40 @@
     });
   }
 
-  function drawTownBits() { // Lumi City laid out like her flat (Doll, 2026-11-19): the lower bar of what's here, her bubble, the right-hand panel only while a list is open.
+  function drawTownBits(pick) { // Lumi City laid out like her flat (Doll, 2026-11-19): the lower bar of what's here, her bubble, the right-hand panel only while a list is open.
     const guide = $("lp-guide"), placed = Boolean(snap) && Boolean(townAt ? insideAt : cityAt); // her bubble element; placed = she is standing somewhere in the city
     $("gm").dataset.card = String(Boolean(townList) || chatOn);            // game.css: the panel shows only for a list (the lift, Go to…, an office counter, the phrases)
     guide.hidden = !placed; guide.textContent = $("lp-message").textContent; // her words, over her head
     drawTownBar(placed); // the lower bar (hidden until she is placed)
+    drawEstatePreview(townList && !chatOn && pick ? pick : null); // Lumi Realty's preview card, for the highlighted row of an open list
   } // end of drawTownBits
+
+  let lastEstate = ""; // what the preview card last drew (one string), so it's only redrawn when the highlighted thing changes
+  function estateLook(change) { // Her plot as the preview card shows it: {style, yard} now, with the highlighted row's change put on top. Pure.
+    const mine = myLot() ? lotData(myLot().id) : null;                     // her plot's row from GET city (null: no plot yet)
+    const look = change.fresh || !mine ? { style: "starter-cottage", yard: {} } : { style: mine.style || "starter-cottage", yard: Object.assign({}, mine.yard || {}) }; // a new plot is bare with the starter; else hers as it stands
+    if (change.style) look.style = change.style;                          // a house style being looked at
+    if (change.slot) { if (change.item) look.yard[change.slot] = change.item; else delete look.yard[change.slot]; } // a yard piece being looked at ("" = the spot cleared)
+    return look;                                                          // {style, yard}
+  } // end of estateLook
+
+  function drawEstatePreview(row) { // The preview card (Doll, 2026-11-20): her plot drawn with what's highlighted put on it. Nothing is bought or changed by looking.
+    const card = $("lp-estate-card"), Es = window.LumiPetEstateArt;        // the card in the room, and the house drawings (estate-art.js)
+    if (!card) return;                                                    // (an old page without the card: nothing to do)
+    const change = row && row.estate;                                     // only rows that say what to preview have one
+    if (!change || !Es || !cityData) { card.hidden = true; lastEstate = ""; return; } // nothing to show: tuck the card away
+    const look = estateLook(change), night = sceneNow().night;            // what to draw, and whether it's dark out
+    const name = snap && snap.pet ? snap.pet.name || "Lumi" : "Lumi";     // her nameplate (escaped inside estate-art.js)
+    const caption = change.caption || (myLot() ? myLot().address : "");   // the words under the picture
+    const sig = JSON.stringify([look, night, name, row.name, caption]);   // everything the card shows
+    if (sig === lastEstate) return;                                       // unchanged: leave it be
+    lastEstate = sig; card.hidden = false;                                // show it
+    const pavement = '<rect x="-8" y="80" width="272" height="44" fill="' + (night ? "#1a1430" : "#241c3e") + '"/><rect x="-8" y="80" width="272" height="2" fill="#3a3450"/>'; // the pavement in front, where a garden path runs out to
+    $("lp-estate-svg").innerHTML = pavement + Es.plot({ x: 0, y: 0, w: 256, h: 80 }, { style: look.style, yard: look.yard, night: night, name: name }); // one lot at its city size (authored shapes; the name is escaped there)
+    const cap = $("lp-estate-cap"), title = document.createElement("b");  // the caption: the thing's name in gold, then the note
+    title.textContent = "Preview · " + row.name;                          // text only: nothing here is read as markup
+    cap.replaceChildren(title, document.createTextNode(caption ? " · " + caption : "")); // e.g. "Preview · Rose Villa · 2,400 SGC"
+  } // end of drawEstatePreview
 
   function drawTownBar(on) { // Lumi City's lower bar: what's in reach, the other things here (inside) or the town's rows (out in the city), each with her bubble.
     const bar = $("lp-things"); // the lower bar element (shared with her flat)
@@ -2407,7 +2463,7 @@
     drawOutfit(TABS[tab] === "closet" && pick && pick.wear);
     drawDungeon();
     if (APP === "lumi-pet") drawRoomBits(rooming); // After the dungeon's keys: room mode's own.
-    if (TOWN) drawTownBits();                      // Lumi City's: the lower bar, her bubble, the panel only for a list
+    if (TOWN) drawTownBits(pick);                  // Lumi City's: the lower bar, her bubble, the panel only for a list, Lumi Realty's preview card
     drawGarden();
     drawSkills();
     drawAlbum();
@@ -2588,7 +2644,7 @@
   }
   G.onAction(onKey, { directEnter: function () { return true; } });
   function backStep() { // Escape, Backspace, a pad's B: one step back inside the game (true), or nothing to go back from (false: leave the game).
-    if (chatOn || flatsOn || bookOn || (TOWN && townList)) { chatOn = false; flatsOn = false; bookOn = false; bookPending = null; if (TOWN && townList) { townList = null; marketStall = null; marketDrawer = null; } picks[tab] = 0; lastList = ""; render(); return true; } // The phrases, or the list of flats: back to the places (or the room).
+    if (chatOn || flatsOn || bookOn || (TOWN && townList)) { chatOn = false; flatsOn = false; bookOn = false; bookPending = null; if (TOWN && townList) { pendingConfirm = null; townList = townList.back || null; if (!townList) { marketStall = null; marketDrawer = null; } } picks[tab] = 0; lastList = ""; render(); return true; } // The phrases, or the list of flats: back to the places (or the room); a town list opened from another goes back up to it.
     return roomOn() && closeCard(); // Room mode: a card closes.
   }
   if (G.onBack) G.onBack(backStep);

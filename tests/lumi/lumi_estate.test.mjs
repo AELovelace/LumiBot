@@ -95,3 +95,14 @@ test("the drawing file stays small enough for the TV boxes", () => {
   const size = statSync(new URL(ART_PATH, import.meta.url)).size;
   assert.ok(size < 140 * 1024, "estate-art.js is " + size + " bytes");
 });
+
+test("Lumi Realty's preview card frame (viewBox -8 -82 272 206) holds every house and every yard thing", () => { // (2026-11-20: the card in views/lumi-pet.js draws one lot at 0,0 256x80)
+  const view = readFileSync(new URL("../../src/lumi/views/lumi-pet.js", import.meta.url), "utf8"); // the page's markup
+  assert.match(view, /id="lp-estate-card"[\s\S]*viewBox="-8 -82 272 206"/, "The page has the preview card with this frame");
+  const [x0, y0, w, h] = [-8, -82, 272, 206];                         // the frame
+  const LOT = { x: 0, y: 0, w: 256, h: 80 };                          // the lot, where game.js drawEstatePreview puts it
+  const spots = (svg) => [...svg.matchAll(/ (x|cx|x1|x2|y|cy|y1|y2)="(-?[\d.]+)"/g)].map((m) => [m[1][m[1].length - 1] === "x" || m[1].startsWith("x") ? "x" : "y", Number(m[2])]); // every placed x and y
+  const inside = (svg, what) => { for (const [axis, v] of spots(svg)) assert.ok(axis === "x" ? v >= x0 && v <= x0 + w : v >= y0 && v <= y0 + h, what + " has " + axis + " " + v + " outside the card"); };
+  for (const s of E.styles) inside(Es.plot(LOT, { style: s.id, yard: {}, name: "Lumi" }), s.id); // every house
+  for (const slot of SLOTS) for (const it of E.yard[slot]) inside(Es.plot(LOT, { style: "starter-cottage", yard: { [slot]: it.id }, name: "Lumi" }), it.id); // every yard thing
+});

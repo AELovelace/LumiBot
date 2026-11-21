@@ -5,7 +5,7 @@ Lumi-Town is Lumi Pet and the Lumi minigames (ported from erinne) at **`/lumipet
 Developers: the internal API is `src/lumi/CONTRACT.md`; the plan is `docs/plans/lumi-games-port.md`.
 
 Status (2026-11-19): **fully ported, waiting for Doll's test pass** (branch `feat/lumi-town`, from erinne `43a24f4`).
-`npm test` runs 543 tests, including an end-to-end smoke (`tests/lumi/e2e_smoke.test.mjs`) that plays every game
+`npm test` runs 544 tests, including an end-to-end smoke (`tests/lumi/e2e_smoke.test.mjs`) that plays every game
 through the real server with three fake players and checks every SGC move.
 
 ## The games
@@ -26,6 +26,31 @@ and use its buildings: the **Arcade** (Yarn Pop, Lumi Conga, Teacup Tower, Prism
 (`/games/slots`, `blackjack`, `holdem`, `horseracing`: Momiji Casino, its own Discord login). The **Retro café** is closed.
 **Sign out** is the last row of the settings list in Lumi Pet (and in Dungeons and the Garden): choose it twice and it
 POSTs `/lumipet/auth/logout` (ends the session, clears `lumi_sess`) and goes to the Sign in page.
+
+### Decorating your plot (Lumi City)
+
+Once you own a plot (buy one at the **Land for sale** counter in Lumi Realty, Downtown):
+
+- **Decorate my house** 🎨 is on the lower bar anywhere out in Lumi City. It opens one list:
+  - the **House** style (30 styles)
+  - the five yard spots: fence, mailbox, path, lamp, ornament
+  - the Keepsake Capsule.
+- The same list is in the office too: Land for sale → **My plot** → **Decorate my house**.
+- **Preview card** (added 2026-11-20): in the Realty lists, the highlighted row is drawn on your own plot in a card:
+  - top-left on a wide screen, top-middle on a phone
+  - for house styles, yard pieces (🔒 capsule-only ones too), land for sale (a new plot comes with the Starter
+    Cottage) and neighbours' listings
+  - the caption shows the price in SGC, "Yours", or the capsule rarity
+  - looking never buys anything.
+- Buying still asks twice: highlight, Enter ("Buy … for N SGC? Choose it again."), Enter again. Things you own go up
+  with one Enter, and a style or yard piece you buy is kept even if you sell the plot.
+- **Back** and **Escape** go up one list (yard spot → decorate list → My plot → Land for sale), not all the way out.
+- **Leaving a house** (yours or a friend's) puts you back on that plot's doorstep, and leaving a friend's flat puts you
+  back in their hallway (fixed 2026-11-20: everyone used to land outside Lumi Heights West). The town page passes the
+  way back in the address, `lumi-pet?at=house-<id>&back=plot-l-1-3`, because `G.store` notes are per page and Lumi
+  Pet couldn't read the town's.
+- Code: `public/lumi/lumi-pet/game.js` (`listRows` decorate/styles/yard-slot, `drawEstatePreview`), the card's markup
+  in `src/lumi/views/lumi-pet.js`, its style at the end of `game.css`, drawings in `estate-art.js`.
 
 **Not ported:** StickBob Runner and erinne's casino (LumiBot's casino is used instead), erinne's TV, remote and couch modes, web push
 reminders (planned as Discord DMs later), and the live AI storyteller (the tales library tells the stories).

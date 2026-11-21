@@ -105,6 +105,7 @@ test("pages render with the boot data and erinne's script order; aliases redirec
   assert.ok(scripts.indexOf("lumi-pet/estate-art.js") < scripts.indexOf("lumi-pet/city-map.js")); // kit order kept
   assert.ok(scripts.includes("lumi-pet/town-inside.js") && scripts.includes("lumi-pet/walker.js") && scripts.includes("gamepad.js"));
   assert.doesNotMatch(page.body, /<script>(?!<)/);                    // no inline JavaScript at all
+  assert.match(page.body, /<figure class="lp-estate-card" id="lp-estate-card" hidden>/); // Lumi Realty's preview card, tucked away until a row is highlighted
   const bootJson = /<script type="application\/json" id="lumi-boot">([^<]*)<\/script>/.exec(page.body)[1];
   const bootData = JSON.parse(bootJson);
   assert.equal(bootData.api, "/lumipet/api/");
