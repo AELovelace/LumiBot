@@ -22,16 +22,14 @@
 
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const { parseCustomId } = require('./ids');                                           // button ids (no require loop)
-const member = require('./member');
-const links = require('./links');
+const view = require('./view');                                                       // shared answer/draw helpers
 const card = require('./card');
-const { tx, getDb, dayKey, nowMs } = require('../db');
+const prefs = require('./prefs');                                                     // reminders / timezone / news choices
+const reminders = require('./reminders');                                             // test DM when reminders go on
+const { nowMs } = require('../db');
 const lumipet = require('../pet/lumipet');
 const save = require('../pet/save');
 const { runPetAction } = require('../pet/actions');
-const tuning = require('../tuning');
-const users = require('../users');
-const lumicity = require('../city/lumicity');
 const { isLumiError } = require('../errors');
 const { logger } = require('../../logger');
 
@@ -39,7 +37,6 @@ const COMMAND = 'lumi-pet';                    // the slash command's name
 const OFFER_MS = 60_000;                       // a "buy and feed?" question lasts one minute
 const DISCORD_EPOCH = 1_420_070_400_000n;      // ms: the start of Discord's snowflake clock
 const EPHEMERAL = MessageFlags.Ephemeral;      // "only you can see this"
-const THUMB = 'icons/lumi-192.png';            // her picture (public/lumi/icons; Discord can't show SVG)
 
 // ------------------------------------------------------------------------------------------------ the command
 
@@ -51,93 +48,27 @@ function commandData() {
     .addSubcommand((sub) => sub.setName('status').setDescription('See your Lumi and care for her (only you see it)'))
     .addSubcommand((sub) => sub.setName('show').setDescription('Show your Lumi to everyone here'))
     .addSubcommand((sub) => sub.setName('feed').setDescription('Feed your Lumi')
-      .addStringOption((opt) => opt.setName('item').setDescription('What to feed her').setRequired(true).setAutocomplete(true)));
+      .addStringOption((opt) => opt.setName('item').setDescription('What to feed her').setRequired(true).setAutocomplete(true)))
+    .addSubcommand((sub) => sub.setName('reminders').setDescription('Lumi DMs you when she needs you (at most every 3 h, never at night)')
+      .addStringOption((opt) => opt.setName('turn').setDescription('On or off').setRequired(true)
+        .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' })))
+    .addSubcommand((sub) => sub.setName('timezone').setDescription('Your timezone, so Lumi stays quiet 22:00-07:00 your time')
+      .addStringOption((opt) => opt.setName('zone').setDescription('e.g. Europe/London (start typing)').setRequired(true).setAutocomplete(true)))
+    .addSubcommand((sub) => sub.setName('news').setDescription('Whether Lumi-Town news may name you (big wins, showdowns)')
+      .addStringOption((opt) => opt.setName('name').setDescription('Show or hide your name').setRequired(true)
+        .addChoices({ name: 'show my name', value: 'show' }, { name: 'hide my name', value: 'hide' })));
 }
+
+// Every timezone Node knows, for /lumi-pet timezone suggestions (IANA names like 'Europe/London').
+const ZONES = (() => {
+  try { return Intl.supportedValuesOf('timeZone'); } catch { return ['America/Los_Angeles', 'America/New_York', 'Europe/London', 'UTC']; } // old Node: a few
+})();
 
 // ------------------------------------------------------------------------------------------------ helpers
-
-/** The player behind an interaction: { id, name } (name = Discord username, like the website's login). */
-function playerOf(interaction) {
-  const user = interaction.user;                                                       // who clicked
-  const name = String(user.username || user.globalName || 'Someone');                  // the same name the website uses
-  users.remember(user.id, name, user.avatar || '');                                    // keep their name fresh for other players
-  return { id: String(user.id), name };                                                // what we pass around
-}
-
-/** What one item costs in SGC (the same rule as the website's charge). */
-function priceOf(itemId, native) {
-  return tuning.scalePrice('pet', itemId, native);                                     // item scale, overrides
-}
-
-/** 'Lumi Heights 2D' for a player who has a Lumi (numbers them on first use, like the website). */
-function flatLabel(uid) {
-  try {
-    return `Lumi Heights ${lumicity.aptOfNumber(lumicity.flatNumber(uid)).label}`;     // e.g. Lumi Heights 2D
-  } catch (error) {
-    logger.warn(`Lumi Discord: no flat label for ${uid} (${error.message}).`);         // the card works without it
-    return null;
-  }
-}
-
-/** Has today's website visit reward not been claimed yet? (The card points to it; it never claims it.) */
-function visitWaiting(uid) {
-  return !getDb().prepare('SELECT 1 FROM lumi_coin_refs WHERE ref = ?').get(`lumi-pet:${uid}:${dayKey()}`); // routes/pet.js's ref
-}
-
-/** Everything card.js needs to draw her. snap = a lumipet snapshot (state() or an act() answer). */
-function viewOf(owner, snap, { share = false, notice = null } = {}) {
-  return {
-    snap, owner, share, notice, priceOf,
-    flat: flatLabel(owner.id),                                                         // her flat
-    visitWaiting: visitWaiting(owner.id),                                              // the website's reward
-    links: { page: links.page('lumi-pet'), thumb: links.staticFile(THUMB) },           // absolute URLs (or null)
-  };
-}
-
-/** Read her now, caught up (marks a visit, like opening the website). */
-function readSnap(uid) {
-  return tx(() => lumipet.state(uid));                                                 // catch up + save
-}
-
-/** Reply to a slash command, or redraw the message a button/menu sits on. */
-async function answer(interaction, message, { ephemeral = true } = {}) {
-  if (interaction.isChatInputCommand()) {
-    return interaction.reply(ephemeral ? { ...message, flags: EPHEMERAL } : message);  // a new message
-  }
-  return interaction.update(message);                                                  // the card redraws in place
-}
-
-/** A short private message (refusals that aren't about the card). */
-function sayPrivately(interaction, content) {
-  return interaction.reply({ content, flags: EPHEMERAL });                             // only them
-}
-
-/**
- * The door every command and button goes through: Lumi-Town must be open and the player must be a club member.
- * Answers the refusal itself and returns false; true means go ahead.
- */
-async function letIn(interaction) {
-  if (!require('../index').isLumiReady()) {                                            // Lumi-Town is closed (or still starting)
-    await sayPrivately(interaction, 'Lumi-Town is closed right now. Please try again later. 🌙');
-    return false;
-  }
-  let ok = false;
-  try {
-    ok = await member.isClubMember(interaction.client, interaction.user.id);          // same club as the website
-  } catch (error) {
-    logger.warn(`Lumi Discord: member check failed for ${interaction.user.id} (${error.message}).`);
-    await sayPrivately(interaction, "I couldn't check that you're in the club just now. Please try again in a moment. 💜");
-    return false;
-  }
-  if (!ok) await sayPrivately(interaction, 'Lumi-Town is for members of the club. 💜');
-  return ok;
-}
-
-/** Someone who hasn't met Lumi yet: point them at the website (adoption happens there, with the intro). */
-function noPetMessage() {
-  const page = links.page('lumi-pet');                                                 // the website
-  return `You haven't met Lumi yet! ${page ? `Say hello at ${page} 🌙` : 'Say hello on the Lumi-Town website. 🌙'}`;
-}
+// (shared with reminders.js and news.js: discord/view.js)
+const {
+  playerOf, priceOf, viewOf, readSnap, answer, sayPrivately, letIn, ownerOnly, noPetMessage,
+} = view;
 
 /** Turn an error into words for the card (or rethrow a real bug). */
 function wordsFor(error) {
@@ -220,11 +151,42 @@ async function confirmBuyAndFeed(interaction, owner, itemId, offerId) {
 
 // ------------------------------------------------------------------------------------------------ handlers
 
+/** /lumi-pet reminders | timezone | news: their own choices (no pet needed to change them). */
+async function onChoice(interaction, owner, sub) {
+  if (sub === 'reminders') {
+    const on = interaction.options.getString('turn', true) === 'on';                   // on / off
+    if (!on) {
+      prefs.setRemind(owner.id, false);                                                // off
+      await sayPrivately(interaction, 'Okay! Lumi won’t DM you any more. 🔕 Turn it back on with `/lumi-pet reminders turn:on`.');
+      return;
+    }
+    await interaction.deferReply({ flags: EPHEMERAL });                                // the test DM can take a moment
+    const result = await reminders.enable(interaction.client, owner.id);               // on + a test DM
+    await interaction.editReply({ content: result.text });                             // what happened
+  } else if (sub === 'timezone') {
+    const zone = String(interaction.options.getString('zone', true) || '').trim();     // what they picked/typed
+    if (!prefs.validTz(zone)) {
+      await sayPrivately(interaction, `I don't know the timezone “${zone.slice(0, 64)}”. Start typing a city, like *London* or *New_York*, and pick one from the list.`);
+      return;
+    }
+    prefs.setTz(owner.id, zone);                                                       // stored
+    await sayPrivately(interaction, `Got it! Your clock is **${zone}** (it's ${reminders.localTime(zone, nowMs())} there). Lumi stays quiet 22:00–07:00 your time. 🌙`);
+  } else if (sub === 'news') {
+    const hide = interaction.options.getString('name', true) === 'hide';               // show / hide
+    prefs.setNewsHidden(owner.id, hide);                                               // stored
+    await sayPrivately(interaction, hide ? 'Okay! Lumi-Town news will call you “a Lumi-Town neighbour”. 🤫' : 'Okay! Lumi-Town news may name you. ✨');
+  }
+}
+
 /** /lumi-pet <sub> */
 async function onCommand(interaction) {
   if (!(await letIn(interaction))) return;                                             // closed / not a member
   const owner = playerOf(interaction);                                                 // who
   const sub = interaction.options.getSubcommand();                                     // which one
+  if (['reminders', 'timezone', 'news'].includes(sub)) {                               // settings: no pet needed
+    await onChoice(interaction, owner, sub);
+    return;
+  }
   if (!save.exists(owner.id)) {                                                        // never met her: don't create one here
     await sayPrivately(interaction, noPetMessage());
     return;
@@ -240,20 +202,32 @@ async function onCommand(interaction) {
   }
 }
 
-/** Suggestions for /lumi-pet feed item: — the same list as the feed menu, filtered by what they typed. */
+/** Timezone suggestions: IANA names containing what they typed ('lond' -> Europe/London). */
+function zoneChoices(typed) {
+  const want = typed.replace(/\s+/gu, '_');                                            // 'new york' -> 'new_york'
+  const hits = want ? ZONES.filter((z) => z.toLowerCase().includes(want)) : ['America/Los_Angeles', 'America/New_York', 'America/Chicago', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney', 'UTC'];
+  return hits.slice(0, card.MENU_MAX).map((z) => ({ name: z, value: z }));             // up to 25
+}
+
+/** Suggestions while typing: foods for /lumi-pet feed item:, zones for /lumi-pet timezone zone:. */
 async function onAutocomplete(interaction) {
   const uid = String(interaction.user.id);                                             // who is typing
+  const focused = interaction.options.getFocused(true) || {};                          // { name, value }
+  const typed = String(focused.value || '').trim().toLowerCase();                      // what they typed so far
   let choices = [];
   try {
-    const pet = require('../index').isLumiReady() && save.exists(uid) ? save.peek(uid) : null; // read-only: typing never saves
-    if (pet) {
-      const typed = String(interaction.options.getFocused() || '').trim().toLowerCase(); // what they typed so far
-      choices = card.feedChoices({ pet, catalog: lumipet.CATALOG }, priceOf)           // the menu's list
-        .filter((c) => !typed || c.item.name.toLowerCase().includes(typed) || c.id.includes(typed)) // matches
-        .map((c) => ({ name: `${c.label} — ${c.description}`.slice(0, 100), value: c.id }));
+    if (focused.name === 'zone') {
+      choices = zoneChoices(typed);                                                    // no pet needed
+    } else {
+      const pet = require('../index').isLumiReady() && save.exists(uid) ? save.peek(uid) : null; // read-only: typing never saves
+      if (pet) {
+        choices = card.feedChoices({ pet, catalog: lumipet.CATALOG }, priceOf)         // the menu's list
+          .filter((c) => !typed || c.item.name.toLowerCase().includes(typed) || c.id.includes(typed)) // matches
+          .map((c) => ({ name: `${c.label} — ${c.description}`.slice(0, 100), value: c.id }));
+      }
     }
   } catch (error) {
-    logger.warn(`Lumi Discord: feed suggestions failed (${error.message}).`);          // just no suggestions
+    logger.warn(`Lumi Discord: suggestions failed (${error.message}).`);               // just no suggestions
   }
   await interaction.respond(choices.slice(0, card.MENU_MAX));                          // up to 25
 }
@@ -261,10 +235,7 @@ async function onAutocomplete(interaction) {
 /** Buttons and menus: lumipet:<verb>:<owner>:… */
 async function onComponent(interaction, args) {
   const [ownerId, ...rest] = args;                                                     // whose card
-  if (String(ownerId) !== String(interaction.user.id)) {                               // someone else's buttons
-    await sayPrivately(interaction, "That's not your Lumi! Use `/lumi-pet status` to see yours. 💜");
-    return;
-  }
+  if (!(await ownerOnly(interaction, ownerId))) return;                                // someone else's buttons
   if (!(await letIn(interaction))) return;                                             // closed / not a member
   const owner = playerOf(interaction);                                                 // who
   if (!save.exists(owner.id)) { await sayPrivately(interaction, noPetMessage()); return; } // (a save that vanished)

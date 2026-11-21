@@ -100,6 +100,9 @@ Meet Lumi first at https://sadgirlsclub.wtf/lumipet/ — then look after her fro
 **`/lumi-pet status`** — her card (only you see it): needs, mood, coins, flat, with **Cuddle / Nap / Wake / Refresh** buttons, a **Feed** menu and a **Play** menu
 **`/lumi-pet show`** — show her card to everyone in the channel (no buttons)
 **`/lumi-pet feed item:<food>`** — feed her (type to search). Food you don't have asks **"Buy 1 for N SGC and feed her?"** first
+**`/lumi-pet reminders turn:<on|off>`** — Lumi DMs you when she needs you (at most every 3 h, never 22:00–07:00 your time)
+**`/lumi-pet timezone zone:<zone>`** — your clock for those quiet hours (type a city, e.g. *London*)
+**`/lumi-pet news name:<show|hide>`** — whether Lumi-Town news (big wins, showdowns) may name you
 
 ---
 

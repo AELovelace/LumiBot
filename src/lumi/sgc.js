@@ -23,6 +23,7 @@ const { getDb, inTransaction, nowMs, dayKey, tx } = require('./db');
 const tuning = require('./tuning');
 const treasury = require('./treasury');
 const { LumiError, notEnoughSGC } = require('./errors');
+const events = require('./events');                                                 // Lumi-Town news (big prizes)
 
 const NAME = /^[a-z0-9-]{1,32}$/u;   // game and kind ids: lowercase words and dashes (they end up in ledger types)
 const REF = /^[\x21-\x7e]{1,200}$/u; // refs: 1-200 printable ASCII characters, no spaces
@@ -113,6 +114,7 @@ function pay(uid, username, native, game, kind, ref, { key, note, cap = true, ex
   if (!treasury.ensureCovers(amount)) return owe();                                 // pool can't cover it: owe it
   moveCoins(LUMI_TOWN_BANK_USER_ID, uid, amount, `lumi_${game}_${kind}`, note || ref); // bank -> player
   db.prepare('UPDATE lumi_coin_refs SET amount = ? WHERE ref = ?').run(amount, ref); // the ref shows it paid
+  events.publish(events.NEWS_CHANNEL, 'win', { uid, game, kind, amount, ref });     // news.js keeps the big ones (after checking the ref committed)
   return { paid: amount, owed: 0, capped };                                         // done
 }
 

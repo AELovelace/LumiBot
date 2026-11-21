@@ -8,6 +8,7 @@ const {
 const { buildGlobalCommands: buildUserCommands } = require('./commands');
 const { buildEconomyCommands } = require('./sadgirlEconomyCommands');
 const { buildApiLinkCommand } = require('./apiLinkCommands');
+const { setGlobalCommands } = require('./commandSync'); // bulk overwrite that keeps the Activity "Launch" (Entry Point) command
 const { config } = require('./config');
 const { getRuntimeSettings, resetChatbotMemory, updateRuntimeSettings } = require('./chatbot');
 const { logger } = require('./logger');
@@ -206,10 +207,10 @@ async function registerControlPlane(client) {
           logger.warn(`Failed to register guild-scoped admin commands for guild ${guildId}.`, error.message); // keep going for the other guilds
         }
       }
-      await client.application.commands.set(globalCommands); // global list = member/economy commands only (removes old global admin copies)
+      await setGlobalCommands(client, globalCommands); // global list = member/economy commands only (removes old global admin copies); keeps the Activity Launch command (commandSync.js)
       logger.info(`Registered ${globalCommands.length} global slash commands (admin commands are guild-scoped).`); // success note
     } else { // no home guild configured, so the only way to expose admin commands is globally
-      await client.application.commands.set([...globalCommands, ...adminCommands]); // old behaviour; isAdminUser then only trusts ADMIN_USER_IDS
+      await setGlobalCommands(client, [...globalCommands, ...adminCommands]); // old behaviour; isAdminUser then only trusts ADMIN_USER_IDS (keeps the Activity Launch command)
       logger.warn('No SLASH_GUILD_ID/ALLOWED_GUILD_ID set: admin commands registered globally and usable only by ADMIN_USER_IDS.'); // nudge the owner to configure a home guild
     }
   } catch (error) {

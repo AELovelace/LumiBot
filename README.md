@@ -238,6 +238,10 @@ coin is real SadGirlCoin.
   reserve floor, LUMI dividend rate, pause all payouts).
 - `.env`: the `LUMI_*` keys in `.env.example` (`LUMI_DISCORD_OAUTH_REDIRECT_URI` must also be added to the Discord app).
 - Handler guide: `docs/LUMI_GAMES.md`. Plan and decisions: `docs/plans/lumi-games-port.md`.
+- On Discord (`src/lumi/discord/`, plan `docs/plans/lumi-town-discord.md`): `/lumi-pet` (her card with care buttons
+  and buy-and-feed), opt-in DM reminders, Lumi-Town news in each guild's Lumi-Town channel, and Lumi Pet as a Discord
+  Activity (off until `LUMI_ACTIVITY_ENABLED=true` and the portal setup in `docs/LUMI_GAMES.md`).
+  `LUMI_DISCORD_ENABLED=false` turns the Discord side off.
 
 ## Notes
 

@@ -205,6 +205,22 @@ here shows on the website and the other way round.
 | `/lumi-pet status` | Her card, **only you see it**: her hunger, energy and joy as bars (⚠️ when one is low), what she's doing, your SGC and your Lumi Heights flat. Buttons: **💞 Cuddle**, **😴 Nap** / **☀️ Wake**, **🔄 Refresh**, **🏠 Visit Lumi** (opens the website). Menus: **🍓 Feed her…** and **🎾 Play with…**. |
 | `/lumi-pet show` | Her card for **everyone in the channel**, without buttons. |
 | `/lumi-pet feed item:<food>` | Feed her. Start typing to search the pantry and the Snack Stand. |
+| `/lumi-pet reminders turn:<on\|off>` | **DM reminders.** Lumi DMs you when she's hungry, sleepy or lonely, when a nap finished, or when slow flowers are ready in her garden. You get a hello DM when you turn it on. |
+| `/lumi-pet timezone zone:<zone>` | Your clock, so reminders stay quiet from 22:00 to 07:00 **your** time (start typing a city, like *London* or *New_York*). Until you set it, Los Angeles time is used. |
+| `/lumi-pet news name:<show\|hide>` | Lumi-Town news posts big wins and showdown winners in the server's Lumi-Town channel. **hide** shows you as "a Lumi-Town neighbour" instead. |
+
+**DM reminders:**
+- Off until you turn them on, with the command above or **Settings ▸ Discord DMs from Lumi** in Lumi Pet (that one
+  also sets your timezone from your browser).
+- At most **one DM every 3 hours**, never at night on your clock, and never about something you've already seen or
+  fixed on the website.
+- The DM is her card, so you can cuddle, feed or play right there. **🔕 Stop reminders** turns them off.
+- If your DMs are closed to server members, Lumi can't reach you and reminders switch themselves off. Open them in
+  *Server ▸ Privacy Settings ▸ Direct Messages* and turn reminders on again.
+
+**Lumi Pet inside Discord (Activity):** once the admins switch it on, start **Lumi Pet** from the 🚀 Activities
+button in a voice channel. It's the same Lumi and the same SGC as the website. The Casino tables open on the website,
+not inside Discord.
 
 **Feeding and buying:**
 - Free food (🍎 Apple) and food already in her pantry are eaten straight away. Free.

@@ -210,6 +210,28 @@ const SCHEMA_SQL = `
     avatar     TEXT NOT NULL DEFAULT '',               -- Discord avatar hash
     updated_at INTEGER NOT NULL DEFAULT 0              -- milliseconds
   );
+
+  -- Lumi-Town on Discord (src/lumi/discord, docs/plans/lumi-town-discord.md): one row per player who changed a setting.
+  CREATE TABLE IF NOT EXISTS lumi_discord_prefs (
+    user_id      TEXT PRIMARY KEY,                     -- Discord id
+    remind       INTEGER NOT NULL DEFAULT 0,           -- 1 = DM reminders on (opt-in: off until they turn it on)
+    tz           TEXT,                                 -- IANA zone for quiet hours; NULL = America/Los_Angeles
+    news_hidden  INTEGER NOT NULL DEFAULT 0,           -- 1 = Lumi-Town news never names them
+    dm_failed_at INTEGER,                              -- ms of the last "can't DM this user" (reminders switched off then)
+    updated_at   INTEGER NOT NULL DEFAULT 0            -- milliseconds
+  );
+  CREATE INDEX IF NOT EXISTS lumi_discord_prefs_remind ON lumi_discord_prefs (remind, user_id);
+
+  -- Reminder episodes waiting for (or sent in) a DM (erinne lumi_push_events). One row per need episode, so each
+  -- need is mentioned once even across restarts.
+  CREATE TABLE IF NOT EXISTS lumi_remind_events (
+    user_id    TEXT NOT NULL,                          -- Discord id
+    kind       TEXT NOT NULL,                          -- hunger | energy | joy | nap | garden
+    episode    TEXT NOT NULL,                          -- when that need began (ms, as text)
+    created_at INTEGER NOT NULL,                       -- ms
+    sent_at    INTEGER,                                -- ms; NULL = still waiting
+    PRIMARY KEY (user_id, kind, episode)
+  );
 `;
 
 /** Which games (and game:kind pairs) feed each themed account by default. Admins can change these rows later. */
@@ -239,6 +261,7 @@ const LUMI_TABLES = Object.freeze([
   'lumi_arcade_rooms', 'lumi_arcade_runs', 'lumi_prism_runs', 'lumi_soft_progress', 'lumi_soft_bests', 'lumi_soft_runs',
   'lumi_launch_runs', 'lumi_launch_bests', 'lumi_city_towns', 'lumi_plots',
   'lumi_coin_refs', 'lumi_daily', 'lumi_owed', 'lumi_accounts', 'lumi_admin_log', 'lumi_users',
+  'lumi_discord_prefs', 'lumi_remind_events',
 ]);
 
 module.exports = {

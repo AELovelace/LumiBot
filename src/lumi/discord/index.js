@@ -65,13 +65,19 @@ function initLumiDiscord(discordClient) {
   }
   client = discordClient;                                                              // keep the bot
   started = true;                                                                      // open
+  if (discordClient && discordClient.users) {                                          // a real bot (tests pass a stand-in)
+    require('./reminders').start(discordClient);                                       // D2: the DM reminder sweep
+    require('./news').start(discordClient);                                            // D3: Lumi-Town news + the daily summary
+  }
   logger.info(`Lumi-Town on Discord ready (${commandHandlers.size} commands, ${componentHandlers.size} button verbs).`); // breadcrumb
   return true;                                                                         // started
 }
 
-/** Stop the Discord side (shutdown). Later phases stop their timers here. */
+/** Stop the Discord side (shutdown): stop answering, stop the reminder and news timers. */
 function stopLumiDiscord() {
   started = false;                                                                     // refuse new work
+  require('./reminders').stop();                                                       // no more sweeps
+  require('./news').stop();                                                            // no more posts (a waiting batch is dropped)
 }
 
 /** The bot (null before init). */
@@ -139,3 +145,4 @@ module.exports = {
 // The pieces plug themselves in here, after module.exports exists. They get this module handed to them instead of
 // requiring it, so there is no require loop whichever file Node loads first.
 require('./command').register(module.exports);   // D1: /lumi-pet
+require('./reminders').register(module.exports); // D2: the 🔕 Stop reminders button

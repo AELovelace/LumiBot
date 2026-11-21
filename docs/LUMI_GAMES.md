@@ -103,6 +103,46 @@ Plan: `docs/plans/lumi-town-discord.md`. Code: `src/lumi/discord/`. Player docs:
 - **Off switch:** `LUMI_DISCORD_ENABLED=false` (the website is unaffected).
 - Checking the card marks a visit for reminders but never pays the website's daily visit reward.
 
+### DM reminders (`src/lumi/discord/reminders.js`)
+
+- Opt-in per player (`/lumi-pet reminders` or Lumi Pet's **Settings ▸ Discord DMs from Lumi**). Stored in
+  `lumi_discord_prefs`; queued needs in `lumi_remind_events`.
+- Every **Reminder Check** (Economy page ▸ Lumi-Town Discord, default 5 min) the bot catches up each opted-in Lumi
+  *without* counting a visit and DMs at most once per player per 3 h, never 22:00–07:00 on their clock.
+- A player whose DMs are closed is switched off automatically (they can turn it back on). **Pause DM Reminders = true**
+  stops all reminders without changing anyone's choice.
+
+### Lumi-Town news (`src/lumi/discord/news.js`)
+
+- Per guild: web panel ▸ Guilds ▸ **Lumi-Town News Channel ID** (the bot needs View Channel, Send Messages and Embed
+  Links there). Empty = no news in that guild.
+- Economy page ▸ Lumi-Town Discord: **Lumi-Town News** on/off, **Big Win** size (default 2,000 SGC), **Batch Window**
+  (default 2 min), **Daily Summary Hour** (Los Angeles, default 9; 24 = off).
+- Posts: big single prizes, owed prizes the bank finally paid, showdown winners (2+ racers), and the morning bank
+  summary (bank + health, reserve, 24 h in/out, yesterday's top 3). Each item is checked against the database before
+  posting, so a rolled-back prize is never announced. Players can hide their name (`/lumi-pet news name:hide`).
+
+### The Activity: Lumi Pet inside Discord (`src/lumi/routes/activity.js`), off by default
+
+Turn it on **only after** this build is deployed: it includes `src/commandSync.js`, which keeps Discord's Activity
+"Launch" command when the bot refreshes its slash commands.
+
+1. Discord developer portal ▸ the **bot's** application ▸ **Activities ▸ Settings**: *Enable Activities*, and tick the
+   platforms under *Supported Platforms*.
+2. **Activities ▸ URL Mappings**, in this order (first match wins):
+   `/lumipet` → `sadgirlsclub.wtf/lumipet`, then `/` → `sadgirlsclub.wtf/lumipet/activity`.
+3. `.env`: `LUMI_ACTIVITY_ENABLED=true`;
+   `LUMI_FRAME_ANCESTORS=https://discord.com https://ptb.discord.com https://canary.discord.com https://<APP_ID>.discordsays.com`;
+   add `https://<APP_ID>.discordsays.com` to `LUMI_TRUSTED_ORIGINS`. `DISCORD_OAUTH_CLIENT_ID`/`SECRET` must be the
+   bot's own application.
+4. Restart. In Discord (Developer Mode on), join a voice channel and start it from 🚀.
+
+Sign-in inside the Activity: Discord's `authorize` code → `POST /lumipet/api/activity/session` → token, `/users/@me`,
+the club check → a Lumi session cookie made for iframes (`SameSite=None; Secure; Partitioned`). The SDK is bundled
+locally (`npm run build:activity-sdk` → `public/lumi/vendor/discord-embedded-app-sdk.js`, committed).
+Known limits: live updates (Lumi Town, parties, showdowns) use Server-Sent Events, which Discord's proxy doesn't
+document, so check them first; the Casino's `/games/` tables don't open inside the Activity.
+
 ## Where the money goes
 
 ```

@@ -150,6 +150,10 @@ function _settle(state, now) {
     }
   }
   state.last = { winner: winner ? winner.name : null, winner_seat: winner ? winner.seat : null, racers: lines, bets: state.bets.length, payouts: betLines }; // the result board
+  const champ = winner ? race.racers.find((r) => r.seat === winner.seat) : null;   // the winner's racer (account + run)
+  if (champ && race.racers.length >= 2) {                                          // a real race: Lumi-Town news (src/lumi/discord/news.js)
+    require('../events').publish('lumi:news', 'showdown', { game, uid: String(champ.account), name: champ.name, racers: race.racers.length, ref: `${game}:${champ.run}` }); // ref = the winner's run prize (proves the tx committed)
+  }
   state.phase = 'result';                                       // show it
   state.race = null;                                            // the race is over
   state.bets = [];                                              // every bet settled

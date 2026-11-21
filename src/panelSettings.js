@@ -134,6 +134,14 @@ const SCHEMA = {
   'lumi.treasury.payoutsPaused':    { default: 'false', type: 'string', label: 'Pause All Payouts',       desc: 'true = games keep running but every prize is owed until unpaused',    category: 'Lumi Games' },
   'lumi.seed.toBank':               { default: 100000, type: 'number', label: 'Seed: to Bank',            desc: 'One-time seed from Central Bank into Lumi-Town Bank',                 category: 'Lumi Games' },
   'lumi.seed.toHoldings':           { default: 150000, type: 'number', label: 'Seed: to Holdings',        desc: 'One-time seed from Central Bank into Lumi Holdings',                  category: 'Lumi Games' },
+
+  // ── Lumi-Town on Discord (src/lumi/discord/settings.js reads these; LUMI_DISCORD_ENABLED=false turns it all off) ──
+  'lumi.discord.remindPaused':      { default: 'false', type: 'string', label: 'Pause DM Reminders',      desc: 'true = no reminder DMs are sent (players keep their on/off choice)', category: 'Lumi-Town Discord' },
+  'lumi.discord.remindIntervalMs':  { default: 300000, type: 'number', label: 'Reminder Check (ms)',      desc: 'How often pets are checked for reminders (min 60000). One DM per player per 3 h at most, none 22:00-07:00 their time', category: 'Lumi-Town Discord' },
+  'lumi.discord.newsEnabled':       { default: 'true', type: 'string', label: 'Lumi-Town News',           desc: 'true = post news in each guild\'s Lumi-Town channel (set the channel per guild on the Guilds page)', category: 'Lumi-Town Discord' },
+  'lumi.discord.newsBigWin':        { default: 2000,   type: 'number', label: 'News: Big Win (SGC)',      desc: 'A single prize at least this big is announced',                     category: 'Lumi-Town Discord' },
+  'lumi.discord.newsBatchMs':       { default: 120000, type: 'number', label: 'News: Batch Window (ms)',  desc: 'News waits this long and goes out as one post (min 10000)',           category: 'Lumi-Town Discord' },
+  'lumi.discord.newsDailyHour':     { default: 9,      type: 'number', label: 'News: Daily Summary Hour', desc: 'Hour (0-23, Los Angeles) for the daily Lumi-Town Bank summary; 24 or more = off', category: 'Lumi-Town Discord' },
 };
 
 // ---------------------------------------------------------------------------

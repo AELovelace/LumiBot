@@ -1,6 +1,6 @@
 # Lumi-Town × Discord: plan
 
-> Status: **planning** (2026-11-20). This replaces the Discord items in Phase 7 of `lumi-games-port.md`.
+> Status: **built** (D0–D6, 2026-11-20, tests 600/600; the Activity is off until set up, see §9). This replaces the Discord items in Phase 7 of `lumi-games-port.md`.
 > Lumi-Town is live at https://sadgirlsclub.wtf/lumipet/ (`feat/lumi-town` @ `a318d20`, deployed 2026-11-20).
 
 Goal: friends can look after Lumi and follow Lumi-Town **from Discord**, without breaking any money rule the website
@@ -87,9 +87,9 @@ It ignores anything whose name or `customId` doesn't start with `lumi-pet` / `lu
 | `/lumi-pet status` | Her card + care buttons | Ephemeral (only you) |
 | `/lumi-pet show` | Her card for everyone, **no** buttons (show off your Lumi) | Public |
 | `/lumi-pet feed item:<snack>` | Feed from the pantry; if you have none, offers "Buy 1 for N SGC" | Ephemeral |
-| `/lumi-pet reminders on\|off` | DM reminders on/off (sends a test DM when turned on) | Ephemeral |
-| `/lumi-pet timezone zone:<tz>` | Your clock for quiet hours (autocomplete: common IANA zones) | Ephemeral |
-| `/lumi-pet news on\|off` | Whether announcements may mention you by name | Ephemeral |
+| `/lumi-pet reminders turn:on\|off` | DM reminders on/off (sends a hello DM when turned on) | Ephemeral |
+| `/lumi-pet timezone zone:<tz>` | Your clock for quiet hours (autocomplete: every IANA zone) | Ephemeral |
+| `/lumi-pet news name:show\|hide` | Whether Lumi-Town news may name you | Ephemeral |
 
 **The card** (`card.js`): an embed in Lumi's neon theme colour with
 - her name, glow and mood line (from `snapshot()`), plus the pet thumbnail from `/lumipet/static/...`,
@@ -127,10 +127,11 @@ link, so the website keeps its reason to be opened.
 **"Discord reminders"** toggle in Lumi Pet's settings panel (next to the existing garden-reminder toggle).
 Turning on sends a test DM. If Discord refuses (DMs closed, error 50007), it stays off and the player is told why.
 
-**Tables** (added to `createLumiSchema`):
+**Tables** (added to `createLumiSchema`; as built, one prefs table holds reminders, timezone and the news choice):
 ```sql
-lumi_reminders(user_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0,
+lumi_discord_prefs(user_id TEXT PRIMARY KEY, remind INTEGER NOT NULL DEFAULT 0,
                tz TEXT,                 -- IANA zone; NULL = America/Los_Angeles
+               news_hidden INTEGER NOT NULL DEFAULT 0,
                dm_failed_at INTEGER,    -- last 50007; cleared on re-enable
                updated_at INTEGER NOT NULL)
 lumi_remind_events(user_id TEXT, kind TEXT, episode TEXT, created_at INTEGER, sent_at INTEGER,
@@ -155,66 +156,67 @@ Discord rate limits → discord.js queues; the batch size keeps it small.
 
 ---
 
-## 6. Channel announcements
+## 6. Channel announcements (Lumi-Town news) — as built in D3
 
-**Where**: a new guild channel kind `lumitown`, set with the existing admin `/lumi-channel` command (one more
-`addChoices` entry in `controlPlane.js`). Unset → no announcements in that guild.
+**Where**: a per-guild **Lumi-Town News Channel ID** (`lumiTownChannelId` in `guildConfig.js`), set on the web panel's
+Guilds page like the LumiBets channel. *(The plan first said `/lumi-channel`, but that command is only the chatbot's
+whitelist, so the channel lives with the other per-guild channels.)* Empty → no news in that guild.
 
-**What** (each one is a tuning switch plus thresholds on `/lumi`):
+**What** (knobs on the panel's Economy page, category "Lumi-Town Discord"):
 
-| Event | Default rule | Emitted from |
+| Event | Rule | Emitted from |
 |---|---|---|
-| Big win | prize ≥ 2,000 SGC **or** ≥ 20× the entry | `sgc.pay` callers in the minigames |
-| Showdown result | every finished showdown with ≥ 2 players | showdown hub |
-| Housewarming | a player's first housewarming | `lumihouse` |
-| New neighbour | a new Lumi Heights flat number | `lumicity.init()` |
-| Owed prize paid | the bank ran dry and later paid what it owed | `treasury.js` |
-| **Daily bank summary** | 09:00 LA: bank balance, swept in, paid out, LUMI price, top 3 winners | `treasury.status()` |
+| Big win | one prize (`win` or `betwin`) ≥ `lumi.discord.newsBigWin` (default 2,000 SGC) | `sgc.pay` (every game) |
+| Owed prize paid | an owed prize ≥ the same size, paid when the bank refilled | `treasury.payOwed` |
+| Showdown result | a finished showdown with 2+ racers, and its winner | `arcade/showdown.js _settle` |
+| **Daily bank summary** | at `lumi.discord.newsDailyHour` (default 9, LA): bank + health, reserve, 24 h in/out, yesterday's top 3 winners | `treasury.status()` + `lumi_daily` |
 
-**How**: game code calls `events.publish('lumi:news', kind, data)` (one line at each site). `announce.js` subscribes,
-**batches for 2 minutes** (so a hot streak is one post, not ten), and posts one embed per batch. Players with
-`/lumi-pet news off` appear as "a Lumi-Town neighbour". Never posts amounts owed to a named player, and never anything
-from the admin log.
+Dropped from the first draft: **housewarming** (in Lumi-Town it's a small gift a *visitor* gets, not an event) and
+**new neighbour** (no clean "first saved" moment; it can come later from `lumi_flats`). The LUMI price is not in the
+summary yet.
+
+**How**: game code calls `events.publish(events.NEWS_CHANNEL, kind, data)` INSIDE its transaction, with the ref that
+proves it. `discord/news.js` keeps the big ones, waits `lumi.discord.newsBatchMs` (2 min), then checks each ref in the
+database (a rolled-back prize is never posted) and sends ONE embed (15 lines max + "and N more") to every Lumi-Town
+channel. Players with `/lumi-pet news name:hide` are "a Lumi-Town neighbour". Nothing from the admin log; never who
+owes what.
 
 ---
 
-## 7. Discord Activity (Lumi Pet inside Discord)
+## 7. Discord Activity (Lumi Pet inside Discord) — built in D6, behind `LUMI_ACTIVITY_ENABLED`
 
-The biggest piece, with real unknowns, so it starts with a **spike** (D5) and builds only after the spike passes.
+**What Discord's docs say** (checked 2026-11-20 at docs.discord.com; the research notes are summarised here):
+- The Activity loads the **`/` URL mapping** inside `https://<APP_ID>.discordsays.com`, with query params the SDK
+  needs (`frame_id`, `instance_id`, `platform`). Mappings match **in list order, first match wins**, so the longer
+  prefix goes first. Targets must be directories. The old `/.proxy/` prefix is no longer required (2025-07-30).
+- The proxy supports **WebSockets**; **Server-Sent Events are not documented** (Lumi Town, parties and showdown
+  tables use SSE: test them in the Activity). It hides users' real IPs.
+- **Cookies** inside the iframe need `SameSite=None` **and** `Partitioned`.
+- OAuth: `ready()` → `authorize({ scope: ['identify'], prompt: 'none' })` → server swaps the code at
+  `/oauth2/token` **without `redirect_uri`** → `authenticate({ access_token })`.
+- **Entry Point**: enabling Activities creates a `PRIMARY_ENTRY_POINT` command (type 4, handler 2, usually
+  "launch"). A bulk overwrite "will overwrite ALL types of application commands". *(My first draft said Discord
+  answers error 50240; that code is **not** in Discord's docs, so treat it as unverified. Either way the overwrite
+  must include the Entry Point, which D4 does.)*
+- Testing needs no verification: the developer team can launch a non-distributed Activity with Developer Mode on,
+  once the platform is ticked under *Settings → Supported Platforms*.
+- The SDK (`@discord/embedded-app-sdk` 2.5.0, 2026-05-05) ships only ESM/CJS, so we bundle it with esbuild into one
+  local file.
 
-**How Activities work** (to confirm in the spike against Discord's current docs): Discord loads the app in an iframe at
-`https://<APP_ID>.discordsays.com`. Every request goes through Discord's proxy using **URL mappings** set in the
-developer portal. The page loads Discord's **Embedded App SDK**, calls `ready()`, then `authorize()` → gets a `code`
-→ our server swaps it for a token with the existing client secret.
-
-**Spike questions** (each answered with a tiny test page before any real work):
-1. **URL mapping.** Map root `/` → `sadgirlsclub.wtf` so existing absolute `/lumipet/...` URLs keep working
-   unchanged. Do the static files, the API and the **SSE streams** all work through the proxy? Is there a proxy
-   timeout on long-lived SSE?
-2. **Login inside the iframe.** The `lumi_sess` cookie is `SameSite=Lax` on our domain. Inside the Activity it is a
-   third-party context. Try `SameSite=None; Secure; Partitioned` for an Activity-only session cookie first (Discord's
-   desktop app is Chromium). If that fails, fall back to a short-lived **bearer token**: `lumi-boot.js` stores it and
-   `common.js` adds it to every fetch, with a signed `?t=` on `EventSource` stream URLs.
-3. **Framing.** `frame-ancestors 'self'` blocks Discord. Allow `https://discord.com https://*.discordsays.com` **only on
-   Activity responses**, via `buildFrameAncestorsDirective` and an env list (`LUMI_ACTIVITY_FRAME_ANCESTORS`).
-   nginx's own CSP header must match.
-4. **Client IPs.** Through the proxy, every Activity player may share Discord's IPs. The per-IP bucket on
-   `/lumipet/api/*` (and nginx `limit_req`) would lump them together. Key Activity requests by user instead.
-5. **⚠️ Entry Point command.** Turning on Activities makes Discord add a **PRIMARY_ENTRY_POINT** command to the app.
-   `controlPlane.js:209` bulk-overwrites the global commands with `application.commands.set(globalCommands)`. If the
-   entry point isn't in that list, Discord rejects the **whole** update (error 50240), and *every* new or changed
-   slash command would stop registering. Fix **before** enabling Activities: fetch the existing commands and pass
-   the entry-point command through unchanged.
-
-**Build (D6)**, if the spike passes:
-- `GET /lumipet/activity`: a small entry page (auth: false) that loads the **vendored, pinned** Embedded App SDK
-  bundle from `public/lumi/vendor/` (CSP stays `script-src 'self'`, no CDN), runs `ready()` → `authorize()` →
-  `POST /lumipet/api/activity/session`, then goes to `/lumipet/lumi-pet`.
-- `POST /lumipet/api/activity/session`: swap the code, `GET /users/@me` + the member check (same guild rule),
-  create the session (cookie or token, whichever won the spike).
-- An "Activity mode" flag in `LUMI_FLAGS`: hides "sign out", and makes outbound links (Visit page, Casino tables
-  at `/games/`) open with the SDK's `openExternalLink` instead of navigating the iframe.
-- Later (not in D6): show the other people in the voice channel as visitors in Lumi Town.
+**As built:**
+- `GET /lumipet/activity` (`src/lumi/routes/activity.js`): a "waking Lumi up" page, no inline script, loading
+  `public/lumi/vendor/discord-embedded-app-sdk.js` (`npm run build:activity-sdk`, committed) and
+  `public/lumi/activity/boot.js`.
+- `POST /lumipet/api/activity/session { code }`: code → token (no `redirect_uri`) → `/users/@me` → the club check
+  (`discord/member.js`, so the bot must be running) → a normal Lumi session in a cookie with
+  `SameSite=None; Secure; HttpOnly; Partitioned` → `{ next, access_token }`; boot.js calls `authenticate()` and goes
+  to her house.
+- The router's rate limit is now **per logged-in player** (`auth.sessionUserId`), per IP only when logged out, so
+  Activity players behind Discord's proxy don't share one bucket.
+- Framing is the existing `LUMI_FRAME_ANCESTORS` env (the whole app runs in the iframe, not just one page).
+- **Not done (known limits):** links that leave `/lumipet` (the Casino's `/games/` tables, Discord login) don't work
+  inside the Activity; there's no "Activity mode" that opens them with the SDK's `openExternalLink` yet. Voice-channel
+  friends as Lumi Town visitors is later.
 
 ---
 
@@ -222,65 +224,81 @@ developer portal. The page loads Discord's **Embedded App SDK**, calls `ready()`
 
 Each phase ends the same way as the port: `npm test` green, `node --check` on new files, a play-through on
 `npm run start:3080` with a test bot in a test guild, docs updated, and Doll's go-ahead before the next phase.
+*(2026-11-20: Doll asked to "oneshot the rest", so D2–D6 were built in one go. They are tested with fakes; the real
+Discord checks are in §9.)*
 
 **D0: plumbing.** ✅ Done 2026-11-20. `locks.js` (the lock moved out of the router), `pet/actions.js` (`POST
 /api/lumi-pet/act` now calls it; same behaviour), `discord/member.js`, `discord/index.js` (registry + interaction
 router, wired in `src/index.js` and the global command list in `controlPlane.js`), `LUMI_DISCORD_ENABLED`,
 `isLumiReady()`, `webPanelAuth.getPanelAuthConfig` exported.
-Tests: `tests/lumi/discord_plumbing.test.mjs` (15): shared lock vs the real website route, `onceRef` once-only and
-rollback, input checks, member cache TTLs / shared lookups / errors not cached, the router only answering its own.
-Full suite 559/559.
+Tests: `tests/lumi/discord_plumbing.test.mjs` (15).
 
 **D1: `/lumi-pet`.** ✅ Done 2026-11-20. `card.js` (pure), `command.js` (status/show/feed, care buttons, feed + play
-menus, buy-and-feed question), `ids.js` (customIds without a require loop), `links.js` (`LUMI_PUBLIC_URL`).
-`runPetAction` takes a list of steps for buy-and-feed. Extra beyond the plan: a **🎾 Play with…** menu (owned + free
-toys), since "full care" includes play.
-Tests: `tests/lumi/discord_pet_command.test.mjs` (21): bars/mood/menus/buttons, the 100-char id limit, non-members
-and players without a Lumi (none created), owner-only presses, status = visit but no reward, retried presses run
-once, buy-and-feed once per question, the minute running out, no charge when she won't eat, not enough SGC, the shared
-lock, autocomplete. Full suite 580/580.
+menus, buy-and-feed question), `ids.js`, `links.js` (`LUMI_PUBLIC_URL`). `runPetAction` takes a list of steps for
+buy-and-feed. Extra: a **🎾 Play with…** menu.
+Tests: `tests/lumi/discord_pet_command.test.mjs` (21).
 
-**D2: reminders.** Tables, sweep, DM, the settings toggle in Lumi Pet, `reminders` / `timezone` subcommands, admin row.
-Tests: a port of erinne's `tests/test_push.py` cases (once per episode, stale drop, 3 h gap, quiet hours in a
-non-LA zone, 50007 disables) with a fake DM sender.
+**D2: reminders.** ✅ Done 2026-11-20. Tables `lumi_discord_prefs` + `lumi_remind_events`; `discord/prefs.js`,
+`discord/reminders.js` (erinne's sweep: catch up without a visit, once per episode, stale drops, one DM per 3 h,
+quiet 22:00–07:00 on the player's clock, closed DMs switch it off, a hiccup retries); the DM is her card + 🔕 Stop;
+`/lumi-pet reminders | timezone (autocomplete) | news`; Lumi Pet's settings row "Discord DMs from Lumi" (`POST
+/api/lumi-pet/discord`, the browser's timezone as the default clock); `discord/view.js` holds the shared helpers;
+panel knobs `lumi.discord.remindPaused` / `remindIntervalMs`.
+Tests: `tests/lumi/discord_reminders.test.mjs` (10).
 
-**D3: announcements.** `lumitown` channel kind, `publish` calls at each site, batching, daily summary, `news`
-subcommand, admin switches.
-Tests: batching window, opt-out names, thresholds from tuning.
+**D3: news.** ✅ Done 2026-11-20 (as §6). `discord/news.js`, `events.NEWS_CHANNEL`, hooks in `sgc.pay`,
+`treasury.payOwed`, `showdown._settle`; `lumiTownChannelId` on the Guilds page; knobs `newsEnabled` / `newsBigWin` /
+`newsBatchMs` / `newsDailyHour`.
+Tests: in `tests/lumi/discord_news_activity.test.mjs`: thresholds and kinds, rolled-back prizes never posted, hidden
+names, the 15-line cut, owed prizes, showdowns, the daily summary once per day.
 
-**D4: Entry Point safety.** The `controlPlane.js` command-sync fix from §7.5, shipped and deployed **before** anyone
-enables Activities in the portal. Test with a mocked `application.commands`.
+**D4: Entry Point safety.** ✅ Done 2026-11-20. `src/commandSync.js` `setGlobalCommands()`: reads the current global
+commands, carries every type-4 Entry Point over, then overwrites; if it can't read first, it overwrites nothing.
+Both `controlPlane.js` overwrites use it. **Deploy this before enabling Activities in the portal.**
 
-**D5: Activity spike.** Answer §7 questions 1–4 with a throwaway page. Write the findings into this file. Doll
-decides go / no-go.
+**D5: Activity spike.** Replaced by the docs research above; the parts the docs don't settle (SSE through the
+proxy, the Origin/Host the proxy sends) are the first things to check in §9.
 
-**D6: Activity build.** As in §7, if D5 says go.
+**D6: Activity build.** ✅ Built 2026-11-20 (as §7), off by default. Tests: the page and the bundle are served, 404
+when off, sign-in sets the iframe cookie, non-members / bad codes / a stopped bot are refused.
+Full suite after D2–D6: 600/600.
 
 ---
 
-## 9. Setup Doll does (Discord developer portal and `.env`)
+## 9. Setup Doll does
 
-- **Bot intents**: none new (DMs to users and posts to channels need no privileged intent; the member check uses
-  `guild.members.fetch(id)` for one user).
-- **D3**: run `/lumi-channel` with the new `lumitown` kind in each guild that wants news.
-- **D5/D6 only**: in the portal, *Activities → Settings → Enable*, then *URL Mappings*: `/` →
-  `sadgirlsclub.wtf`. **Only after D4 is deployed.**
-- `.env` (also in `.env.example`):
-  - `LUMI_DISCORD_ENABLED=true`
-  - `LUMI_ACTIVITY_ENABLED=false` (D6 turns it on)
-  - `LUMI_ACTIVITY_FRAME_ANCESTORS=https://discord.com https://*.discordsays.com`
+**For `/lumi-pet`, reminders and news (no portal steps):**
+- `.env`: `LUMI_PUBLIC_URL=https://sadgirlsclub.wtf/lumipet` (optional; worked out from the OAuth callback otherwise).
+- Web panel → Guilds → each guild that wants news: **Lumi-Town News Channel ID**. The bot needs *View Channel*, *Send
+  Messages* and *Embed Links* there.
+- Web panel → Economy → "Lumi-Town Discord": the reminder and news knobs (defaults are fine).
+- Bot intents: none new.
+
+**For the Activity (only after the D4 build is deployed):**
+1. Portal → your bot's application → **Activities → Settings → Enable Activities**; tick the platforms under
+   **Supported Platforms**.
+2. **Activities → URL Mappings**, in this order:
+   1. `/lumipet` → `sadgirlsclub.wtf/lumipet`
+   2. `/` → `sadgirlsclub.wtf/lumipet/activity`
+3. `.env`:
+   - `LUMI_ACTIVITY_ENABLED=true`
+   - `LUMI_FRAME_ANCESTORS=https://discord.com https://ptb.discord.com https://canary.discord.com https://<APP_ID>.discordsays.com`
+   - `LUMI_TRUSTED_ORIGINS=https://sadgirlsclub.wtf,https://<APP_ID>.discordsays.com` (POSTs come from the proxy's origin)
+   - `DISCORD_OAUTH_CLIENT_ID` / `DISCORD_OAUTH_CLIENT_SECRET` must be **the bot's own application** (the one with
+     the Activity).
+4. Restart; in Discord turn on Developer Mode, join a voice channel, start the Activity from the 🚀 menu.
+5. Check: sign-in, her house, care actions, the shop, then **Lumi Town / a party / a showdown** (SSE, unverified).
 
 ## 10. Risks
 
-- **DM spam feel.** Opt-in, one DM per 3 h, quiet hours and a Stop button on every DM. The admin page shows how many
-  people are opted in and DMs sent today.
-- **Channel spam.** 2-minute batching plus thresholds on the admin page. The default is conservative.
-- **Discord-side money bugs.** The money paths are the website's, through one `runPetAction` + shared lock + ref key.
-  Nothing new touches `sgc` directly.
-- **Activity cookies/proxy** are the unknowns, which is why D5 is a spike with a go/no-go.
-- **Entry Point 50240** would silently freeze command updates. Hence D4 ships first.
-- **Restart** drops the 2-minute announcement batch in memory (fine) and the member cache (refetched). Reminder state
-  is in SQLite, so it survives restarts.
+- **DM spam feel.** Opt-in, one DM per 3 h, quiet hours, a Stop button on every DM, an admin pause switch.
+- **Channel spam.** 2-minute batching, a 15-line cap and a size threshold, all on the panel.
+- **Discord-side money bugs.** The money paths are the website's: one `runPetAction` + the shared lock + run-once keys.
+- **Activity unknowns:** SSE through Discord's proxy, the Origin/Host it forwards, and links that leave `/lumipet`.
+- **Entry Point**: losing it (or a refused overwrite) would break the Activity's launch button or command updates;
+  `setGlobalCommands` keeps it and never overwrites blind.
+- **Restart** drops a waiting news batch (fine) and the member cache (refetched). Reminder state and the "daily summary
+  already posted" mark are in SQLite, so they survive restarts.
 
 ## 11. Docs to update as we go
 

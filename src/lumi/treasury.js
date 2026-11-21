@@ -117,6 +117,7 @@ function payOwed() {
     moveCoins(BANK, row.user_id, row.amount, 'lumi_owed_paid', `${row.game}:${row.kind} ${row.ref || ''}`.trim()); // pay it
     db.prepare('DELETE FROM lumi_owed WHERE id = ?').run(row.id);                   // no longer owed
     if (row.ref) db.prepare('UPDATE lumi_coin_refs SET amount = amount + ? WHERE ref = ?').run(row.amount, row.ref); // the ref now shows it paid
+    require('./events').publish('lumi:news', 'owed', { uid: row.user_id, game: row.game, kind: row.kind, amount: row.amount, ref: row.ref }); // Lumi-Town news (events.NEWS_CHANNEL)
     count += 1;                                                                     // tally
     total += row.amount;                                                            // tally
   }

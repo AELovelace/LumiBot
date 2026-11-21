@@ -67,6 +67,19 @@ function currentUser(req) {
   return user;                                                                      // { id, name, avatar }
 }
 
+/**
+ * Just the logged-in player's id, or null: a light read with no side effects. The router keys its rate limit on it,
+ * because inside the Discord Activity every player arrives through Discord's proxy from the same few IPs.
+ */
+function sessionUserId(req) {
+  try {
+    const session = requireUserAuth(req, { cookieName: COOKIE_NAME });              // lumi_sess only
+    return session ? String(session.discordId) : null;                              // id or nobody
+  } catch {
+    return null;                                                                    // a broken cookie is just "nobody"
+  }
+}
+
 /** The logged-in player, or throw LumiError 401 'login_required'. ctx is the router's ctx (or anything with .req). */
 function requireUser(ctx) {
   const user = currentUser(ctx.req);                                                // read the cookie
@@ -132,6 +145,7 @@ module.exports = {
   COOKIE_NAME,       // 'lumi_sess'
   cookieOptions,     // cookie settings
   currentUser,       // req -> user | null
+  sessionUserId,     // req -> id | null (no side effects; the router's rate-limit key)
   requireUser,       // ctx -> user (or throws 401)
   lumiNext,          // safe in-app redirect target
   renderLoginPage,   // the login page HTML

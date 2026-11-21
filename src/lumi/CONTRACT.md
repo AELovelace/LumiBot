@@ -513,6 +513,25 @@ the `locks.js` money lock itself (Discord); the website route leaves it false be
   `lumipet.state()` (a visit for reminders); nobody without a save (`save.exists`) gets one made from Discord.
 * `runPetAction` also takes a **list** of up to 3 inputs, run in one transaction (all or nothing); the answer is the
   last step's, plus `paid` (SGC charged by all steps).
+* `discord/view.js`: the shared helpers (`playerOf`, `viewOf`, `readSnap`, `answer`, `sayPrivately`, `letIn`,
+  `ownerOnly`, `noPetMessage`). Pieces use these instead of requiring each other.
+* `discord/prefs.js` (D2): `lumi_discord_prefs` (remind, tz, news_hidden, dm_failed_at). `get`, `setRemind`,
+  `setTz` (IANA, validated), `setNewsHidden`, `markDmFailed`, `remindBatch`, `hiddenSet`, `validTz`.
+* `discord/reminders.js` (D2): `sweepOnce({ now, send })`, the timer `start(client)` / `stop()`, `enable(client, uid)`
+  (on + hello DM; 50007 switches it off), `sendDm`, `isQuiet(tz, now)`. Queue: `lumi_remind_events` (erinne's
+  `lumi_push_events`). Uses `lumipet.load(uid, now, { seen: false })`, `episodes`, `REMIND_EVERY`, `QUIET`,
+  `REMIND_ORDER` and the garden's `readySince`. The DM is the card + `lumipet:remind:<owner>:off`.
+* `discord/settings.js`: the panel knobs `lumi.discord.*` (panelSettings SCHEMA, category "Lumi-Town Discord").
+* `discord/news.js` (D3): listens on `events.NEWS_CHANNEL` (`'lumi:news'`). **Publish inside your transaction with a
+  ref that proves it committed** — news checks the ref before posting:
+  `win` `{ uid, game, kind, amount, ref }` (published by `sgc.pay` for every paid prize; news keeps `win`/`betwin` ≥
+  the Big Win size), `owed` (by `treasury.payOwed`), `showdown` `{ game, uid, name, racers, ref }` (by
+  `showdown._settle`, ref = the winner's run prize). Channels: guildConfig `lumiTownChannelId`.
+* `src/commandSync.js` (D4): `setGlobalCommands(client, list)` replaces `application.commands.set(list)` everywhere;
+  it keeps type-4 Entry Point commands and never overwrites when it can't read the current list.
+* `routes/activity.js` (D6, `LUMI_ACTIVITY_ENABLED`): `GET /activity` (entry page) and `POST /api/activity/session`
+  (code → token without redirect_uri → `/users/@me` → club check → `lumi_sess` with `SameSite=None; Secure;
+  Partitioned`). The router's rate limit is keyed by `auth.sessionUserId(req)` when logged in (per IP otherwise).
 
 ## 13. Testing
 

@@ -87,6 +87,7 @@
   // row to, and what the room last drew.
   let opened = { home: null, closet: null }, flip = {}, lastHouse = "";
   let effectUntil = 0, lastReport = "", lastList = "", lastKeys = "", lastDone = null, timer = null, polled = 0, reminders = "unsupported";
+  let discordDms = null; // LumiBot: { on, remind, tz } from /state (src/lumi/discord): the "Discord DMs from Lumi" settings row
   // Lumi Town (town-ui.js, town-art.js; Doll's design, 2026-11-12): the map behind her room's door. `townAt` is the place
   // she's inside (the Arcade, the Casino or the Lumi-Soft field), or null on the map; the list's cursor is where she
   // stands. The page opens where ?at= says (media.js sends it when a game opened from here closes), and remembers on
@@ -1294,6 +1295,7 @@
   }
 
   function take(data) { // Keep the server's answer and how far this device's clock is from the server's.
+    if (data && data.discord) discordDms = data.discord; // LumiBot: Discord DM settings ride on /state only, so keep them across action answers
     snap = data; offset = data.now - Date.now(); polled = Date.now();
     if (HOME2 && snap.pet) { // her own house (Lumi City): its rooms stand in for her flat's, so drawing and the Home menu just work; no moving boxes there
       snap.pet.house = (snap.pet.estate && snap.pet.estate.rooms) || {};
@@ -1431,6 +1433,8 @@
       settings.push({ key: "reminders", icon: "✉", name: "Reminders: " + reminders, local: toggleReminders,
         hint: reminders === "blocked" ? "Allow notifications for this site in your browser first" : "A nudge on this device when Lumi needs you" });
     }
+    if (APP === "lumi-pet" && discordDms && discordDms.on) settings.push({ key: "discord-dms", icon: "✉", name: "Discord DMs from Lumi: " + (discordDms.remind ? "on" : "off"), // LumiBot: reminders by Discord DM (src/lumi/discord/reminders.js)
+      hint: discordDms.remind ? "Lumi DMs you on Discord when she needs you · at most every 3 hours, never at night" : "Lumi DMs you on Discord when she needs you (a hello DM first)", local: toggleDiscordDms });
     Object.keys(APPS).forEach(function (slug) { // Lumi's other two apps.
       if (slug !== APP) settings.push({ key: "open-" + slug, icon: APPS[slug][0], name: "Open " + APPS[slug][1], hint: APPS[slug][2], local: function () { openApp(slug); } });
     });
@@ -2861,6 +2865,14 @@
         setReminders("on"); say("Reminders are on for this device. Lumi will nudge you when she needs you, never at night.");
       });
     }).catch(function (problem) { say(problem && problem.status ? problem.message : "Reminders couldn't be switched on in this browser."); });
+  }
+
+  function toggleDiscordDms() { // LumiBot: the "Discord DMs from Lumi" row. On sends a hello DM through the bot; this browser's timezone becomes her quiet-hours clock unless one was chosen.
+    let tz = ""; // the browser's own IANA zone, e.g. "Europe/London"
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { tz = ""; }
+    G.api(API + "discord", { remind: !(discordDms && discordDms.remind), tz: tz || null })
+      .then(function (data) { discordDms = data.discord; lastList = ""; say(data.said); render(); }) // the new setting + what happened
+      .catch(function (failure) { say(failure && failure.message ? failure.message : "That didn't work just now. Please try again."); });
   }
 
   function signOut() { // LumiBot: the Sign out row. First press asks, second POSTs auth/logout (clears lumi_sess), then the login page.

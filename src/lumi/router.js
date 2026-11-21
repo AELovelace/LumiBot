@@ -227,7 +227,8 @@ function createRouter({ base, auth, trustedOriginsEnv = 'LUMI_TRUSTED_ORIGINS' }
     };
     let lockedUid = null;                                                                  // set while holding the money lock
     try {
-      if (isApi && !takeToken(ip)) throw new LumiError(429, 'slow_down', 'Slow down a little, please.'); // per-IP token bucket
+      const sessionId = isApi && typeof auth.sessionUserId === 'function' ? auth.sessionUserId(req) : null; // logged in? (light read)
+      if (isApi && !takeToken(sessionId ? `user:${sessionId}` : ip)) throw new LumiError(429, 'slow_down', 'Slow down a little, please.'); // token bucket per player (per IP when logged out): Discord Activity players share the proxy's IPs
       if (method !== 'GET' && method !== 'HEAD') {
         const origin = validateSameOrigin(req, getTrustedHosts(trustedOriginsEnv));        // CSRF guard on every write
         if (!origin.ok) throw new LumiError(403, 'cross_site', `Cross-site request blocked: ${origin.reason}`); // refuse

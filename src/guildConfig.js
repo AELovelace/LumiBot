@@ -13,6 +13,7 @@
  *   - bigBusinessRoleId     — role pinged for Big Business/LumiStocks updates
  *   - lumiBetsChannelId     — channel where live LumiBets announcements are posted
  *   - lumiBetsArchiveChannelId — channel where resolved LumiBets are archived
+ *   - lumiTownChannelId     — channel where Lumi-Town news is posted (big wins, showdowns, the daily bank summary)
  *   - promotionalChannelId  — channel where promotional song links are tracked
  *   - promotionalSongValue  — SGC value minted into company treasury per qualifying link
  *   - promotionalSongDomains — host allowlist for qualifying links (e.g. soundcloud.com)
@@ -43,6 +44,7 @@ const MAX_REACTION_ROLE_ASSIGNMENTS = 20;
  * @property {string} bigBusinessRoleId
  * @property {string} lumiBetsChannelId
  * @property {string} lumiBetsArchiveChannelId
+ * @property {string} lumiTownChannelId
  * @property {string} promotionalChannelId
  * @property {number} promotionalSongValue
  * @property {string[]} promotionalSongDomains
@@ -150,6 +152,7 @@ function normalizeEntry(entry) {
     bigBusinessRoleId: String(entry.bigBusinessRoleId || ''),
     lumiBetsChannelId: String(entry.lumiBetsChannelId || ''),
     lumiBetsArchiveChannelId: String(entry.lumiBetsArchiveChannelId || ''),
+    lumiTownChannelId: String(entry.lumiTownChannelId || ''), // Lumi-Town news (src/lumi/discord/news.js)
     promotionalChannelId: String(entry.promotionalChannelId || ''),
     promotionalSongValue: Number.isFinite(normalizedPromoValue) && normalizedPromoValue > 0
       ? normalizedPromoValue

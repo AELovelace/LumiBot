@@ -1092,6 +1092,12 @@ function renderGuildEdit(guildId, flash = null) {
         </div>
         <div class="form-row">
           <div>
+            <label>Lumi-Town News Channel ID</label>
+            <input type="text" name="lumiTownChannelId" value="${escapeHtml(cfg.lumiTownChannelId || '')}" placeholder="Big wins, showdowns, daily Lumi-Town Bank summary">
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
             <label>Promotional Song Channel ID</label>
             <input type="text" name="promotionalChannelId" value="${escapeHtml(cfg.promotionalChannelId || '')}" placeholder="Channel where song links are rewarded">
           </div>
@@ -1191,6 +1197,12 @@ function renderGuildNew(flash = null, prefill = {}) {
           <div>
             <label>LumiBets Archive Channel ID</label>
             <input type="text" name="lumiBetsArchiveChannelId" value="${escapeHtml(prefill.lumiBetsArchiveChannelId || '')}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Lumi-Town News Channel ID</label>
+            <input type="text" name="lumiTownChannelId" value="${escapeHtml(prefill.lumiTownChannelId || '')}" placeholder="Big wins, showdowns, daily Lumi-Town Bank summary">
           </div>
         </div>
         <div class="form-row">
@@ -1457,7 +1469,7 @@ function renderSettingsGroup(categoryMap, formAction, pageTitle) {
 }
 
 function renderEconomy(flash = null) {
-  const categories = getSettingsByCategories(['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games']);
+  const categories = getSettingsByCategories(['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games', 'Lumi-Town Discord']);
   const flashHtml = flash
     ? `<div class="flash ${flash.type === 'error' ? 'flash-error' : 'flash-success'}">${escapeHtml(flash.message)}</div>`
     : '';
@@ -2900,6 +2912,7 @@ async function handleRequest(req, res) {
       if (body.bigBusinessRoleId !== undefined) updates.bigBusinessRoleId = String(body.bigBusinessRoleId || '').trim();
       if (body.lumiBetsChannelId !== undefined) updates.lumiBetsChannelId = String(body.lumiBetsChannelId || '').trim();
       if (body.lumiBetsArchiveChannelId !== undefined) updates.lumiBetsArchiveChannelId = String(body.lumiBetsArchiveChannelId || '').trim();
+      if (body.lumiTownChannelId !== undefined) updates.lumiTownChannelId = String(body.lumiTownChannelId || '').trim(); // Lumi-Town news channel
       if (body.promotionalChannelId !== undefined) updates.promotionalChannelId = String(body.promotionalChannelId || '').trim();
       if (body.promotionalSongValue !== undefined) {
         const promoValue = Number(body.promotionalSongValue);
@@ -3122,6 +3135,7 @@ async function handleRequest(req, res) {
         bigBusinessRoleId,
         lumiBetsChannelId: body.lumiBetsChannelId || '',
         lumiBetsArchiveChannelId: body.lumiBetsArchiveChannelId || '',
+        lumiTownChannelId: String(body.lumiTownChannelId || '').trim(), // Lumi-Town news channel
         promotionalChannelId,
         promotionalSongValue,
         promotionalSongDomains,
@@ -3208,6 +3222,7 @@ async function handleRequest(req, res) {
         bigBusinessRoleId,
         lumiBetsChannelId: body.lumiBetsChannelId || '',
         lumiBetsArchiveChannelId: body.lumiBetsArchiveChannelId || '',
+        lumiTownChannelId: String(body.lumiTownChannelId || '').trim(), // Lumi-Town news channel
         promotionalChannelId,
         promotionalSongValue,
         promotionalSongDomains,
@@ -3272,7 +3287,7 @@ async function handleRequest(req, res) {
 
     if (pathname === '/economy' && method === 'POST') {
       const body = await parseFormBody(req);
-      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games'];
+      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games', 'Lumi-Town Discord'];
       const saved = saveSettingsFromForm(body, cats);
       liveReloadAllSettings();
       res.end(renderEconomy({ type: 'success', message: `Saved ${saved} economy settings. Changes are live.` }));
@@ -3280,7 +3295,7 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/economy/reset' && method === 'POST') {
-      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games'];
+      const cats = ['Economy', 'Tax', 'Casino Reserve', 'Scheduler', 'VC Rewards', 'Big Business', 'Runtime Channels', 'Chatbot', 'Search', 'Lumi Games', 'Lumi-Town Discord'];
       resetSettingsForCategories(cats);
       liveReloadAllSettings();
       res.writeHead(302, { Location: p('/economy') });

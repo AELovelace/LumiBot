@@ -24,6 +24,15 @@ const perUser = new Map();            // user id -> number of open streams
  * Tell everyone listening on `channel` that `event` happened. data must be JSON-serialisable.
  * Example: publish('town', 'said', { id, uid, text }) or publish(`party:${code}`, 'party', view).
  */
+/**
+ * Lumi-Town news (src/lumi/discord/news.js listens): game code publishes here INSIDE its transaction, so every event
+ * carries the ref that proves it committed; news.js checks that ref before posting anything.
+ *   'win'      { uid, game, kind, amount, ref }       a prize paid by sgc.pay (news keeps only the big ones)
+ *   'owed'     { uid, game, kind, amount, ref }       an owed prize finally paid by treasury.payOwed
+ *   'showdown' { game, uid, name, racers, ref }       a finished showdown and its winner (ref = the winner's run prize)
+ */
+const NEWS_CHANNEL = 'lumi:news';
+
 function publish(channel, event, data) {
   bus.emit(String(channel), { event: String(event), data });   // synchronous fan-out to subscribers
 }
@@ -150,4 +159,5 @@ module.exports = {
   stopAll,     // close every stream
   openCount,   // number of open streams
   frame,       // the wire format, exported for tests
+  NEWS_CHANNEL, // 'lumi:news' (Lumi-Town news for Discord)
 };

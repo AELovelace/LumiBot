@@ -49,7 +49,7 @@ let seq = 0n;                                                          // keeps 
 const snowflake = () => String(((BigInt(now) - 1_420_070_400_000n) << 22n) + (seq++ % 4096n));
 
 /** A fake interaction. kind: 'command' | 'autocomplete' | 'button' | 'select'. */
-function fake(kind, uid, { sub, item, focused, customId, values, id } = {}) {
+function fake(kind, uid, { sub, item, focused, focusedName = "item", customId, values, id } = {}) {
   const out = { replies: [], updates: [], responded: null };
   const i = {
     id: id || snowflake(), kind, client: fakeClient, commandName: kind === "command" || kind === "autocomplete" ? "lumi-pet" : undefined,
@@ -57,7 +57,7 @@ function fake(kind, uid, { sub, item, focused, customId, values, id } = {}) {
     user: { id: uid, username: `player${uid.slice(-3)}`, avatar: "" },
     isChatInputCommand: () => kind === "command",
     isAutocomplete: () => kind === "autocomplete",
-    options: { getSubcommand: () => sub, getString: () => item, getFocused: () => focused || "" },
+    options: { getSubcommand: () => sub, getString: () => item, getFocused: (full) => (full ? { name: focusedName, value: focused || "" } : focused || "") }, // discord.js: getFocused(true) -> { name, value }
     reply: async (p) => { out.replies.push(p); i.replied = true; },
     update: async (p) => { out.updates.push(p); },
     followUp: async (p) => { out.replies.push(p); },
